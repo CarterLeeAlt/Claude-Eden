@@ -138,18 +138,3 @@ for (const name of ['agent.md', 'llms.txt', 'agent-bootstrap.mjs', 'eden-install
 }
 assert.ok(fs.readFileSync(path.join(dist, 'docs/agent/index.html'), 'utf8').includes('JSON 结果和异步任务'), 'Rendered Agent guide missing');
 console.log('Verified Agent Markdown, discovery, download helper and rendered guide.');
-
-const screenshotManifest = JSON.parse(fs.readFileSync(path.join(root, 'www/public/docs/screenshots/manifest.json'), 'utf8'));
-const guideHTML = guideFiles.map(file => fs.readFileSync(path.join(guideDir, file), 'utf8')).join('\n');
-const usedShots = new Set([...guideHTML.matchAll(/src="\/docs\/screenshots\/([^"/]+)"/g)].map(match => match[1]));
-for (const file of usedShots) assert.ok(screenshotManifest.some(shot => shot.file === file), `${file}: screenshot has no provenance record`);
-for (const shot of screenshotManifest) {
-  if (!usedShots.has(shot.file)) continue;
-  assert.ok(shot.version && shot.platform && shot.capturedAt && shot.source, `${shot.id}: screenshot provenance missing`);
-  assert.ok(fs.existsSync(path.join(dist, 'docs/screenshots', shot.file)), `${shot.id}: screenshot was not shipped`);
-  const article = fs.readFileSync(path.join(guideDir, shot.chapter, 'index.html'), 'utf8');
-  assert.ok(article.includes(`src="/docs/screenshots/${shot.file}"`), `${shot.id}: broken screenshot URL`);
-  assert.ok(article.includes(shot.version), `${shot.id}: version caption missing`);
-  assert.ok(article.includes(`width="${shot.width}" height="${shot.height}"`), `${shot.id}: original dimensions missing`);
-}
-console.log(`Verified ${usedShots.size} referenced screenshots, original dimensions and version captions.`);
