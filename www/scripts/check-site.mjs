@@ -65,7 +65,8 @@ for (const code of codes) {
   assert.ok(!downloadSection?.includes('vnull') && !downloadSection?.includes('CLAUDE CAGE'), `${code}: stale or fabricated release label`);
   assert.equal([...html.matchAll(/<a\b[^>]*\bdata-download-open(?:\s|>)/g)].length, 3, `${code}: all download entries must open the platform chooser`);
   assert.ok(html.includes('aria-labelledby="platform-title"'), `${code}: platform dialog has no accessible title`);
-  for (const platform of ['Windows', 'Android', 'iOS']) {
+  assert.ok(!html.includes('data-platform="iOS"'), `${code}: retired mobile platform is advertised`);
+  for (const platform of ['Windows', 'Android']) {
     assert.ok(html.includes(`data-platform="${platform}"`), `${code}: missing ${platform} choice`);
   }
   const windowsLinks = [...html.matchAll(/href="([^"]*windows-amd64-setup\.exe)"/g)].map(match => match[1]);
@@ -81,9 +82,6 @@ for (const code of codes) {
     assert.ok(article?.includes(` · v${entry.version}</bdi>`), `${code}: ${name} version must match its package`);
     assert.ok(article?.includes(`href="${entry.releaseURL}"`), `${code}: ${name} notes must match its package`);
   }
-  const ios = html.match(/<article\b[^>]*data-platform="iOS"[^>]*>([\s\S]*?)<\/article>/)?.[1];
-  assert.ok(ios?.includes('href="/docs/mobile/"'), `${code}: iOS needs its local build guide`);
-  assert.ok(ios?.includes('/platforms/apple.svg'), `${code}: iOS platform icon is missing`);
   const android = html.match(/<article\b[^>]*data-platform="Android"[^>]*>([\s\S]*?)<\/article>/)?.[1];
   assert.ok(android?.includes('/platforms/android.svg'), `${code}: Android platform icon is missing`);
 }

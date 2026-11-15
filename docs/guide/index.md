@@ -3,7 +3,7 @@ title: 从这里开始
 description: 选择熟悉的客机系统，在统一工作台使用 Claude，找到安装、项目、手机连接与云端部署指南。
 group: 开始使用
 order: 0
-keywords: 概览 功能 导航 入门 版本 客机 Windows Debian Ubuntu Linux 云端 Android iOS
+keywords: 概览 功能 导航 入门 版本 客机 Windows Debian Ubuntu Linux 云端 Android
 ---
 Claude Eden 在 Windows 桌面将终端、浏览器、编辑器和 Claude Desktop 放进同一个工作台。选择 Windows、Debian 或 Ubuntu 22.04 客机，或连接 Linux 云端后端。项目按需共享，网络独立管理，工具与登录资料随环境保留。
 
@@ -43,7 +43,7 @@ Claude Eden 在 Windows 桌面将终端、浏览器、编辑器和 Claude Deskto
 
 云端模式下，终端、网页、工具、账户和网络配置属于所选服务器。桌面应用负责连接和显示；本机项目只有在明确授权后才临时共享。断开 SSH 会保留远端任务，停止远端环境才会结束任务。
 
-手机是远程客户端，命令在配对的电脑执行。电脑需要在线并运行 Claude Eden；配对指向本机后端，不会随着桌面切换 SSH 自动转到云端。Android 和 iOS 客户端负责连接与显示。
+手机是远程客户端，命令在配对的电脑执行。电脑需要在线并运行 Claude Eden；配对指向本机后端，不会随着桌面切换 SSH 自动转到云端。Android 客户端负责连接与显示。
 
 ## 先了解数据与网络边界
 

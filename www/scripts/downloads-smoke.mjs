@@ -20,7 +20,8 @@ try {
     await page.locator('[data-download-open]').first().click();
     const dialog = page.getByRole('dialog');
     await dialog.waitFor({ state: 'visible' });
-    assert.equal(await dialog.locator('[data-platform="macOS"], [data-platform="Linux"]').count(), 0);
+    assert.equal(await dialog.locator('[data-platform="macOS"], [data-platform="Linux"], [data-platform="iOS"]').count(), 0);
+    assert.deepEqual(await dialog.locator('[data-platform]').evaluateAll(options => options.map(option => option.dataset.platform)), ['Windows', 'Android']);
     if (!release.platforms.windows) {
       assert.equal(await dialog.locator('[data-platform="Windows"] a.button').getAttribute('href'), 'https://github.com/CarterLeeAlt/Claude-Eden/blob/main/docs/windows.md');
       assert.ok(!(await dialog.locator('[data-platform="Windows"] .platform-status').textContent()).includes('vnull'));

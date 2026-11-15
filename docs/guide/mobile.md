@@ -1,36 +1,19 @@
 ---
 title: 手机连接与远程会话
-description: 用 Android 或 iPhone 配对电脑，查看 Claude Code 对话、批准工具执行，或在左侧栏切换远程浏览器、Claude.ai 和 Claude Desktop 窗口。
+description: 用 Android 手机配对电脑，查看 Claude Code 对话、批准工具执行，或在左侧栏切换远程浏览器、Claude.ai 和 Claude Desktop 窗口。
 group: 远程使用
 order: 7
-keywords: 移动端 手机 Android iOS iPhone 扫码 二维码 配对码 审批 中继 远程浏览器 Claude Desktop
+keywords: 移动端 手机 Android 扫码 二维码 配对码 审批 中继 远程浏览器 Claude Desktop
 ---
 ## 获取客户端与使用条件
 
-在 Android 或 iPhone 安装 Claude Eden 手机客户端，与电脑配对。Android 需要 8.0+ arm64 设备及现代 System WebView，iPhone 需要 iOS 17+ 与 Secure Enclave，两端使用匹配构建。
+在 Android 手机安装 Claude Eden 客户端，与电脑配对。需要 Android 8.0+ arm64 设备及现代 System WebView，手机与电脑使用匹配构建。
 
 Android 安装包以 [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases) 实际附件为准；没有公开 APK 时按[移动端构建说明](../../mobile/README.md)构建。后续使用同一签名更新，保留配对记录。
-
-iOS 用户在自己的 Mac 上构建并为设备签名，步骤见下文。
 
 电脑需运行 Claude Eden、解锁账户并准备环境。手机负责连接与显示，Claude Code、出口、时区和语言由配对电脑管理。电脑离线或停止环境后，手机无法在该环境继续执行任务。
 
 桌面切到 SSH 服务器时，手机仍连接原电脑本机后端，管理配对时先切回本机工作台。
-
-## iOS 本地构建
-
-1. 在 Mac 安装完整 Xcode 和 iOS SDK，首次打开 Xcode 完成组件安装。准备 Node.js 24 与 Go，Go 版本遵循仓库中的 `go.mod`。
-2. 下载 [Claude Eden 源码](https://github.com/CarterLeeAlt/Claude-Eden)，在根目录执行以下命令，生成界面、原生连接库和 iOS 应用。
-
-   ```sh
-   npm ci --prefix ui
-   bash mobile/build.sh ios
-   open mobile/ios/EdenMobile.xcodeproj
-   ```
-
-3. 在 Xcode 选择 `EdenMobile` scheme 和自己的开发团队，连接并选择 iPhone 后点击 Run，按提示信任开发签名、启用开发者模式。
-
-产物位于 `mobile/.build/ios/`，证书与签名由自己的 Apple 开发账户管理。开发 IPA 导出见[移动端构建说明](../../mobile/README.md#ios-本地构建)。
 
 ## 扫码或使用配对码
 

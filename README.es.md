@@ -33,7 +33,7 @@ Claude Eden reúne terminal, navegador, editor y Claude Desktop oficial en el es
 - **Vea el estado de su red.** La administración de proxy de red incorporada le permite importar suscripciones, seleccionar puntos finales y verificar la IP de salida. El entorno permanece fuera de línea hasta que se superan las comprobaciones críticas. Si el proxy de red no está disponible, no se recurre a una conexión directa como alternativa.
 - **Continúe la próxima vez.** Las herramientas, los archivos y el estado de inicio de sesión persisten en el disco virtual. Las tareas en segundo plano pueden seguir ejecutándose cuando cierras la ventana.
 - **Gestione varias cuentas de Claude Code.** Consulta cuotas, asigna cuentas a nuevas sesiones y, con autorización explícita, cambia de cuenta para continuar el historial. [Claude Code](docs/guide/accounts.md)
-- **Continúa desde el teléfono.** Vincula Android o iPhone al ordenador mediante QR o código de emparejamiento. Retoma las mismas conversaciones de Claude Code, envía mensajes, aprueba herramientas y usa el navegador remoto o la ventana de Claude Desktop del ordenador.
+- **Continúa desde el teléfono.** Vincula tu teléfono Android al ordenador mediante QR o código de emparejamiento. Retoma las mismas conversaciones de Claude Code, envía mensajes, aprueba herramientas y usa el navegador remoto o la ventana de Claude Desktop del ordenador.
 - **Ejecute Claude Eden en la nube.** Conéctese por SSH a Claude Eden desplegado en un VPS Linux x86_64 compatible, sin KVM. Los datos y la salida de red están en el servidor.
 - **Conecta por una red privada.** Inicia sesión en Tailscale dentro de Claude Eden para conectar el equipo y el entorno por SSH en ambos sentidos. [Tailscale / SSH](docs/guide/tailscale.md)
 

@@ -33,7 +33,7 @@ Claude Eden wuxuu terminalka, biraawsarka, tafatiraha iyo Claude Desktop-ka rasm
 - **Eeg heerka shabakadaada** Maaraynta wakiilnimada shabakada ee ku dhex jirta ayaa kuu ogolaanaysa inaad soo dejiso rukunsiyada, dooro meelaha dhamaadka, oo aad hubiso IP-ga ka baxa. Deegaanku internetka kuma xirmayo ilaa hubinnada muhiimka ahi ay si guul leh u gudbaan. Haddii wakiillada shabakadu maqan tahay, ma dhacayso xiriir toos ah.
 - **Sii wad marka xigta** Qalabka, faylalka, iyo xaaladda gelitaanku waxay ku sii jiraan saxanka casriga ah. Hawlaha asalka ahi waxay sii socon karaan markaad daaqadda xidhid.
 - **Maamul akoonno badan oo Claude Code ah.** Eeg qoondada, u qoondee akoonno kulammada cusub, kuna beddel akoonka oggolaansho cad si aad taariikhda u sii wadato. [Claude Code](docs/guide/accounts.md)
-- **Telefoonka ka sii wad.** Android ama iPhone ku lammaani kombiyuutarka adigoo adeegsanaya QR ama koodhka lammaaninta. Sii wad isla wada sheekaysiyada Claude Code, dir farriimo, oggolow qalabka, isticmaalna biraawsarka fog ama daaqadda Claude Desktop ee kombiyuutarka.
+- **Telefoonka ka sii wad.** Telefoonka Android ku lammaani kombiyuutarka adigoo adeegsanaya QR ama koodhka lammaaninta. Sii wad isla wada sheekaysiyada Claude Code, dir farriimo, oggolow qalabka, isticmaalna biraawsarka fog ama daaqadda Claude Desktop ee kombiyuutarka.
 - **Claude Eden ku socodsii daruurta.** SSH kaga xirmo Claude Eden lagu rakibay VPS ku habboon oo Linux x86_64 ah, adigoon u baahnayn KVM. Xogta iyo halka shabakadu ka baxdo waxay ku yaallaan serverka.
 - **Ku xidh shabakad gaar ah.** Gudaha Claude Eden ka gal Tailscale si martigeliyaha iyo deegaanku SSH ugu xidhmaan labada jiho. [Tailscale / SSH](docs/guide/tailscale.md)
 

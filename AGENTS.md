@@ -3,7 +3,7 @@
 ## 项目范围
 
 - 宿主品牌为 Claude Eden，程序和配置使用 `eden`、`EDEN_*`、`~/.eden`；客户机使用中性命名 `workbench`、`WORKBENCH_*`。
-- 保留 Windows 桌面、Linux 云端后端、Linux／Windows 客户机和 Android／iOS 客户端。仅面向新装，不增加旧品牌迁移或兼容层。
+- 保留 Windows 桌面、Linux 云端后端、Linux／Windows 客户机和 Android 客户端。仅面向新装，不增加旧品牌迁移或兼容层。
 - 保留完整语言支持及按出口 IP 推荐语言的机制；“优先流畅”新配置默认关闭。
 
 ## 宿主文件与系统状态边界

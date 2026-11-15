@@ -33,7 +33,7 @@ Claude Eden 在 Windows 桌面上提供本机 Linux 或 Windows 客机，也可�
 - **看清网络状态。** 内置代理管理支持导入订阅、选择节点和检查出口。关键检查未通过时，环境保持离线；代理不可用时没有直连回退。
 - **下次继续使用。** 工具、文件和登录状态保存在虚拟磁盘里，关闭窗口可以保留后台任务。
 - **管理多个 Claude Code 订阅。** 查看额度、为新会话分配账号，并在明确授权后切换账号接续历史。 [Claude Code](docs/guide/accounts.md)
-- **从手机继续处理任务。** Android / iPhone 配对电脑，接续 Claude Code 对话与工具审批，或操作远程浏览器和 Claude Desktop。[手机连接](docs/guide/mobile.md)
+- **从手机继续处理任务。** Android 手机配对电脑，接续 Claude Code 对话与工具审批，或操作远程浏览器和 Claude Desktop。[手机连接](docs/guide/mobile.md)
 - **把环境放到自己的服务器。** 通过 SSH 部署或连接 Linux VPS，工具、任务和数据留在服务器，无需 KVM。[云端部署与 SSH](docs/guide/cloud.md)
 - **通过私网连接设备。** 在 Claude Eden 内登录 Tailscale，查看网络中的设备，使用 SSH、Web 与其他 TCP 服务。 [Tailscale 私网](docs/guide/tailscale.md)
 
