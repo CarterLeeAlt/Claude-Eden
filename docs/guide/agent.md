@@ -50,7 +50,7 @@ node .\agent-bootstrap.mjs download --platform win32-amd64 --destination 'D:\Dow
 
 ## 第一次配置的完整顺序
 
-先明确用户希望使用哪类客机，以及哪个目录可以共享。Agent 可以探测主机条件、根据报告提出选择，不能替用户接受许可证、降低出口规则或授权未指定的主机目录。
+先明确用户希望使用本机 Linux 客机还是 Linux 云端，以及哪个目录可以共享。Agent 可以探测主机条件、根据报告提出选择，不能替用户接受许可证、降低出口规则或授权未指定的主机目录。
 
 ```sh
 eden agent capabilities
@@ -108,13 +108,12 @@ eden agent call proxy.status
 
 ```sh
 eden agent call guest.options
-eden agent call guest.match
 eden agent call storage.get
 eden agent call resources.get
 eden agent call settings.get
 ```
 
-根据实际可用性选择系统。`guest.match` 给出匹配主机版本的干净镜像方案；将返回的 `key` 作为 `clone_key`，将 `plan.host.system` 作为 `guest_system` 传给 `environment.start`。镜像下载量、磁盘、主机权限和系统授权条件见[客机系统指南](guest-systems.md)。它不复制主机账户和个人文件。已有客机应继续原安装，保留原系统与介质信息。
+根据 `guest.options` 返回的 `linux_systems` 选择可用的 Linux 发行版，将对应值作为 `guest_system` 传给 `environment.start`。镜像下载量、磁盘与虚拟化条件见[客机系统指南](guest-systems.md)。已有安装按 `pending` 继续，保留原系统、磁盘和进度。
 
 首次需要换存储位置时，在安装前用 `storage.set`，输入 `directory`、`previous`、`migrate`；后两项分别来自 `storage.get` 的 `directory` 和 `has_environment`。已有环境的迁移会停止任务并保留备份，应先保存工作。资源配置用 `resources.set` 的 `allocation` 对象；修改保存后再以 `{}` 调用应用资源，会重启环境。容器资源由服务器部署管理。
 
@@ -131,9 +130,9 @@ eden agent call settings.patch --input /private/path/settings-apply.json --wait 
 eden agent call environment.start --input /private/path/guest-choice.json --wait 30m
 ```
 
-已有环境的 `environment.start` 可以不带输入。首次选择的 JSON 字段为 `guest_system`、`clone_key` 或需要的 `media`、`sha256`；只在用户明确接受对应条款时传 `editor_terms:true`。可用系统以 `guest.options` 为准。安装成功且 `guest.options.activate:true` 时调用 `guest.activate`，随后重新调用 `service.start` 并读取状态。激活会让旧后台退出；请求中断时先核对安装状态再决定下一步。
+已有环境的 `environment.start` 可以不带输入。首次选择只传 `{"guest_system":"guest.options 返回的系统值"}`。可用系统以 `guest.options` 为准；有 `pending` 时继续原安装，请求中断后先查询作业和实际状态。
 
-系统首次设置、Windows 登录或重启需要用户完成时，报告具体操作与恢复查询命令。安装进度在 `setup_progress` 中；`prepared`、安装完成、运行和联网分别检查。
+主机虚拟化启用或重启需要用户完成时，报告具体操作与恢复查询命令。安装进度在 `setup_progress` 中；`prepared`、安装完成、运行和联网分别检查。
 
 ```sh
 eden agent call status
@@ -147,7 +146,7 @@ eden agent call network.check --wait 5m
 
 移除已添加项目使用 `project.remove`，传入 `{"workspace":"项目列表中的路径"}`。关闭该目录的终端、运行中会话和编辑器后可解除共享，原文件与会话历史保留。移除当前项目后切换到剩余项目；移除最后一个项目后没有当前项目。
 
-Linux 环境默认缓存项目名称与属性，主机改动最多 20 秒后可见。需要立即刷新时调用无参数的 `project.refresh`；Windows 环境直接读取，调用返回 409。
+Linux 环境默认缓存项目名称与属性，主机改动最多 20 秒后可见。需要立即刷新时调用无参数的 `project.refresh`。
 
 ## JSON 结果和异步任务
 
@@ -250,7 +249,7 @@ eden agent call settings.get --scope selected --connection 当前连接代次
 | Cookie、权限、扩展、收藏 | browser.cookies/settings/extensions；favorites.get/change。Cookie 的 mode、scope、id、cookieKey 与界面相同。 |
 | SSH 主机与部署、指纹核对、连接与切换 | desktop 范围 client.hosts、client.hosts.create、client.candidate/commit/cancel/disconnect/local-stop；更新/删除主机使用 PUT/DELETE /api/client/hosts/主机ID。保留同一连接代次、候选、指纹和本机任务去留规则。 |
 | 已归档会话、名称、固定、账户切换 | request 访问 /api/cli/sessions 和 /api/cli/sessions/会话ID/{metadata,account,archive,restore,purge,open}。 |
-| 文件选择、主题导入导出、App 更新 | native.submit 调现有 chooseFolder、chooseGuestMedia、importTheme、exportTheme、appUpdate 等原生 action。系统选择器和签名检查照常执行。 |
+| 文件选择、主题导入导出、App 更新 | native.submit 调现有 chooseFolder、importTheme、exportTheme、appUpdate 等原生 action。系统选择器和签名检查照常执行。 |
 
 ### 通用请求与文件
 

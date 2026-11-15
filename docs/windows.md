@@ -15,6 +15,12 @@ Claude Eden 的桌面使用环境为 **Windows 10 主机 + Linux 客机**。在 
 
 完整版携带本机 Linux 虚拟机运行时，轻客户端只负责远程连接与显示。终端、浏览器、编辑器和 Claude Desktop 都在 Linux 环境内运行。客机使用方式见[选择客机系统](guide/guest-systems.md)。
 
+系统版本与能力按以下依据判断：
+
+- 宿主 SSH 终端使用 ConPTY。Microsoft 将 [CreatePseudoConsole](https://learn.microsoft.com/en-us/windows/console/createpseudoconsole)、[ResizePseudoConsole](https://learn.microsoft.com/en-us/windows/console/resizepseudoconsole) 和 [ClosePseudoConsole](https://learn.microsoft.com/en-us/windows/console/closepseudoconsole) 的最低客户端标为 Windows 10 1809；安装器与桌面入口检查这三个接口是否实际可用。
+- 本机 Linux 客机检查 `WinHvPlatform.dll` 的 [WHvGetCapability](https://learn.microsoft.com/en-us/virtualization/api/hypervisor-platform/funcs/whvgetcapability)，确认监控程序正在运行且平台 API 可用。Microsoft 标注 x64 API 从 Windows 10 1803 提供；功能已勾选而系统尚未完成重启时，仍应以实际检查结果为准。
+- 随包 QEMU 的 `docs/system/whpx.rst` 说明，x64 WHPX 从 Windows 10 2004 起经过上游测试，更早版本可能工作但未经其测试。接口可用性与这一上游测试范围共同构成运行依据；具体电脑的验证结果见相应发行记录。
+
 ## 安装前准备
 
 下表适用于运行本机 Linux 客机的完整版。只连接远端的轻客户端按上表准备 Windows 主机和 Linux 服务器。
@@ -29,10 +35,10 @@ Claude Eden 的桌面使用环境为 **Windows 10 主机 + Linux 客机**。在 
 在“启用或关闭 Windows 功能”中启用“Windows 虚拟机监控程序平台”，按系统要求重启。也可在管理员终端执行：
 
 ```powershell
-DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All
+DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All /NoRestart
 ```
 
-这个系统功能需要一次管理员授权；Claude Eden 日常运行和应用安装使用普通用户权限。企业电脑若禁止虚拟化，应由设备管理员启用。Linux 客机使用独立的 QEMU 虚拟机，通过 WHPX 加速，不依赖 WSL 或 Docker。
+这个系统功能需要一次管理员授权，命令完成后按返回结果安排重启；Claude Eden 日常运行和应用安装使用普通用户权限。企业电脑若禁止虚拟化，应由设备管理员启用。Linux 客机使用独立的 QEMU 虚拟机，通过 WHPX 加速，不依赖 WSL 或 Docker。
 
 ## 安装并开始工作
 

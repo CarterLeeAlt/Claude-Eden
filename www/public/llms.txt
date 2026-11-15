@@ -1,6 +1,6 @@
 # Claude Eden
 
-> Claude Eden is a Windows desktop and Linux cloud development workbench. External agents can help users download, install, configure and diagnose it through the versioned JSON CLI. Local Linux and Windows guests use neutral Workbench identifiers.
+> Claude Eden is a Windows 10 desktop and Linux cloud development workbench with an Android client. External agents can help users download, install, configure and diagnose it through the versioned JSON CLI. Local Linux guests use neutral Workbench identifiers. Host requirements are checked against actual runtime and virtualization capabilities.
 
 - [Agent guide](https://github.com/CarterLeeAlt/Claude-Eden/blob/main/docs/guide/agent.md): Read this first. Installation paths, protocol discovery, JSON input, tasks, recovery and user authorization boundaries.
 - [User guide](https://github.com/CarterLeeAlt/Claude-Eden/blob/main/docs/guide/index.md): Feature-oriented documentation.
