@@ -44,27 +44,26 @@ body:
     id: host-system
     attributes:
       label: 主机系统
-      description: Windows 主机运行桌面应用，Linux 主机运行云端服务器。Issue 会按所选系统添加标签。
+      description: Windows 10 主机运行桌面应用。Issue 会按所选系统添加标签。
       options:
-        - Windows
-        - Linux
+        - Windows 10
     validations:
       required: true
   - type: input
     id: host-os
     attributes:
       label: 主机版本与架构
-      description: 填写系统名称、完整版本（Windows 请含构建号）及处理器架构；远程连接时也请注明远程主机系统。
-      placeholder: Windows 10（填写实际构建号与架构）/ Linux 云端（填写发行版、版本与架构）
+      description: 填写 Windows 10 的完整版本、构建号及处理器架构。
+      placeholder: Windows 10（填写实际构建号与架构）
     validations:
       required: true
   - type: dropdown
     id: guest-system
     attributes:
       label: 客机系统
-      description: 客机是 Claude Eden 内运行的 Linux 系统。尚未安装或无法启动时，选择安装时所选的系统。
+      description: 客机是 Claude Eden 内运行的本地 Debian 13 系统。安装或启动问题请选择 Debian 13。
       options:
-        - Linux
+        - Debian 13
         - 不涉及或不确定
     validations:
       required: true
@@ -73,7 +72,7 @@ body:
     attributes:
       label: 客机版本与架构
       description: 填写系统名称、版本及架构；尚未安装或无法启动时，注明当前阶段。
-      placeholder: Debian 或 Ubuntu（填写实际版本与架构）；未安装，停在……
+      placeholder: Debian 13 amd64；未安装，停在……
     validations:
       required: true
   - type: textarea
@@ -104,4 +103,4 @@ body:
     id: context
     attributes:
       label: 补充信息
-      description: 如涉及 Claude Code、Claude Desktop、浏览器或手机，请注明对应版本；也可补充已尝试的处理方法、最近的配置变化及此前可用的版本。
+      description: 如涉及 Claude Code、Claude Desktop、浏览器或 Tailscale，请注明对应版本；也可补充已尝试的处理方法、最近的配置变化及此前可用的版本。

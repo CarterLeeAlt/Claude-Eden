@@ -219,7 +219,7 @@ export async function publishRelease({ api, upload, promote, root, files, ...con
     release = await api('POST', `${base}/releases`, {
       tag_name: `v${context.version}`, target_commitish: context.commitSha,
       name: `Claude Eden ${context.version}`, draft: true, prerelease: context.version.includes('-'),
-      body: `${marker(context)}\n\n${notes.body || ''}${customNotes ? '' : `\n\nWindows desktop packaging and Linux cloud server checks completed for ${context.commitSha}. The Windows application includes the Linux cloud deployment kit. Hardware virtualization and real Claude account acceptance are separate checks; see the platform guides.`}`,
+      body: `${marker(context)}\n\n${notes.body || ''}${customNotes ? '' : `\n\nWindows desktop packaging and Debian 13 guest checks completed for ${context.commitSha}. The Windows application runs a local Debian 13 environment. Hardware virtualization and real Claude account acceptance are separate checks; see the Windows guide.`}`,
     });
   }
   const assets = await api('GET', `${base}/releases/${release.id}/assets?per_page=100`);

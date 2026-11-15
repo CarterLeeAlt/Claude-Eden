@@ -31,11 +31,9 @@ body:
     id: host-systems
     attributes:
       label: 涉及的主机系统
-      description: Windows 主机运行桌面应用，Linux 主机运行云端服务器，可多选。Issue 会按所选系统添加标签。
-      multiple: true
+      description: Windows 10 主机运行桌面应用。Issue 会按所选系统添加标签。
       options:
-        - Windows
-        - Linux
+        - Windows 10
         - 不涉及或不确定
     validations:
       required: true
@@ -43,9 +41,9 @@ body:
     id: guest-systems
     attributes:
       label: 涉及的客机系统
-      description: 客机是 Claude Eden 内运行的 Linux 系统。
+      description: 客机是 Claude Eden 内运行的本地 Debian 13 系统。
       options:
-        - Linux
+        - Debian 13
         - 不涉及或不确定
     validations:
       required: true

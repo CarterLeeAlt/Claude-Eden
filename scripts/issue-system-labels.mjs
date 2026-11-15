@@ -1,10 +1,9 @@
 import fs from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
-const linux = ['Linux', /linux|ubuntu|debian|fedora|centos|deepin/i];
 const systems = {
-  主机: [['Windows', /windows|\bwin\s?1[01]\b/i], linux],
-  客机: [linux],
+  主机: [['Windows', /windows|\bwin\s?10\b/i]],
+  客机: [['Linux', /linux|debian/i]],
 };
 const everySystem = /全部平台|所有平台|全平台/;
 

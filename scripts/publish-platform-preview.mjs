@@ -129,7 +129,7 @@ async function main() {
   mergeReleaseChecksums(release, merged, files, version);
   const marker = `<!-- eden-platform-packages source=${run.head_sha} ci=${runID} -->`;
   if (!release.body.includes(marker)) {
-    const notes = release.body + `\n\n## Windows 预览版\n\n${marker}\n\nWindows 安装包来自源码 [${run.head_sha.slice(0, 7)}](https://github.com/${repo}/commit/${run.head_sha})，文件摘要列于 SHA256SUMS。\n\n- **Windows：未签名 x64 预览版**，文件名含 -setup-unsigned.exe，需手动安装和更新，系统可能提示未知发布者；不进入签名自动更新通道。\n- 应用随附 Linux 云端部署包，通过 Windows 客户端连接 Linux 服务器。\n- [构建与检查记录](https://github.com/${repo}/actions/runs/${runID})；托管 CI 不代替 Windows 10 真机及硬件虚拟化验收。\n- 随附 Mihomo、QEMU 主程序、键码映射和项目补丁源码；升级前保存文件、停止环境并退出 Claude Eden。\n\n[项目发布页](https://github.com/${repo}/releases/tag/${tag})\n`;
+    const notes = release.body + `\n\n## Windows 预览版\n\n${marker}\n\nWindows 安装包来自源码 [${run.head_sha.slice(0, 7)}](https://github.com/${repo}/commit/${run.head_sha})，文件摘要列于 SHA256SUMS。\n\n- **Windows：未签名 x64 预览版**，文件名含 -setup-unsigned.exe，需手动安装和更新，系统可能提示未知发布者；不进入签名自动更新通道。\n- Windows 10 桌面应用运行本地 Debian 13 客机，提供代理配置及可选的客机 Tailscale。\n- [构建与检查记录](https://github.com/${repo}/actions/runs/${runID})；托管 CI 不代替 Windows 10 真机及硬件虚拟化验收。\n- 随附 Mihomo、QEMU 主程序、键码映射和项目补丁源码；升级前保存文件、停止环境并退出 Claude Eden。\n\n[项目发布页](https://github.com/${repo}/releases/tag/${tag})\n`;
     const notesPath = join(root, 'notes.md'); writeFileSync(notesPath, notes);
     gh(['release', 'edit', tag, '--repo', repo, '--notes-file', notesPath]);
   }
