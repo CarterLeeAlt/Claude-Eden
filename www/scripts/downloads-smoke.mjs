@@ -6,9 +6,9 @@ const { chromium } = require(process.env.EDEN_PLAYWRIGHT_MODULE || 'playwright')
 const origin = process.env.EDEN_SITE_URL || 'http://127.0.0.1:4833/';
 const output = process.env.EDEN_SITE_REPORT || '_output/platform-publication/site';
 const release = JSON.parse(await readFile(new URL('../src/data/release.json', import.meta.url), 'utf8'));
-const expected = Object.fromEntries(Object.entries({ Windows: 'windows', Android: 'android' })
+const expected = Object.fromEntries(Object.entries({ Windows: 'windows' })
   .filter(([, key]) => release.platforms[key]).map(([name, key]) => [name, release.platforms[key]]));
-assert.ok(!release.platforms.macos && !release.platforms.linux, 'Retired desktop release metadata remains');
+assert.ok(Object.keys(release.platforms).every(platform => platform === 'windows'), 'Retired release metadata remains');
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 try {
@@ -20,8 +20,8 @@ try {
     await page.locator('[data-download-open]').first().click();
     const dialog = page.getByRole('dialog');
     await dialog.waitFor({ state: 'visible' });
-    assert.equal(await dialog.locator('[data-platform="macOS"], [data-platform="Linux"], [data-platform="iOS"]').count(), 0);
-    assert.deepEqual(await dialog.locator('[data-platform]').evaluateAll(options => options.map(option => option.dataset.platform)), ['Windows', 'Android']);
+    assert.equal(await dialog.locator('[data-platform="macOS"], [data-platform="Linux"], [data-platform="iOS"], [data-platform="Android"]').count(), 0);
+    assert.deepEqual(await dialog.locator('[data-platform]').evaluateAll(options => options.map(option => option.dataset.platform)), ['Windows']);
     if (!release.platforms.windows) {
       assert.equal(await dialog.locator('[data-platform="Windows"] a.button').getAttribute('href'), 'https://github.com/CarterLeeAlt/Claude-Eden/blob/main/docs/windows.md');
       assert.ok(!(await dialog.locator('[data-platform="Windows"] .platform-status').textContent()).includes('vnull'));

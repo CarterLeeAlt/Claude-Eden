@@ -5,18 +5,13 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/sylvinus/agent-vm/internal/guestos"
 )
 
 func TestVMRecordWithReusedPIDIsNotRunning(t *testing.T) {
-	for _, guest := range []string{"linux", "macos"} {
+	for _, guest := range []string{"linux"} {
 		t.Run(guest, func(t *testing.T) {
 			s := testServer(t)
 			s.preferences.Workspace, _ = filepath.EvalSymlinks(t.TempDir())
-			if guest == "macos" {
-				s.macosGuest = &guestos.MacOSProfile{Instance: "mac", User: "cage"}
-			}
 			dir := s.instanceDir()
 			if err := os.MkdirAll(dir, 0700); err != nil {
 				t.Fatal(err)
@@ -28,7 +23,7 @@ func TestVMRecordWithReusedPIDIsNotRunning(t *testing.T) {
 			if err := cfg.RecordRunningAt(dir); err != nil {
 				t.Fatal(err)
 			}
-			path := filepath.Join(dir, "cage-running.json")
+			path := filepath.Join(dir, "eden-running.json")
 			var record map[string]any
 			b, _ := os.ReadFile(path)
 			if err := json.Unmarshal(b, &record); err != nil {

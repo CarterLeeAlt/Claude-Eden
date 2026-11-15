@@ -29,11 +29,11 @@ func TestWarnDiskSpace(t *testing.T) {
 // Native QA passes a profile-side junction to a second volume with different
 // free space. The missing child models Lima's first launch before setup.
 func TestDiskSpaceBeforeVMDirectoryExists(t *testing.T) {
-	alias, target := os.Getenv("CAGE_TEST_DISK_SPACE_ALIAS"), os.Getenv("CAGE_TEST_DISK_SPACE_VOLUME")
+	alias, target := os.Getenv("EDEN_TEST_DISK_SPACE_ALIAS"), os.Getenv("EDEN_TEST_DISK_SPACE_VOLUME")
 	if alias == "" || target == "" {
 		t.Skip("requires a test link to a second volume")
 	}
-	missing := filepath.Join(alias, "cage-disk-qa-absent", "lima")
+	missing := filepath.Join(alias, "eden-disk-qa-absent", "lima")
 	if _, err := os.Stat(missing); !os.IsNotExist(err) {
 		t.Fatal("expected missing QA child", err)
 	}

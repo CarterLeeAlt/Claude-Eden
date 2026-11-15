@@ -1,15 +1,15 @@
 # Claude Eden
 
-> Claude Eden is a Windows 10 desktop and Linux cloud development workbench with an Android client. External agents can help users download, install, configure and diagnose it through the versioned JSON CLI. Local Linux guests use neutral Workbench identifiers. Host requirements are checked against actual runtime and virtualization capabilities.
+> Claude Eden is a Windows 10 desktop workbench for a local Debian 13 guest. External agents can help users download, install, configure and diagnose it through the versioned JSON CLI. The guest uses neutral Workbench identifiers. Host requirements are checked against actual runtime and virtualization capabilities.
 
 - [Agent guide](https://github.com/CarterLeeAlt/Claude-Eden/blob/main/docs/guide/agent.md): Read this first. Installation paths, protocol discovery, JSON input, tasks, recovery and user authorization boundaries.
 - [User guide](https://github.com/CarterLeeAlt/Claude-Eden/blob/main/docs/guide/index.md): Feature-oriented documentation.
 - [Download helper](https://github.com/CarterLeeAlt/Claude-Eden/blob/main/www/public/agent-bootstrap.mjs): Node.js 20+, public release discovery and verified Windows package download. Returns an installation plan; does not install.
-- [Linux cloud deployment](https://github.com/CarterLeeAlt/Claude-Eden/blob/main/deploy/cloud/README.md): Server requirements and deployment.
+- [Windows requirements and build](https://github.com/CarterLeeAlt/Claude-Eden/blob/main/docs/windows.md): Installation, virtualization prerequisites and workspace build commands.
 - [Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases): Actual published packages and validation limits.
 
 Discover installed capabilities before changing anything: <installed CLI> agent capabilities
 Current source documentation may describe features absent from published releases.
-The full CLI defaults to the local workload at config_path. Use --scope desktop for client configuration and --scope selected --connection GENERATION for the chosen workload. The lightweight client defaults to --scope client. Remote SSH execution is also supported.
+The CLI defaults to the local workload at config_path. Use --scope desktop for the local desktop connection and --scope selected --connection GENERATION for that connection's local workload. A new connection generation invalidates requests from the previous generation.
 Run agent routes against the live listener to discover its registered HTTP routes. agent request and agent socket use the same API and permissions as the UI; native.submit invokes the actual desktop bridge and clientPreferences accesses the same window storage.
 Preserve existing profile data, accounts, projects and VM disks. Never disable network isolation or system security checks to complete setup.

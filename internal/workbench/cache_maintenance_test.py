@@ -57,20 +57,18 @@ class CacheMaintenanceTests(unittest.TestCase):
         self.assertNotIn("protected:", json.dumps(report))
         self.assert_protected()
 
-    def test_three_layouts_clean_and_restore_preserve_all_user_data(self):
-        for system in ("linux", "macos", "windows"):
-            with self.subTest(system=system):
-                self.service = care.Maintenance(self.home, system, self.browser, self.desktop, self.accounts, lambda: self.roles)
-                result = self.service.clean(self.selection())
-                self.assertEqual(result["status"], "complete")
-                self.assertFalse((self.home / ".claude/cache").exists())
-                self.assert_protected()
-                self.assertEqual(self.service.inspect()["batches"][0]["count"], 3)
-                restored = self.service.restore(result["batch"])
-                self.assertEqual(restored["status"], "complete", restored)
-                self.assertEqual((self.home / ".claude/cache/model-cache").read_text(), "cache-data")
-                self.assertEqual(self.service.inspect()["batches"], [])
-                self.assert_protected()
+    def test_clean_and_restore_preserve_all_user_data(self):
+        self.service = care.Maintenance(self.home, "linux", self.browser, self.desktop, self.accounts, lambda: self.roles)
+        result = self.service.clean(self.selection())
+        self.assertEqual(result["status"], "complete")
+        self.assertFalse((self.home / ".claude/cache").exists())
+        self.assert_protected()
+        self.assertEqual(self.service.inspect()["batches"][0]["count"], 3)
+        restored = self.service.restore(result["batch"])
+        self.assertEqual(restored["status"], "complete", restored)
+        self.assertEqual((self.home / ".claude/cache/model-cache").read_text(), "cache-data")
+        self.assertEqual(self.service.inspect()["batches"], [])
+        self.assert_protected()
 
     def test_managed_accounts_do_not_use_default_paths(self):
         account = "a" * 24
@@ -106,10 +104,7 @@ class CacheMaintenanceTests(unittest.TestCase):
 
     def test_links_are_preserved_and_never_followed(self):
         path = self.home / ".claude/cache/link"
-        try:
-            path.symlink_to(self.home / "project", target_is_directory=True)
-        except OSError:
-            self.skipTest("OS does not permit test symlinks")
+        path.symlink_to(self.home / "project", target_is_directory=True)
         report = self.service.inspect()
         self.assertEqual(next(item for item in report["items"] if item["id"] == "cli-default")["state"], "blocked")
         with self.assertRaises(care.Refused):
@@ -163,8 +158,6 @@ class CacheMaintenanceTests(unittest.TestCase):
         self.assert_protected()
 
     def test_process_classification_catches_native_and_node_cli_without_exposing_args(self):
-        if os.name == "nt":
-            self.skipTest("POSIX ps fixture")
         args = "101 /bin/node /bin/node /tools/@anthropic-ai/claude-code/cli.js private-token\n102 /app/chrome /app/chrome\n103 /app/Claude /app/Claude"
         names = "101 /bin/node\n102 /app/chrome\n103 /app/Claude"
         with patch.object(care.subprocess, "check_output", side_effect=[args, names]):
@@ -185,8 +178,8 @@ class CacheMaintenanceTests(unittest.TestCase):
         self.assertEqual(invoke({"action": "restore", "batch": result["batch"]})["status"], "complete")
         self.assert_protected()
 
-    def test_windows_process_failure_is_not_reported_as_idle(self):
-        with patch.object(care.subprocess, "check_output", side_effect=OSError("denied")), patch.object(care.subprocess, "run", side_effect=OSError("denied")):
+    def test_process_failure_is_not_reported_as_idle(self):
+        with patch.object(care.subprocess, "check_output", side_effect=OSError("denied")):
             self.assertIsNone(care.running_roles())
 
     def test_file_count_limit_leaves_target_untouched(self):
@@ -210,46 +203,27 @@ class CacheMaintenanceTests(unittest.TestCase):
                     path.parent.rmdir()
         self.assert_protected()
 
-    def test_production_selects_owned_platform_roots_without_creating_them(self):
-        with patch.object(care, "Maintenance", side_effect=lambda *args: args), patch.object(care.Path, "home", return_value=self.home), patch.dict(care.os.environ, {
-            "APPDATA": str(self.home / "AppData/Roaming"), "LOCALAPPDATA": str(self.home / "AppData/Local"),
-        }):
-            with patch.object(care.sys, "platform", "darwin"):
-                mac = care.production({})
-            with patch.object(care.sys, "platform", "win32"):
-                windows = care.production({"profile": "0123456789abcdef"})
-                with self.assertRaises(care.Refused):
-                    care.production({"profile": "../../other-user"})
-            with patch.object(care.sys, "platform", "linux"), patch.object(care.os, "geteuid", return_value=0, create=True):
-                linux = care.production({})
-        self.assertEqual(mac[2], self.home / "Library/Application Support/Cage/Browser/Default")
-        self.assertEqual(windows[2], self.home / "AppData/Local/Cage/Browser/Profile/Default")
-        self.assertEqual(windows[4], self.home / "Cage/CLI/0123456789abcdef/accounts")
-        self.assertEqual(linux[0], Path("/home/cage"))
-        self.assertEqual(linux[2], Path("/home/cage-browser/profile/Default"))
+    def test_production_selects_guest_roots_without_creating_them(self):
+        with patch.object(care, "Maintenance", side_effect=lambda *args: args):
+            with patch.object(care.os, "geteuid", return_value=1000):
+                with self.assertRaisesRegex(care.Refused, "requires_local_service"):
+                    care.production()
+            with patch.object(care.os, "geteuid", return_value=0):
+                linux = care.production()
+        self.assertEqual(linux[0], Path("/home/developer"))
+        self.assertEqual(linux[2], Path("/home/browser/profile/Default"))
+        self.assertEqual(linux[4], Path("/home/developer/.local/share/workbench/claude-accounts"))
         self.assertFalse(self.service.recovery.exists())
 
-    @unittest.skipUnless(os.name == "nt", "Native Windows junction and ACL check runs in Windows CI")
-    def test_windows_junction_and_recovery_acl(self):
-        link = self.home / ".claude/cache/junction"
-        executable = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
-        env = {**os.environ, "FIXTURE_LINK": str(link), "FIXTURE_TARGET": str(self.home / "project"),
-               "PSModulePath": str(executable.parent / "Modules")}
-        care.subprocess.run([str(executable), "-NoProfile", "-NonInteractive", "-Command",
-                             "$ErrorActionPreference='Stop'; New-Item -ItemType Junction -Path $env:FIXTURE_LINK -Target $env:FIXTURE_TARGET | Out-Null"], env=env, check=True, capture_output=True)
-        try:
-            row = next(row for row in self.service.inspect()["items"] if row["id"] == "cli-default")
-            self.assertEqual(row["state"], "blocked")
-            self.assert_protected()
-        finally:
-            link.rmdir()
+    def test_recovery_directory_is_private_and_rejects_broad_permissions(self):
         care.private_directory(self.service.recovery)
-        env["FIXTURE_TARGET"] = str(self.service.recovery)
-        script = "$a=Get-Acl -LiteralPath $env:FIXTURE_TARGET; @{protected=$a.AreAccessRulesProtected; sids=@($a.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]) | ForEach-Object {$_.IdentityReference.Value}); user=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value} | ConvertTo-Json -Compress"
-        output = care.subprocess.check_output([str(executable), "-NoProfile", "-NonInteractive", "-Command", script], env=env, text=True)
-        acl = json.loads(output)
-        self.assertTrue(acl["protected"])
-        self.assertEqual(set(acl["sids"]), {acl["user"], "S-1-5-18"})
+        info = self.service.recovery.stat()
+        self.assertEqual(info.st_mode & 0o777, 0o700)
+        self.assertEqual(info.st_uid, os.geteuid())
+        care.private_directory(self.service.recovery)
+        self.service.recovery.chmod(0o755)
+        with self.assertRaisesRegex(care.Refused, "unavailable"):
+            care.private_directory(self.service.recovery)
 
 
 if __name__ == "__main__":

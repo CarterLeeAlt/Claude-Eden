@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import vm from 'node:vm';
+import { native, nativeAvailable } from '../ui/src/api.js';
 
 const source = await readFile(new URL('../desktop/windows/MainWindow.cs', import.meta.url), 'utf8');
 const script = source.match(/private const string BridgeScript = """\s*([\s\S]*?)\s*""";/)?.[1];
@@ -23,7 +24,8 @@ function bridge() {
     clearTimeout: id => timers.delete(id),
   });
   return {
-    call: request => window.webkit.messageHandlers.cage.postMessage(request),
+    window,
+    call: request => window.edenNativeBridge.postMessage(request),
     reply: value => reply({ data: { id: sent.id, ...value } }),
     timers,
   };
@@ -32,7 +34,7 @@ function bridge() {
 test('native file replies remain pending beyond four minutes and through the backend deadline', async () => {
   for (const action of ['uploadHostFiles', 'chooseUploadFiles', 'clipboardSyncRead', 'clipboardSyncWrite',
     'saveBrowserDownload', 'browserDownloadAction', 'desktopFileAction', 'exportDiagnostics', 'importTheme', 'exportTheme', 'saveRecoveryKey',
-    'shareLocalProject', 'chooseFolder', 'chooseGuestMedia']) {
+    'chooseFolder']) {
     const fixture = bridge();
     const pending = fixture.call({ action });
     const timer = [...fixture.timers.values()][0];
@@ -41,6 +43,21 @@ test('native file replies remain pending beyond four minutes and through the bac
     assert.equal((await pending).saved, true, action);
     assert.equal(fixture.timers.size, 0);
   }
+});
+
+test('the injected Windows bridge is usable by the real frontend readiness API', async t => {
+  const fixture = bridge();
+  const previous = globalThis.window;
+  globalThis.window = fixture.window;
+  t.after(() => {
+    if (previous === undefined) delete globalThis.window;
+    else globalThis.window = previous;
+  });
+  assert.equal(nativeAvailable(), true);
+  const pending = native('workbenchReady');
+  fixture.reply({ result: true });
+  assert.equal(await pending, true);
+  assert.equal(fixture.timers.size, 0);
 });
 
 test('file failure reaches the caller and the following request can succeed', async () => {

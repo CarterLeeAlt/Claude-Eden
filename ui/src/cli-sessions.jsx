@@ -5,7 +5,7 @@ import { InlineSelect } from "./inline-select";
 import "./cli-sessions.css";
 
 export const desktopSessionRequest = (path, options = {}) => api("/cli" + path, options.body);
-export const sessionsChanged = () => window.dispatchEvent(new Event("cage-cli-sessions-changed"));
+export const sessionsChanged = () => window.dispatchEvent(new Event("eden-cli-sessions-changed"));
 const archiveDate = new Intl.DateTimeFormat("zh-CN", {year:"numeric",month:"long",day:"numeric",hour:"2-digit",minute:"2-digit",hour12:false});
 const projectLabel = path => path.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || path;
 const archiveFilters = {all:"全部会话",pinned:"已置顶",deleting:"删除未完成"};
@@ -28,8 +28,8 @@ export function useCLISessions(enabled, visible) {
   const [revision, setRevision] = useState(0);
   const refresh = () => { setLoading(true); setRevision(value => value + 1); };
   useEffect(() => {
-    window.addEventListener("cage-cli-sessions-changed", refresh);
-    return () => window.removeEventListener("cage-cli-sessions-changed", refresh);
+    window.addEventListener("eden-cli-sessions-changed", refresh);
+    return () => window.removeEventListener("eden-cli-sessions-changed", refresh);
   }, []);
   useEffect(() => {
     if (!enabled || !visible) { setLoading(false); return; }

@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
-const output = process.env.CAGE_ERROR_QA_OUTPUT || "/tmp/cage-readable-errors";
+const output = process.env.EDEN_ERROR_QA_OUTPUT || "../.tmp/guest-neutralization/ui-eden/readable-errors";
 await mkdir(output, { recursive: true });
-for (const platform of ["darwin", "windows", "linux"]) {
+for (const platform of ["windows"]) {
   const fixture = await createWorkbench({
     clientContext: { mode: "local", connection_id: "local", client_platform: platform, server_platform: platform, connection: { state: "disconnected" } },
   });

@@ -12,15 +12,15 @@ func TestSetupProgressParsesComponentNamesBeforeLogRedaction(t *testing.T) {
 	var op sync.Mutex
 	_, err := m.submit(&op, "setup", 0, nil, nil, func() error {
 		e := m.execution()
-		e.setSetupProgress(&SetupProgress{Phase: "image", System: "macos"})
-		for _, part := range []string{"CAGE_HOST_BYTES macos-cli-", "python.tar.gz 25 100\n"} {
+		e.setSetupProgress(&SetupProgress{Phase: "image", System: "debian-13"})
+		for _, part := range []string{"EDEN_GUEST_BYTES debian-13 ", "download 25 100\n"} {
 			_, _ = e.Write([]byte(part))
 		}
 		p := m.snapshot().SetupProgress
 		if p.Operation != "download" || p.Received == nil || *p.Received != 25 || p.Total != 100 {
 			t.Errorf("host component progress lost: %+v", p)
 		}
-		_, _ = e.Write([]byte("CAGE_TOOL_BYTES chromium-common.deb 5 10\n"))
+		_, _ = e.Write([]byte("WORKBENCH_TOOL_BYTES chromium-common.deb 5 10\n"))
 		p = m.snapshot().SetupProgress
 		if p.Phase != "packages" || p.Received == nil || *p.Received != 5 || p.Total != 10 {
 			t.Errorf("tool component progress lost: %+v", p)
@@ -33,22 +33,8 @@ func TestSetupProgressParsesComponentNamesBeforeLogRedaction(t *testing.T) {
 	}
 	awaitJobIdle(t, &m)
 	log := m.snapshot().Log
-	if strings.Contains(log, "static.example-provider.io") || strings.Contains(log, "1337") || strings.Contains(log, "CAGE_") || !strings.Contains(log, "connect error:") {
+	if strings.Contains(log, "static.example-provider.io") || strings.Contains(log, "1337") || strings.Contains(log, "EDEN_") || strings.Contains(log, "WORKBENCH_") || !strings.Contains(log, "connect error:") {
 		t.Fatalf("job log leaked raw output or lost error evidence: %q", log)
-	}
-}
-
-func TestWindowsInstallationInteractionStages(t *testing.T) {
-	for _, stage := range []string{"account", "oobe", "credentials", "media", "tools", "services"} {
-		progress := parseSetupProgress("CAGE_GUEST_STAGE windows-11 " + stage)
-		if progress == nil || progress.System != "windows-11" || progress.Operation != stage || progress.Label == "" {
-			t.Fatalf("Windows installation stage was lost: %s %+v", stage, progress)
-		}
-	}
-	for _, system := range []string{"macos", "debian-13", "ubuntu-22.04"} {
-		if parseSetupProgress("CAGE_GUEST_STAGE "+system+" oobe") != nil {
-			t.Fatalf("Windows interaction stage accepted for %s", system)
-		}
 	}
 }
 
@@ -61,7 +47,7 @@ func TestSetupProgressFromChildOutput(t *testing.T) {
 	_, err := m.submit(&op, "start", 0, nil, nil, func() error {
 		e := m.execution()
 		e.setSetupProgress(&SetupProgress{Phase: "image"})
-		for _, part := range []string{"CAGE_IMAGE_BYTES 25", " 100\n", "CAGE_IMAGE_BYTES 0 -1\n", "CAGE_IMAGE_BYTES 123 5\n", "CAGE_IMAGE_READY\n", "Installing Claude Code...\n"} {
+		for _, part := range []string{"EDEN_IMAGE_BYTES 25", " 100\n", "EDEN_IMAGE_BYTES 0 -1\n", "EDEN_IMAGE_BYTES 123 5\n", "EDEN_IMAGE_READY\n", "Installing Claude Code...\n"} {
 			_, _ = e.Write([]byte(part))
 			points = append(points, m.snapshot().SetupProgress)
 		}
@@ -76,13 +62,13 @@ func TestSetupProgressFromChildOutput(t *testing.T) {
 	}
 }
 
-func TestNativeInstallProgressKeepsSystemAndSeparatesVerification(t *testing.T) {
+func TestLinuxInstallProgressKeepsSystemAndSeparatesVerification(t *testing.T) {
 	var m jobManager
 	var op sync.Mutex
 	_, err := m.submit(&op, "guest-install", 0, nil, nil, func() error {
 		e := m.execution()
-		e.setSetupProgress(&SetupProgress{Phase: "image", System: "macos"})
-		_, _ = e.Write([]byte("CAGE_GUEST_BYTES macos download 25"))
+		e.setSetupProgress(&SetupProgress{Phase: "image", System: "debian-13"})
+		_, _ = e.Write([]byte("EDEN_GUEST_BYTES debian-13 download 25"))
 		if m.snapshot().SetupProgress.Received != nil {
 			t.Error("partial line became progress")
 		}
@@ -90,20 +76,15 @@ func TestNativeInstallProgressKeepsSystemAndSeparatesVerification(t *testing.T) 
 		m.mu.Lock()
 		e.progressUpdated = time.Now().Add(-2 * time.Second)
 		m.mu.Unlock()
-		_, _ = e.Write([]byte("CAGE_GUEST_BYTES macos download 75 100\n"))
+		_, _ = e.Write([]byte("EDEN_GUEST_BYTES debian-13 download 75 100\n"))
 		p := m.snapshot().SetupProgress
 		if p.BytesPerSecond < 24 || p.BytesPerSecond > 26 || *p.Received != 75 {
 			t.Errorf("wrong measured rate: %+v", p)
 		}
-		_, _ = e.Write([]byte("CAGE_GUEST_BYTES macos verify 0 100\n"))
+		_, _ = e.Write([]byte("EDEN_GUEST_BYTES debian-13 verify 0 100\n"))
 		p = m.snapshot().SetupProgress
 		if p.Operation != "verify" || p.BytesPerSecond != 0 || *p.Received != 0 {
 			t.Errorf("download leaked into verification: %+v", p)
-		}
-		_, _ = e.Write([]byte("CAGE_GUEST_STAGE macos restore\n下载 editor.tgz\n"))
-		p = m.snapshot().SetupProgress
-		if p.System != "macos" || p.Phase != "image" || p.Received != nil || p.BytesPerSecond != 0 {
-			t.Errorf("stage retained stale bytes or lost retry system: %+v", p)
 		}
 		return nil
 	})
@@ -111,13 +92,13 @@ func TestNativeInstallProgressKeepsSystemAndSeparatesVerification(t *testing.T) 
 		t.Fatal(err)
 	}
 	awaitJobIdle(t, &m)
-	for _, line := range []string{"CAGE_GUEST_BYTES unknown download 2 10", "CAGE_GUEST_BYTES macos download 11 10", "CAGE_GUEST_BYTES macos verify -1 10", "CAGE_GUEST_BYTES macos anything 1 10", "CAGE_GUEST_STAGE macos arbitrary"} {
+	for _, line := range []string{"EDEN_GUEST_BYTES unknown download 2 10", "EDEN_GUEST_BYTES debian-13 download 11 10", "EDEN_GUEST_BYTES debian-13 verify -1 10", "EDEN_GUEST_BYTES debian-13 anything 1 10", "EDEN_GUEST_BYTES debian-12 download 1 10", "EDEN_GUEST_BYTES ubuntu-22.04 download 1 10"} {
 		if p := parseSetupProgress(line); p != nil {
 			t.Errorf("invalid progress accepted: %s", line)
 		}
 	}
-	for _, system := range []string{"macos", "windows-11", "debian-12", "debian-13", "ubuntu-22.04", "ubuntu-24.04"} {
-		p := parseSetupProgress("CAGE_GUEST_BYTES " + system + " download 1 10")
+	for _, system := range []string{"debian-13"} {
+		p := parseSetupProgress("EDEN_GUEST_BYTES " + system + " download 1 10")
 		if p == nil || p.Total != 10 || p.System != system {
 			t.Errorf("missing shared progress for %s", system)
 		}
@@ -125,46 +106,17 @@ func TestNativeInstallProgressKeepsSystemAndSeparatesVerification(t *testing.T) 
 }
 
 func TestToolProgressUsesOnlyKnownPackageNames(t *testing.T) {
-	p := parseSetupProgress("CAGE_TOOL_BYTES claude-code-linux-x64.tgz 4980736")
+	p := parseSetupProgress("WORKBENCH_TOOL_BYTES claude-code-linux-x64.tgz 4980736")
 	if p == nil || p.Phase != "tools" || p.Received == nil || *p.Received != 4980736 || p.Total != 0 {
 		t.Fatalf("expected current bytes without a guessed total, got %+v", p)
 	}
-	if p := parseSetupProgress("CAGE_TOOL_BYTES untrusted 12"); p != nil {
+	if p := parseSetupProgress("WORKBENCH_TOOL_BYTES untrusted 12"); p != nil {
 		t.Fatalf("unexpected package name entered UI: %+v", p)
 	}
-	if p := parseSetupProgress("CAGE_TOOL_BYTES chromium-common.deb 5 10"); p == nil || p.Total != 10 || *p.Received != 5 {
+	if p := parseSetupProgress("WORKBENCH_TOOL_BYTES chromium-common.deb 5 10"); p == nil || p.Total != 10 || *p.Received != 5 {
 		t.Fatalf("missing Chromium progress from signed index: %+v", p)
 	}
-	if p := parseSetupProgress("CAGE_TOOL_BYTES chromium.deb 12 10"); p != nil {
+	if p := parseSetupProgress("WORKBENCH_TOOL_BYTES chromium.deb 12 10"); p != nil {
 		t.Fatalf("excess bytes entered UI: %+v", p)
-	}
-}
-
-func TestMacHostDownloadsReplacePreviousComponentProgress(t *testing.T) {
-	for _, name := range []string{"chrome.dmg", "macos-cli-claude", "macos-cli-uv.tar.gz", "macos-cli-python.tar.gz", "macos-cli-git.tar.gz"} {
-		p := parseSetupProgress("CAGE_HOST_BYTES " + name + " 25 100")
-		if p == nil || p.System != "macos" || p.Total != 100 || *p.Received != 25 {
-			t.Fatalf("missing host component progress: %s %+v", name, p)
-		}
-		if p := parseSetupProgress("下载 " + name); p == nil || p.Received != nil {
-			t.Fatalf("missing component start: %s %+v", name, p)
-		}
-	}
-	for _, line := range []string{"CAGE_HOST_BYTES unknown 1 2", "CAGE_HOST_BYTES chrome.dmg 3 2", "CAGE_HOST_BYTES chrome.dmg -1 2"} {
-		if p := parseSetupProgress(line); p != nil {
-			t.Fatalf("invalid host progress: %s", line)
-		}
-	}
-}
-
-func TestMacOSSetupProgressReportsHostRetry(t *testing.T) {
-	p := parseSetupProgress("CAGE_HOST_RETRY editor.tgz 2")
-	if p == nil || p.Label != "正在下载 macOS 网页编辑器（准备第 2/3 次尝试）" {
-		t.Fatal(p)
-	}
-	for _, line := range []string{"CAGE_HOST_RETRY unknown 2", "CAGE_HOST_RETRY editor.tgz 0"} {
-		if p := parseSetupProgress(line); p != nil {
-			t.Fatal(p)
-		}
 	}
 }

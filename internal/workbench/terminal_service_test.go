@@ -21,11 +21,11 @@ func (m *terminalManager) start(cmd *exec.Cmd, workspace, kind string) (*termina
 
 // This subprocess uses the same platform PTY implementation as workbench SSH.
 func TestTerminalServiceChild(t *testing.T) {
-	if os.Getenv("CAGE_TERMINAL_SERVICE_CHILD") != "1" {
+	if os.Getenv("EDEN_TERMINAL_SERVICE_CHILD") != "1" {
 		return
 	}
 	fmt.Println("terminal-ready")
-	if os.Getenv("CAGE_TERMINAL_SERVICE_MODE") == "blocked-input" {
+	if os.Getenv("EDEN_TERMINAL_SERVICE_MODE") == "blocked-input" {
 		time.Sleep(24 * time.Hour)
 		os.Exit(0)
 	}
@@ -42,7 +42,7 @@ func TestTerminalServiceChild(t *testing.T) {
 
 func terminalChildCommand(mode string) *exec.Cmd {
 	cmd := exec.Command(os.Args[0], "-test.run=^TestTerminalServiceChild$")
-	cmd.Env = append(os.Environ(), "CAGE_TERMINAL_SERVICE_CHILD=1", "CAGE_TERMINAL_SERVICE_MODE="+mode)
+	cmd.Env = append(os.Environ(), "EDEN_TERMINAL_SERVICE_CHILD=1", "EDEN_TERMINAL_SERVICE_MODE="+mode)
 	return cmd
 }
 

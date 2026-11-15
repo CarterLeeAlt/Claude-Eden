@@ -74,13 +74,13 @@ export function BrowserFavorites({ current, ready, onOpen, shortcuts = true, men
     const close = () => {
       if (!state.current.editor && !savingRef.current) setOpen(false);
     };
-    document.addEventListener("cage-add-favorite", add);
-    document.addEventListener("cage-show-favorites", show);
-    document.addEventListener("cage-close-modal", close);
+    document.addEventListener("eden-add-favorite", add);
+    document.addEventListener("eden-show-favorites", show);
+    document.addEventListener("eden-close-modal", close);
     return () => {
-      document.removeEventListener("cage-add-favorite", add);
-      document.removeEventListener("cage-show-favorites", show);
-      document.removeEventListener("cage-close-modal", close);
+      document.removeEventListener("eden-add-favorite", add);
+      document.removeEventListener("eden-show-favorites", show);
+      document.removeEventListener("eden-close-modal", close);
     };
   }, []);
   useEffect(() => {
@@ -340,7 +340,7 @@ export function BrowserFavorites({ current, ready, onOpen, shortcuts = true, men
               </div>
               {data && (
                 <footer>
-                  {visible.length} 个收藏<span>保存在此 Cage 环境</span>
+                  {visible.length} 个收藏<span>保存在此 Eden 环境</span>
                 </footer>
               )}
             </section>

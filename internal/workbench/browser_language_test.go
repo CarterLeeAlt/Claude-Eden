@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func TestBrowserSettingsJapaneseChromiumLocale(t *testing.T) {
-	cfg := cage.DefaultConfig()
+	cfg := eden.DefaultConfig()
 	cfg.Timezone, cfg.BrowserLanguage = "Asia/Tokyo", "ja-JP"
 	for _, language := range []string{"ja", "JA", "ja-JP", "ja-US", "en-US", ""} {
 		v := browserObservation{Timezone: cfg.Timezone, ExpectedTimezone: cfg.Timezone, Language: language, Platform: "Linux x86_64"}
@@ -25,7 +25,7 @@ func TestBrowserSettingsJapaneseChromiumLocale(t *testing.T) {
 }
 
 func TestBrowserSettingsReportsOnlyMismatchedFields(t *testing.T) {
-	cfg := cage.DefaultConfig()
+	cfg := eden.DefaultConfig()
 	cfg.Timezone, cfg.BrowserLanguage = "Asia/Taipei", "zh-TW"
 	valid := browserObservation{Timezone: "Asia/Taipei", ExpectedTimezone: "Asia/Taipei", Language: "zh-TW", Platform: "Linux x86_64"}
 	for _, field := range []string{"none", "language", "timezone", "platform", "all", "timezone-alias", "language-case"} {

@@ -1,25 +1,26 @@
 package workbench
 
 import (
-	"al.essio.dev/pkg/shellescape"
 	"bytes"
 	"compress/gzip"
 	"context"
 	"errors"
-	"github.com/sylvinus/agent-vm/internal/tailnetassets"
 	"io"
 	"strings"
 	"time"
+
+	"al.essio.dev/pkg/shellescape"
+	"github.com/sylvinus/agent-vm/internal/tailnetassets"
 )
 
 // Stage beside the installed executable so a running node can finish on its old
 // inode. Identity and user data live elsewhere and are never part of installation.
-const tailnetInstallScript = `set -eu; tmp=$(mktemp /tmp/cage-tailnet.XXXXXX); stage=; trap 'rm -f "$tmp"; if test -n "$stage"; then sudo rm -f "$stage"; fi' EXIT; cat > "$tmp"; stage=$(sudo mktemp /usr/local/bin/.cage-tailnet.XXXXXX); sudo install -m 0755 "$tmp" "$stage"; sudo mv -f "$stage" /usr/local/bin/cage-tailnet; printf 'cage-browser ALL=(cage) NOPASSWD: /usr/local/bin/cage-tailnet\n' | sudo tee /etc/sudoers.d/cage-tailnet >/dev/null; sudo chmod 0440 /etc/sudoers.d/cage-tailnet`
+const tailnetInstallScript = `set -eu; tmp=$(mktemp -t workbench-tailnet.XXXXXX); stage=; trap 'rm -f "$tmp"; if test -n "$stage"; then sudo rm -f "$stage"; fi' EXIT; cat > "$tmp"; stage=$(sudo mktemp /usr/local/bin/.workbench-tailnet.XXXXXX); sudo install -m 0755 "$tmp" "$stage"; sudo mv -f "$stage" /usr/local/bin/workbench-tailnet; printf 'browser ALL=(developer) NOPASSWD: /usr/local/bin/workbench-tailnet\n' | sudo tee /etc/sudoers.d/workbench-tailnet >/dev/null; sudo chmod 0440 /etc/sudoers.d/workbench-tailnet`
 
 func (s *Server) refreshInstalledTailnet() error {
 	ctx, cancel := context.WithTimeout(s.operationContext(), 15*time.Second)
 	defer cancel()
-	installed, err := s.guest(ctx, "if test -x /usr/local/bin/cage-tailnet; then printf installed; fi")
+	installed, err := s.guest(ctx, "if test -x /usr/local/bin/workbench-tailnet; then printf installed; fi")
 	if err != nil {
 		return err
 	}
@@ -30,11 +31,8 @@ func (s *Server) refreshInstalledTailnet() error {
 }
 
 func (s *Server) installTailnet() error {
-	if s.macosGuest != nil || s.windowsGuest != nil {
-		return errTailnetNativeInstall
-	}
 	if !s.vmRunning() {
-		return errors.New("请先启动 Cage 环境")
+		return errors.New("请先启动 Eden 环境")
 	}
 	ctx, cancel := context.WithTimeout(s.operationContext(), 2*time.Minute)
 	defer cancel()
@@ -50,7 +48,7 @@ func (s *Server) installTailnet() error {
 	}
 	payload, err := tailnetassets.Linux(name)
 	if err != nil {
-		return errors.New("此构建缺少 Tailscale 客机组件，请安装完整的 Cage 构建")
+		return errors.New("此构建缺少 Tailscale 客机组件，请安装完整的 Eden 构建")
 	}
 	defer payload.Close()
 	reader, err := gzip.NewReader(payload)

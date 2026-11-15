@@ -54,7 +54,7 @@ func (r *progressReader) Read(p []byte) (int, error) {
 		if r.activity == "校验系统材料" {
 			operation = "verify"
 		}
-		fmt.Fprintf(r.out, "CAGE_GUEST_BYTES %s %s %d %d\n", r.system, operation, r.received, r.total)
+		fmt.Fprintf(r.out, "EDEN_GUEST_BYTES %s %s %d %d\n", r.system, operation, r.received, r.total)
 		if r.total > 0 {
 			fmt.Fprintf(r.out, "%s %.1f / %.1f MiB（%.0f%%）\n", r.activity, float64(r.received)/(1<<20), float64(r.total)/(1<<20), 100*float64(r.received)/float64(r.total))
 		} else {
@@ -80,9 +80,6 @@ func verify(ctx context.Context, path string, plan Plan, output io.Writer) (stri
 		return "", errors.New("本机镜像在选择后发生变化，请重新检查")
 	}
 	digest := plan.Digest
-	if digest == "" {
-		digest = "sha256:" + strings.Repeat("0", 64)
-	}
 	hasher, err := digestHash(digest)
 	if err != nil {
 		return "", err
@@ -96,14 +93,8 @@ func verify(ctx context.Context, path string, plan Plan, output io.Writer) (stri
 		return "", errors.New("校验期间系统镜像发生变化，请重新检查")
 	}
 	actual := strings.SplitN(digest, ":", 2)[0] + ":" + hex.EncodeToString(hasher.Sum(nil))
-	if plan.Digest != "" && actual != plan.Digest {
+	if actual != plan.Digest {
 		return "", errors.New("系统镜像摘要不匹配，请重新选择或重新下载")
-	}
-	if plan.Format == "ipsw" {
-		version, build, err := macImageIdentity(path)
-		if err != nil || version != plan.Version || build != plan.Build {
-			return "", errors.New("恢复镜像内容与已选择的 macOS 版本不一致")
-		}
 	}
 	return actual, nil
 }
@@ -233,7 +224,7 @@ func download(ctx context.Context, plan Plan, file *os.File, offset int64, outpu
 		return err
 	}
 	request.Header.Set("Accept-Encoding", "identity")
-	request.Header.Set("User-Agent", "Mozilla/5.0 (compatible; Cage-SystemInstaller/1.0)")
+	request.Header.Set("User-Agent", "Mozilla/5.0 (compatible; Eden-SystemInstaller/1.0)")
 	if offset > 0 {
 		request.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 	}

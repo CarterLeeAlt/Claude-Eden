@@ -3,7 +3,7 @@ import { ExternalLink, LoaderCircle, RefreshCw } from "lucide-react";
 import { api, native, nativeAvailable } from "./api";
 import "./about-settings.css";
 
-const repository = "https://github.com/Lee-xeo/Claude-Cage";
+const repository = "https://github.com/CarterLeeAlt/Claude-Eden";
 const sourceMessages = {
   current: "已与主分支同步",
   available: "主分支有新提交",
@@ -81,8 +81,8 @@ export function AboutSettings() {
       if (!controller.signal.aborted) setBusy(false);
     }
   };
-  return <section className="about-settings" aria-label="关于 Cage">
-    <div className="section-title"><h3>关于</h3><p>Cage 的版本与更新信息</p></div>
+  return <section className="about-settings" aria-label="关于 Eden">
+    <div className="section-title"><h3>关于</h3><p>Claude Eden 的版本与更新信息</p></div>
     <dl className="about-build">
       <div><dt>软件版本</dt><dd>{loading ? "正在读取…" : build?.version || "未知"}</dd></div>
       <div><dt>构建提交</dt><dd>{build?.commit ? <code title={build.commit}>{build.commit.slice(0, 12)}</code> : loading ? "正在读取…" : "未记录"}</dd></div>
@@ -95,7 +95,7 @@ export function AboutSettings() {
       </button>
       {result?.checkedAt && <span className="footnote">检查时间：{new Date(result.checkedAt).toLocaleString()}</span>}
     </div>
-    <p className="footnote">优先通过主机网络与系统代理检查主分支提交和最新发行版，包含预发行版；主机连接失败时尝试 Cage 所选代理。检查后可前往发布页下载。</p>
+    <p className="footnote">优先通过主机网络与系统代理检查主分支提交和最新发行版，包含预发行版；主机连接失败时尝试 Eden 所选代理。检查后可前往发布页下载。</p>
     {busy && <p role="status">正在核对源码提交与发行版…</p>}
     {error && <p className="error-message" role="alert">{error}</p>}
     <div className="about-results" aria-live="polite" aria-busy={busy}>

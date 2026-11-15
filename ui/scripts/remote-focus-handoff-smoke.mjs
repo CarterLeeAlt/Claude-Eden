@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createWorkbench } from "./workbench-fixture.mjs";
 import { startDisplay } from "./rfb-wire-fixture.mjs";
 
-const display = await startDisplay(process.env.CAGE_UI_URL || "http://127.0.0.1:5198");
+const display = await startDisplay(process.env.EDEN_UI_URL || "http://127.0.0.1:5198");
 let available = true, activations = 0, finishHandoff;
 const { browser, page, errors } = await createWorkbench({
   mockWebSockets: false,
@@ -24,11 +24,11 @@ const { browser, page, errors } = await createWorkbench({
     state.active = "first";
     state.tabs = [{ id: "first", kind: "web", title: "First site", url: "https://example.test/first" }];
     await page.addInitScript(() => {
-      localStorage.setItem("cage.audio", JSON.stringify({ muted: true, volume: 1 }));
+      localStorage.setItem("eden.audio", JSON.stringify({ muted: true, volume: 1 }));
       Object.defineProperty(navigator, "platform", { value: "Win32" });
       window.chrome ??= {};
       window.chrome.webview = {};
-      window.cageNativeIMEAvailable = true;
+      window.edenNativeIMEAvailable = true;
       window.EventSource = class extends EventTarget {
         constructor() { super(); queueMicrotask(() => this.onopen?.()); }
         close() {}
@@ -53,7 +53,7 @@ try {
   await canvas.waitFor();
   await page.evaluate(() => {
     window.handoffReplies = 0;
-    const bridge = window.webkit.messageHandlers.cage;
+    const bridge = window.edenNativeBridge;
     const post = bridge.postMessage;
     bridge.postMessage = async request => {
       const reply = await post(request);
@@ -79,7 +79,7 @@ try {
       });
     }
     if (interruption === "native-command")
-      await page.evaluate(() => window.cageNativeAction("settings"));
+      await page.evaluate(() => window.edenNativeAction("settings"));
     const previousReplies = await page.evaluate(() => window.handoffReplies);
     finishHandoff({ returnedFocus: true });
     await page.waitForFunction(previous => window.handoffReplies > previous, previousReplies);

@@ -1,9 +1,9 @@
-name: Add verified Windows and Linux packages to a version release
+name: Add a verified Windows package to a version release
 on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: Successful three-platform CI run containing the installers
+        description: Successful Windows desktop and Linux guest CI run
         required: true
         type: string
       unsigned_windows:
@@ -14,11 +14,11 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: cage-platform-preview
+  group: eden-platform-preview
   cancel-in-progress: false
 jobs:
   publish:
-    if: github.repository == 'Lee-xeo/Claude-Cage' && github.ref == 'refs/heads/main' && inputs.unsigned_windows
+    if: github.repository == 'CarterLeeAlt/Claude-Eden' && github.ref == 'refs/heads/main' && inputs.unsigned_windows
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -33,24 +33,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: node --test scripts/publish-platform-preview.test.mjs
+      - run: node scripts/run-in-workspace.mjs -- node --test scripts/publish-platform-preview.test.mjs
       - uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.run_id }}
-          name: cage-windows-amd64-test-windows-2025
+          name: eden-windows-amd64-test-windows-2025
           path: _output/platform-publication/windows
-      - uses: actions/download-artifact@v4
-        with:
-          github-token: ${{ github.token }}
-          run-id: ${{ inputs.run_id }}
-          name: cage-linux-amd64-test
-          path: _output/platform-publication/linux
       - name: Verify and add platform packages to the existing version release
         id: publish
         env:
           GH_TOKEN: ${{ github.token }}
-          CAGE_PREVIEW_RUN: ${{ inputs.run_id }}
+          EDEN_PREVIEW_RUN: ${{ inputs.run_id }}
         run: node scripts/publish-platform-preview.mjs
   website:
     needs: publish

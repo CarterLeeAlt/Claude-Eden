@@ -26,22 +26,19 @@ func agentConnectTarget(ctx context.Context, configPath string, target AgentTarg
 	if target.Scope == "" || target.Scope == "local" {
 		return agentConnect(ctx, configPath)
 	}
-	if target.Scope != "desktop" && target.Scope != "selected" && target.Scope != "client" {
-		return nil, &AgentError{Code: "invalid_input", Message: "scope must be local, desktop, selected or client.", NextAction: "capabilities"}
+	if target.Scope != "desktop" && target.Scope != "selected" {
+		return nil, &AgentError{Code: "invalid_input", Message: "scope must be local, desktop or selected.", NextAction: "capabilities"}
 	}
 	if target.Scope == "selected" && target.Connection == "" {
 		return nil, &AgentError{Code: "invalid_input", Message: "selected scope requires --connection from client.context.", NextAction: "client.context"}
 	}
 	path := desktopConfigPath(configPath)
-	if target.Scope == "client" {
-		path = configPath
-	}
 	c, err := connectController(filepath.Dir(path))
 	if err != nil {
-		return nil, &AgentError{Code: "service_unavailable", Message: "Open the Cage desktop before managing client configuration.", NextAction: "open_desktop"}
+		return nil, &AgentError{Code: "service_unavailable", Message: "Open the Eden desktop before managing client configuration.", NextAction: "open_desktop"}
 	}
 	want, err := currentController()
-	if err != nil || !want.matches(c.launch.Controller) || (target.Scope != "client" && !c.launch.DesktopGateway) || (target.Scope == "client" && !c.launch.ClientOnly) || filepath.Clean(c.launch.ConfigPath) != filepath.Clean(path) {
+	if err != nil || !want.matches(c.launch.Controller) || !c.launch.DesktopGateway || filepath.Clean(c.launch.ConfigPath) != filepath.Clean(path) {
 		c.close()
 		return nil, &AgentError{Code: "controller_mismatch", Message: "The desktop controller does not match this CLI and configuration.", NextAction: "open_desktop"}
 	}
@@ -87,9 +84,6 @@ func AgentRequest(ctx context.Context, configPath string, target AgentTarget, me
 	// Client-only operations must address the desktop explicitly. Ordinary
 	// business routes on that listener require the selected target's generation.
 	clientPath := strings.HasPrefix(u.Path, "/api/client/") || strings.HasPrefix(u.Path, "/api/agent/native") || u.Path == "/api/agent/routes"
-	if target.Scope == "client" && !clientPath && target.Connection == "" {
-		return result, &AgentError{Code: "invalid_input", Message: "Client workload requests require the explicit selected --connection", NextAction: "client.context"}
-	}
 	if target.Scope == "desktop" && !clientPath {
 		return result, &AgentError{Code: "invalid_input", Message: "Use selected scope with --connection for workload requests through the desktop.", NextAction: "client.context"}
 	}
@@ -127,7 +121,7 @@ func AgentRequest(ctx context.Context, configPath string, target AgentTarget, me
 	defer response.Body.Close()
 	result.HTTPStatus = response.StatusCode
 	result.ContentType = response.Header.Get("Content-Type")
-	result.Recovery = response.Header.Get("X-Cage-Recovery")
+	result.Recovery = response.Header.Get("X-Eden-Recovery")
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
 		e := agentHTTPError(response.StatusCode)
@@ -138,7 +132,7 @@ func AgentRequest(ctx context.Context, configPath string, target AgentTarget, me
 		if !filepath.IsAbs(output) {
 			return result, &AgentError{Code: "invalid_input", Message: "output must be an absolute new file path.", NextAction: "capabilities"}
 		}
-		f, err := os.CreateTemp(filepath.Dir(output), ".cage-agent-response-*")
+		f, err := os.CreateTemp(filepath.Dir(output), ".eden-agent-response-*")
 		if err != nil {
 			return result, err
 		}

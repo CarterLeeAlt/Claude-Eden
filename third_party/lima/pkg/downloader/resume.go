@@ -158,11 +158,11 @@ func resumeHTTPOnce(ctx context.Context, local, modified, contentType, remote, d
 	reader := &downloadActivityReader{reader: resp.Body, activity: idle.touch}
 	// The desktop workbench consumes complete lines when stderr is a pipe.
 	// Range responses count the bytes already present in the partial file.
-	if os.Getenv("CAGE_SETUP_PROGRESS") == "1" {
+	if os.Getenv("EDEN_SETUP_PROGRESS") == "1" {
 		reader.received = offset
 		reader.total = total
 		reader.report = func(received, total int64) {
-			fmt.Fprintf(os.Stderr, "CAGE_IMAGE_BYTES %d %d\n", received, total)
+			fmt.Fprintf(os.Stderr, "EDEN_IMAGE_BYTES %d %d\n", received, total)
 		}
 		reader.report(offset, total)
 		reader.lastReport = time.Now()
@@ -185,7 +185,7 @@ func resumeHTTPOnce(ctx context.Context, local, modified, contentType, remote, d
 	}
 	if reader.report != nil {
 		reader.report(reader.received, total)
-		fmt.Fprintln(os.Stderr, "CAGE_IMAGE_VERIFY")
+		fmt.Fprintln(os.Stderr, "EDEN_IMAGE_VERIFY")
 	}
 	if err := out.Sync(); err != nil {
 		return false, err

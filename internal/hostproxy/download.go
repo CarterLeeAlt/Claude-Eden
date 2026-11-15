@@ -126,7 +126,7 @@ func downloadAttempts(ctx context.Context, client *http.Client, address, target,
 		// Only downloadOnce's sanitized errors may reach the job log.
 		fmt.Fprintf(out, "%s 下载第 %d/3 次失败：%s\n", name, attempt, err)
 		if attempt < 3 {
-			fmt.Fprintf(out, "CAGE_HOST_RETRY %s %d\n", name, attempt+1)
+			fmt.Fprintf(out, "EDEN_HOST_RETRY %s %d\n", name, attempt+1)
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -213,7 +213,7 @@ func downloadStream(parent context.Context, client *http.Client, address, target
 	received := offset
 	report := func(n int) {
 		received += int64(n)
-		fmt.Fprintf(out, "CAGE_HOST_BYTES %s %d %d\n", name, received, total)
+		fmt.Fprintf(out, "EDEN_HOST_BYTES %s %d %d\n", name, received, total)
 	}
 	report(0)
 	expected := int64(-1)

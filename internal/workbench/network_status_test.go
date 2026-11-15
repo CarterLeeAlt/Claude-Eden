@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func TestNetworkStatusImmediatelyAfterManualGrant(t *testing.T) {
@@ -43,13 +43,13 @@ func TestNetworkStatusImmediatelyAfterManualGrant(t *testing.T) {
 					t.Fatal(err)
 				}
 				errorMatches := status.NetworkError == wantError
-				if wantMode == cage.GateClosed && tc.failure == "exit probe" {
+				if wantMode == eden.GateClosed && tc.failure == "exit probe" {
 					errorMatches = strings.HasPrefix(status.NetworkError, wantError+"；") && strings.Contains(status.NetworkError, "自动重检")
 				}
 				if status.Safety.Gate == nil || status.Safety.Gate.Mode != wantMode || !errorMatches {
 					t.Fatalf("expected %s and %q, got %+v", wantMode, wantError, status)
 				}
-				if wantMode == cage.GateOpen && status.Safety.Error != "" {
+				if wantMode == eden.GateOpen && status.Safety.Error != "" {
 					t.Fatalf("open gate retained a safety error: %s", status.Safety.Error)
 				}
 			}
@@ -62,14 +62,14 @@ func TestNetworkStatusImmediatelyAfterManualGrant(t *testing.T) {
 				s.finishSafetyObservation(t.Context(), client, openBeforeFailure, "", issue, true)
 			}
 			s.publishGate(openBeforeFailure) // A delayed poll must not clear the current failure.
-			checkStatus(cage.GateClosed, issue)
+			checkStatus(eden.GateClosed, issue)
 
 			checking, err := client.BeginCheck(t.Context())
 			if err != nil {
 				t.Fatal(err)
 			}
 			s.publishGate(checking)
-			checkStatus(cage.GateChecking, issue)
+			checkStatus(eden.GateChecking, issue)
 			report := *checking.Report
 			report.ID, report.CheckID, report.CreatedAt = "manual-recheck", checking.CheckID, time.Now()
 			for i := range report.Checks {
@@ -80,7 +80,7 @@ func TestNetworkStatusImmediatelyAfterManualGrant(t *testing.T) {
 				t.Fatal(err)
 			}
 			s.publishGate(opened)
-			checkStatus(cage.GateOpen, tc.locationError)
+			checkStatus(eden.GateOpen, tc.locationError)
 		})
 	}
 }
@@ -103,7 +103,7 @@ func TestNetworkIntentDiagnosticLastsUntilDurableRepair(t *testing.T) {
 	if err := s.pauseNetworkNow("manual pause"); err != nil {
 		t.Fatal(err)
 	}
-	if !s.networkPaused || gate.Status().Mode != cage.GateClosed || s.currentNetworkErrorLocked() != locationFailure {
+	if !s.networkPaused || gate.Status().Mode != eden.GateClosed || s.currentNetworkErrorLocked() != locationFailure {
 		t.Fatal("repairing the intent must clear only its diagnostic and preserve the pause")
 	}
 	if err := os.Remove(path); err != nil {
@@ -122,7 +122,7 @@ func TestNetworkIntentDiagnosticLastsUntilDurableRepair(t *testing.T) {
 	if err := s.resumeNetworkIntentAt(s.safety.pauseVersion); err != nil {
 		t.Fatal(err)
 	}
-	if s.networkPaused || s.currentNetworkErrorLocked() != locationFailure || gate.Status().Mode != cage.GateClosed {
+	if s.networkPaused || s.currentNetworkErrorLocked() != locationFailure || gate.Status().Mode != eden.GateClosed {
 		t.Fatal("durable resume may clear the intent error, but cannot grant network access")
 	}
 }

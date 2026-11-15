@@ -53,6 +53,12 @@ func identifyCore(handle windows.Handle) (string, int64, error) {
 
 // Stop opens one process handle and validates both its image and creation time
 // before termination. A reused PID cannot terminate an unrelated application.
+func Stop(profile string) error { return stopWindowsCore(profile) }
+func Start(ctx context.Context, profile string, s Store) error {
+	return startWindowsCore(ctx, profile, s)
+}
+func PhysicalInterface(ctx context.Context) (string, error) { return windowsPhysicalInterface(ctx) }
+
 func stopWindowsCore(profile string) error {
 	path := windowsCoreRecordPath(profile)
 	if _, err := os.Lstat(path); os.IsNotExist(err) {
@@ -67,14 +73,14 @@ func stopWindowsCore(profile string) error {
 	}
 	var record windowsCoreRecord
 	if len(b) > 4096 || json.Unmarshal(b, &record) != nil || record.PID == 0 || record.Created == 0 {
-		return errors.New("Cage 代理进程记录无效")
+		return errors.New("Claude Eden 代理进程记录无效")
 	}
 	core, err := CorePath()
 	if err != nil {
 		return err
 	}
 	if !strings.EqualFold(filepath.Clean(core), filepath.Clean(record.Executable)) {
-		return errors.New("Cage 代理进程不属于当前安装目录")
+		return errors.New("Claude Eden 代理进程不属于当前安装目录")
 	}
 	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION|windows.PROCESS_TERMINATE|windows.SYNCHRONIZE, false, record.PID)
 	if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
@@ -111,7 +117,7 @@ func stopWindowsCore(profile string) error {
 			return err
 		}
 		if state != windows.WAIT_OBJECT_0 {
-			return errors.New("Cage 代理进程未能及时停止")
+			return errors.New("Claude Eden 代理进程未能及时停止")
 		}
 	}
 	return removeStaleCore(profile, path)
@@ -173,7 +179,7 @@ func startWindowsCore(ctx context.Context, profile string, s Store) error {
 	}
 	l, err := net.Listen("tcp4", fmt.Sprintf("127.0.0.1:%d", s.Port))
 	if err != nil {
-		return errors.New("Cage 代理端口已被占用，请更换独立端口")
+		return errors.New("Claude Eden 代理端口已被占用，请更换独立端口")
 	}
 	l.Close()
 	core, err := CorePath()
@@ -261,19 +267,18 @@ func windowsPhysicalInterface(ctx context.Context) (string, error) {
 	// Select only hardware adapters with a usable IPv4 default route. Virtual
 	// VPN/TUN adapters never become the proxy's underlying host connection.
 	const script = `$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); $candidates=@(Get-NetAdapter -Physical | Where-Object Status -eq 'Up' | ForEach-Object { $a=$_; $ip=Get-NetIPAddress -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.AddressState -eq 'Preferred' -and $_.IPAddress -notlike '169.254.*' }; $routes=Get-NetRoute -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue; if ($ip) { $routes | Where-Object { $_.NextHop -ne '0.0.0.0' } | ForEach-Object { [pscustomobject]@{Name=$a.Name;Index=$a.ifIndex;Metric=($_.RouteMetric+$_.InterfaceMetric)} } } }); $best=$candidates | Sort-Object Metric,Index | Select-Object -First 1; if (!$best) { exit 2 }; $best | ConvertTo-Json -Compress`
-	root := os.Getenv("SystemRoot")
-	if root == "" {
-		root = `C:\Windows`
+	cmd, err := host.SystemPowerShellCommand(ctx, "-NoProfile", "-NonInteractive", "-Command", script)
+	if err != nil {
+		return "", err
 	}
-	cmd := exec.CommandContext(ctx, filepath.Join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), "-NoProfile", "-NonInteractive", "-Command", script)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	out, err := cmd.Output()
 	if err != nil {
 		var exited *exec.ExitError
 		if errors.As(err, &exited) && exited.ExitCode() == 2 {
-			return "", errors.New("未找到可用的物理 IPv4 网卡。请连接以太网或 Wi-Fi；仅有虚拟网卡的 Windows 虚拟机和云主机暂不可用。Cage 外网保持关闭")
+			return "", errors.New("未找到可用的物理 IPv4 网卡。请连接以太网或 Wi-Fi；仅有虚拟网卡的 Windows 虚拟机和云主机暂不可用。Claude Eden 外网保持关闭")
 		}
-		return "", errors.New("无法读取 Windows 物理网卡信息，请确认系统网络服务正常后重试；Cage 外网保持关闭")
+		return "", errors.New("无法读取 Windows 物理网卡信息，请确认系统网络服务正常后重试；Claude Eden 外网保持关闭")
 	}
 	var selected struct {
 		Name  string

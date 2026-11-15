@@ -1,33 +1,26 @@
-# Shared build helpers. PowerShell 7 runs these scripts on Windows, macOS and Linux.
+# Shared Windows build helpers; environment ownership lives in run-in-workspace.mjs.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 
+function Assert-WorkspaceEnvironment {
+    & (Join-Path $PSScriptRoot 'assert-workspace.ps1')
+}
+Assert-WorkspaceEnvironment
+
 function Invoke-BuildTool {
     param([string]$Tool, [string[]]$Arguments)
-    & $Tool @Arguments
+    if ([IO.Path]::GetFileNameWithoutExtension($Tool) -eq 'go' -and $Arguments -contains 'test') {
+        & node (Join-Path $PSScriptRoot 'run-in-workspace.mjs') --cwd (Get-Location).Path -- $Tool @Arguments
+    } else {
+        & $Tool @Arguments
+    }
     if ($LASTEXITCODE -ne 0) { throw "$Tool failed with exit code $LASTEXITCODE" }
 }
 
 function Get-WindowsWorkbenchTestBase {
-    if ($env:RUNNER_TEMP) { return [IO.Path]::GetFullPath($env:RUNNER_TEMP) }
-    return [IO.Path]::GetTempPath()
-}
-
-function Invoke-InIsolatedTestTemp {
-    param([Parameter(Mandatory)][scriptblock]$Checks)
-    # Windows' default temp is inside AppData, which must remain protected
-    # against project sharing. Put test projects in the runner's own temp.
-    $directory = Join-Path (Get-WindowsWorkbenchTestBase) ('cage-go-tests-' + [guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Path $directory | Out-Null
-    $savedTemp = $env:TEMP; $savedTmp = $env:TMP
-    try {
-        $env:TEMP = $directory; $env:TMP = $directory
-        & $Checks
-    } finally {
-        $env:TEMP = $savedTemp; $env:TMP = $savedTmp
-        Remove-Item -LiteralPath $directory -Recurse -Force -ErrorAction SilentlyContinue
-    }
+    Assert-WorkspaceEnvironment
+    return [IO.Path]::GetFullPath($env:TEMP)
 }
 
 function ConvertTo-SmokeSafeText {
@@ -44,8 +37,8 @@ function ConvertTo-SmokeSafeText {
 
 function Assert-WindowsWorkbenchReport {
     param([int]$ExitCode, [string]$Report)
-    if (-not (Test-Path -LiteralPath $Report -PathType Leaf)) { throw "Cage workbench acceptance failed ($ExitCode). No smoke report: $Report" }
-    if ((Get-Item -LiteralPath $Report).Length -gt 65536) { throw 'Cage smoke report exceeds the bounded diagnostic size.' }
+    if (-not (Test-Path -LiteralPath $Report -PathType Leaf)) { throw "Claude Eden workbench acceptance failed ($ExitCode). No smoke report: $Report" }
+    if ((Get-Item -LiteralPath $Report).Length -gt 65536) { throw 'Claude Eden smoke report exceeds the bounded diagnostic size.' }
     $result = Get-Content -LiteralPath $Report -Raw | ConvertFrom-Json -AsHashtable
     $safe = @{ phase = ConvertTo-SmokeSafeText $result['phase']; nativeStatus = ConvertTo-SmokeSafeText $result['nativeStatus']; jsErrors = @() }
     if ($result['prepareExit'] -is [int] -or $result['prepareExit'] -is [long]) { $safe.prepareExit = $result['prepareExit'] }
@@ -64,9 +57,9 @@ function Assert-WindowsWorkbenchReport {
     }
     # Log only these already-bounded fields, even when the process failed. Do
     # not print launch entries, page URLs, account data or the raw report.
-    Write-Host ('Cage smoke diagnostic: ' + ($safe | ConvertTo-Json -Depth 6 -Compress))
+    Write-Host ('Claude Eden smoke diagnostic: ' + ($safe | ConvertTo-Json -Depth 6 -Compress))
     if ($ExitCode -ne 0 -or $result['success'] -ne $true -or $result['nativeBridgeReady'] -ne $true) {
-        throw "Cage workbench/bridge acceptance failed ($ExitCode), phase $($safe.phase): $($safe.nativeStatus). Diagnostics: $Report"
+        throw "Claude Eden workbench/bridge acceptance failed ($ExitCode), phase $($safe.phase): $($safe.nativeStatus). Diagnostics: $Report"
     }
 }
 
@@ -75,7 +68,7 @@ function Wait-WindowsWorkbenchFiles {
     # The log relay can outlive the controller's profile lock. Wait for the
     # isolated build's executable images to be released before moving them.
     $deadline = [DateTime]::UtcNow.AddSeconds(20)
-    foreach ($relative in @('Cage.exe', 'resources/cage.exe')) {
+    foreach ($relative in @('Eden.exe', 'resources/eden.exe')) {
         $file = Join-Path $AppDirectory $relative
         while ($true) {
             try {
@@ -93,19 +86,19 @@ function Wait-WindowsWorkbenchFiles {
 function Assert-WindowsWorkbench {
     param([Parameter(Mandatory)][string]$AppDirectory)
     if (-not $IsWindows) { throw 'Workbench acceptance requires Windows.' }
-    $testRoot = Join-Path (Get-WindowsWorkbenchTestBase) ('cage-build-ui-' + [guid]::NewGuid().ToString('N'))
+    $testRoot = Join-Path (Get-WindowsWorkbenchTestBase) ('eden-build-ui-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
     $report = Join-Path $testRoot 'smoke.json'
-    $start = [Diagnostics.ProcessStartInfo]::new((Join-Path $AppDirectory 'Cage.exe'))
+    $start = [Diagnostics.ProcessStartInfo]::new((Join-Path $AppDirectory 'Eden.exe'))
     $start.UseShellExecute = $false
     $start.WorkingDirectory = $AppDirectory
-    $start.Environment['CLAUDE_CAGE_CONFIG'] = Join-Path $testRoot 'profile/config.json'
+    $start.Environment['EDEN_CONFIG'] = Join-Path $testRoot 'profile/config.json'
     $start.ArgumentList.Add('--smoke-test')
     $start.ArgumentList.Add($report)
     $window = [Diagnostics.Process]::Start($start)
     $passed = $false
     try {
-        if (-not $window.WaitForExit(180000)) { throw "Cage workbench acceptance timed out. Diagnostics retained at $testRoot" }
+        if (-not $window.WaitForExit(180000)) { throw "Claude Eden workbench acceptance timed out. Diagnostics retained at $testRoot" }
         Assert-WindowsWorkbenchReport -ExitCode $window.ExitCode -Report $report
         Wait-WindowsWorkbenchFiles -AppDirectory $AppDirectory
         $passed = $true
@@ -114,14 +107,14 @@ function Assert-WindowsWorkbench {
         $window.Dispose()
         if (-not $passed) {
             # Close only this test's authenticated controller. Killing every
-            # cage.exe could terminate another installed application or VM.
+            # eden.exe could terminate another installed application or VM.
             try {
-                $cleanup = [Diagnostics.ProcessStartInfo]::new((Join-Path $AppDirectory 'resources/cage.exe'))
+                $cleanup = [Diagnostics.ProcessStartInfo]::new((Join-Path $AppDirectory 'resources/eden.exe'))
                 $cleanup.UseShellExecute = $false
                 $cleanup.CreateNoWindow = $true
                 $cleanup.RedirectStandardOutput = $true
                 $cleanup.RedirectStandardError = $true
-                $cleanup.Environment['CLAUDE_CAGE_CONFIG'] = Join-Path $testRoot 'profile/config.json'
+                $cleanup.Environment['EDEN_CONFIG'] = Join-Path $testRoot 'profile/config.json'
                 $cleanup.ArgumentList.Add('prepare-update'); $cleanup.ArgumentList.Add('--json')
                 $controller = [Diagnostics.Process]::Start($cleanup)
                 try {
@@ -138,7 +131,7 @@ function Assert-WindowsWorkbench {
     }
 }
 
-function Get-CageVersion {
+function Get-EdenVersion {
     param([string]$Repository)
     $value = (Get-Content -LiteralPath (Join-Path $Repository 'VERSION') -Raw).Trim()
     if ($value -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'Invalid VERSION.' }
@@ -234,40 +227,40 @@ function Get-SigningTool {
 function Assert-WindowsSigningConfiguration {
     if (-not $IsWindows) { throw 'Trusted Windows build verification requires Windows.' }
     $null = Get-SigningTool
-    if ($env:CAGE_WINDOWS_SIGNING_PROVIDER -eq 'esigner') {
-        if ($env:CAGE_ESIGNER_CREDENTIAL_ID -notmatch '^[0-9A-Fa-f-]{36}$' -or
-            $env:CAGE_ESIGNER_CERTIFICATE_SERIAL -notmatch '^[0-9A-Fa-f]{32,40}$') {
-            throw 'eSigner requires CAGE_ESIGNER_CREDENTIAL_ID and the expected CAGE_ESIGNER_CERTIFICATE_SERIAL.'
+    if ($env:EDEN_WINDOWS_SIGNING_PROVIDER -eq 'esigner') {
+        if ($env:EDEN_ESIGNER_CREDENTIAL_ID -notmatch '^[0-9A-Fa-f-]{36}$' -or
+            $env:EDEN_ESIGNER_CERTIFICATE_SERIAL -notmatch '^[0-9A-Fa-f]{32,40}$') {
+            throw 'eSigner requires EDEN_ESIGNER_CREDENTIAL_ID and the expected EDEN_ESIGNER_CERTIFICATE_SERIAL.'
         }
-    } elseif ($env:CAGE_WINDOWS_SIGNING_PROVIDER -and $env:CAGE_WINDOWS_SIGNING_PROVIDER -ne 'certificate-store') {
-        throw 'Unknown CAGE_WINDOWS_SIGNING_PROVIDER; use esigner or certificate-store.'
-    } elseif ($env:CAGE_WINDOWS_CERT_SHA1 -notmatch '^[0-9A-Fa-f]{40}$') {
-        throw 'Certificate-store signing requires CAGE_WINDOWS_CERT_SHA1.'
+    } elseif ($env:EDEN_WINDOWS_SIGNING_PROVIDER -and $env:EDEN_WINDOWS_SIGNING_PROVIDER -ne 'certificate-store') {
+        throw 'Unknown EDEN_WINDOWS_SIGNING_PROVIDER; use esigner or certificate-store.'
+    } elseif ($env:EDEN_WINDOWS_CERT_SHA1 -notmatch '^[0-9A-Fa-f]{40}$') {
+        throw 'Certificate-store signing requires EDEN_WINDOWS_CERT_SHA1.'
     }
 }
 
-function Sign-CageFile {
+function Sign-EdenFile {
     param([string]$Path, [string]$SignTool)
     Assert-WindowsSigningConfiguration
-    if ($env:CAGE_WINDOWS_SIGNING_PROVIDER -eq 'esigner') {
+    if ($env:EDEN_WINDOWS_SIGNING_PROVIDER -eq 'esigner') {
         $Path = [IO.Path]::GetFullPath($Path)
-        $stage = Join-Path ([IO.Path]::GetTempPath()) ('cage-signed-' + [guid]::NewGuid().ToString('N'))
+        $stage = Join-Path ([IO.Path]::GetTempPath()) ('eden-signed-' + [guid]::NewGuid().ToString('N'))
         try {
             Invoke-BuildTool (Get-BuildCommand @('node.exe', 'node')) @((Join-Path $PSScriptRoot 'esigner.mjs'), 'sign', $Path, '--output-dir', $stage)
             $signed = Join-Path $stage ([IO.Path]::GetFileName($Path))
             Invoke-BuildTool $SignTool @('verify', '/pa', '/all', '/tw', $signed)
             $signature = Get-AuthenticodeSignature -LiteralPath $signed
             if ($signature.Status -ne 'Valid' -or -not $signature.TimeStamperCertificate -or
-                $signature.SignerCertificate.SerialNumber -ne $env:CAGE_ESIGNER_CERTIFICATE_SERIAL -or
-                ($env:CAGE_WINDOWS_CERT_SHA1 -and $signature.SignerCertificate.Thumbprint -ne $env:CAGE_WINDOWS_CERT_SHA1)) {
+                $signature.SignerCertificate.SerialNumber -ne $env:EDEN_ESIGNER_CERTIFICATE_SERIAL -or
+                ($env:EDEN_WINDOWS_CERT_SHA1 -and $signature.SignerCertificate.Thumbprint -ne $env:EDEN_WINDOWS_CERT_SHA1)) {
                 throw 'eSigner output lacks the expected trusted publisher certificate or timestamp. Original file retained.'
             }
-            $env:CAGE_WINDOWS_CERT_SHA1 = $signature.SignerCertificate.Thumbprint
+            $env:EDEN_WINDOWS_CERT_SHA1 = $signature.SignerCertificate.Thumbprint
             Copy-Item -LiteralPath $signed -Destination $Path -Force
         } finally { if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force } }
     } else {
-        Invoke-BuildTool $SignTool @('sign', '/sha1', $env:CAGE_WINDOWS_CERT_SHA1, '/fd', 'SHA256',
-            '/tr', 'http://timestamp.digicert.com', '/td', 'SHA256', '/d', 'Cage', $Path)
+        Invoke-BuildTool $SignTool @('sign', '/sha1', $env:EDEN_WINDOWS_CERT_SHA1, '/fd', 'SHA256',
+            '/tr', 'http://timestamp.digicert.com', '/td', 'SHA256', '/d', 'Claude Eden', $Path)
         Invoke-BuildTool $SignTool @('verify', '/pa', '/all', $Path)
     }
 }

@@ -77,11 +77,11 @@ export function Modal({ title, children, onClose, wide = false, footer, anchor }
       )
         closeRef.current?.();
     };
-    document.addEventListener("cage-close-modal", closeEvent);
+    document.addEventListener("eden-close-modal", closeEvent);
     document.addEventListener("keydown", key, true);
     return () => {
       document.removeEventListener("keydown", key, true);
-      document.removeEventListener("cage-close-modal", closeEvent);
+      document.removeEventListener("eden-close-modal", closeEvent);
       previous?.focus?.();
     };
   }, []);

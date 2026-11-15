@@ -30,8 +30,8 @@ func (s *Server) removeProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := input.Workspace
-	if path == "" || isClientMountPath(path) {
-		http.Error(w, "请选择已添加的项目；客户端共享请使用停止共享。", http.StatusBadRequest)
+	if path == "" {
+		http.Error(w, "请选择已添加的项目。", http.StatusBadRequest)
 		return
 	}
 	projects, err := s.projectPaths()
@@ -81,7 +81,7 @@ func (s *Server) removeProject(w http.ResponseWriter, r *http.Request) {
 		}
 		preferences.Workspace = ""
 		for _, project := range projects {
-			if !slices.Contains(folders, project) && !isClientMountPath(project) {
+			if !slices.Contains(folders, project) {
 				preferences.Workspace = project
 				break
 			}
@@ -126,7 +126,7 @@ func (s *Server) checkProjectFoldersIdle(ctx context.Context, folders []string, 
 		for _, project := range projects {
 			granted[project] = true
 		}
-		_, err = s.mobileCLI.summaries(s.profile, granted, false)
+		_, err = s.cliSessions.summaries(s.profile, granted, false)
 		if err == nil {
 			err = s.discoverTerminalConversations(ctx, projects)
 		}
@@ -134,15 +134,12 @@ func (s *Server) checkProjectFoldersIdle(ctx context.Context, folders []string, 
 			return errors.New("暂时无法核对运行中的会话。请恢复会话连接，或保存工作并停止环境后再移除项目。")
 		}
 	}
-	s.mobileCLI.mu.Lock()
+	s.cliSessions.mu.Lock()
 	active := false
-	for _, run := range s.mobileCLI.active {
-		active = active || slices.Contains(folders, run.record.Workspace)
+	for id, running := range s.cliSessions.running {
+		active = active || ready && running && slices.Contains(folders, s.cliSessions.catalog[id].Workspace)
 	}
-	for id, running := range s.mobileCLI.running {
-		active = active || ready && running && slices.Contains(folders, s.mobileCLI.catalog[id].Workspace)
-	}
-	s.mobileCLI.mu.Unlock()
+	s.cliSessions.mu.Unlock()
 	if active {
 		return errors.New("请先结束此项目正在运行的会话，再移除项目。会话历史会保留。")
 	}

@@ -1,10 +1,7 @@
-import { MobilePairSettings } from "./mobile-pair-settings";
 import { ArchivedSessions } from "./cli-sessions";
-import { Smartphone } from "lucide-react";
 import { PasswordVaultSettings } from "./password-vault";
 import { KeyRound } from "lucide-react";
 import { InlineSelect } from "./inline-select";
-import { clientKeyboard, isRemoteClient, saveClientKeyboard } from "./client-context.mjs";
 import { shortcut, usesControl } from "./platform.mjs";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -33,7 +30,6 @@ import { EnvironmentStorage } from "./environment-storage";
 import { EnvironmentCache } from "./environment-cache";
 import { ResourceSettings } from "./resources";
 import { DiagnosticSettings } from "./diagnostics.jsx";
-import { MacOSLogin } from "./macos-login";
 import { AccountSettings } from "./account";
 import { AboutSettings } from "./about-settings";
 const sections = [
@@ -42,7 +38,6 @@ const sections = [
   ["archived-sessions", "已归档会话", Archive],
   ["keyboard", "通用", Settings],
   ["appearance", "外观", Palette],
-  ["mobile", "远程连接", Smartphone],
   ["network", "网络与代理", Globe2],
   ["region", "时区与语言", Clock3],
   ["project", "环境与恢复", RotateCcw],
@@ -56,7 +51,6 @@ export function SettingsPanel({
   onConfirm,
   initialSection = "keyboard",
 }) {
-  const [localKeyboard, setLocalKeyboard] = useState(() => clientKeyboard(current.keyboard));
   const [accountDirty, setAccountDirty] = useState(false);
   const [proxyDirty, setProxyDirty] = useState(false);
   const [resourceDirty, setResourceDirty] = useState(false);
@@ -95,8 +89,6 @@ export function SettingsPanel({
   );
   const busy =
     Boolean(status.job?.running) || Boolean(status.storage_recovery?.required) || probing || submitting || Boolean(jobId);
-  // Project folders of the other guest systems are always read directly.
-  const linuxGuest = !/^(windows|macos)/.test(status.guest_system || "");
   const update = (key, value) => {
     setDraft((p) => ({ ...p, [key]: value }));
     if (["dns_url"].includes(key)) setProbe(null);
@@ -199,16 +191,16 @@ export function SettingsPanel({
     document.getElementById("settings-back")?.focus();
     const dismiss = (event) => {
       if (document.querySelector('[role="dialog"]')) return;
-      if (event.type === "cage-close-modal" || event.key === "Escape") {
+      if (event.type === "eden-close-modal" || event.key === "Escape") {
         event.preventDefault();
         closeRef.current();
       }
     };
     document.addEventListener("keydown", dismiss);
-    document.addEventListener("cage-close-modal", dismiss);
+    document.addEventListener("eden-close-modal", dismiss);
     return () => {
       document.removeEventListener("keydown", dismiss);
-      document.removeEventListener("cage-close-modal", dismiss);
+      document.removeEventListener("eden-close-modal", dismiss);
       previous?.focus?.();
     };
   }, []);
@@ -243,16 +235,13 @@ export function SettingsPanel({
         </nav>
       </aside>
       <div className="settings-main">
-        <div className={section === "archived-sessions" ? "settings-content settings-content--archives" : section === "mobile" ? "settings-content settings-content--remote" : "settings-content"} ref={contentRef}>
+        <div className={section === "archived-sessions" ? "settings-content settings-content--archives" : "settings-content"} ref={contentRef}>
           {section === "appearance" && <AppearanceSettings />}
           {section === "about" && <AboutSettings />}
           {section === "archived-sessions" && <ArchivedSessions ready={status.ready && !busy} />}
           {section === "vault" && <PasswordVaultSettings onConfirm={onConfirm} onDirty={setAccountDirty} />}
           {section === "account" && <AccountSettings busy={busy} onDirty={setAccountDirty} />}
           <fieldset className="settings-fields" disabled={busy && !(section === "project" && status.storage_recovery?.required)}>
-            {section === "mobile" && (isRemoteClient()
-              ? <section className="section-title"><h3>连接这台电脑</h3><p>请先切换到这台电脑的本机环境，再生成或管理手机配对码。</p></section>
-              : <MobilePairSettings relay={draft.mobile_relay ?? ""} savedRelay={current.mobile_relay ?? ""} onChange={value => update("mobile_relay",value)} onConfirm={onConfirm} />)}
             {section === "network" && (
               <>
                 <ProxySettings
@@ -311,7 +300,7 @@ export function SettingsPanel({
                   </div>
                 )}
                 <p className="footnote">
-                  代理不可用时，Cage 会停止对外联网。修改表单后需要重新验证。
+                  代理不可用时，Eden 会停止对外联网。修改表单后需要重新验证。
                 </p>
                 <section className="network-exit-policy" aria-label="IP 变化规则">
                   <ExitPolicyFields
@@ -329,7 +318,7 @@ export function SettingsPanel({
               <>
                 <div className="section-title">
                   <h3>时区与语言</h3>
-                  <p>这些设置作用于 Cage 内的系统、CLI 和浏览器。</p>
+                  <p>这些设置作用于 Eden 内的系统、CLI 和浏览器。</p>
                 </div>
                 {!draft.auto_timezone && !draft.auto_language && (
                   <p className="field-help">
@@ -511,7 +500,7 @@ export function SettingsPanel({
                   <input type="checkbox" role="switch" checked={draft.balanced_display}
                     onChange={(event) => update("balanced_display", event.target.checked)} />
                 </label>}
-                {typeof current.project_file_cache === "boolean" && linuxGuest && <label className="toggle-row">
+                {typeof current.project_file_cache === "boolean" && <label className="toggle-row">
                   <span>
                     <strong>项目文件缓存</strong>
                     <small>减少读取项目文件时与本机的往返。在本机上所做的改动最多 20 秒后在环境中可见，也可以在项目栏点“刷新项目文件”立即同步。下次启动环境时生效。</small>
@@ -525,7 +514,7 @@ export function SettingsPanel({
                     [
                       "mac",
                       "Mac 快捷键",
-                      "使用 ⌘ 操作网页和编辑器。Linux、Windows 客机使用对应的 Ctrl 快捷键，macOS 客机保留 Command。",
+                      "使用 ⌘ 操作网页和编辑器，映射为 Linux 客机对应的 Ctrl 快捷键。",
                     ],
                     [
                       "native",
@@ -534,19 +523,15 @@ export function SettingsPanel({
                     ],
                   ].map(([value, title, help]) => (
                     <label
-                      className={`choice ${(isRemoteClient() ? localKeyboard : draft.keyboard) === value ? "checked" : ""}`}
+                      className={`choice ${draft.keyboard === value ? "checked" : ""}`}
                       key={value}
                     >
                       <input
                         type="radio"
                         name="keyboard"
                         value={value}
-                        checked={(isRemoteClient() ? localKeyboard : draft.keyboard) === value}
-                        onChange={() => {
-                          if (!isRemoteClient()) { update("keyboard", value); return; }
-                          try { saveClientKeyboard(value); setLocalKeyboard(value); setError(""); }
-                          catch { setError("未能保存本机键盘习惯，请检查本地存储空间。"); }
-                        }}
+                        checked={draft.keyboard === value}
+                        onChange={() => update("keyboard", value)}
                       />
                       <span>
                         <strong>{title}</strong>
@@ -557,7 +542,6 @@ export function SettingsPanel({
                 </div>
                 <p className="field-help">
                   终端使用 {usesControl ? "Ctrl+Shift+C / Ctrl+Shift+V" : "⌘C / ⌘V"} 复制粘贴；Ctrl+C 始终用于中断命令。
-                  {isRemoteClient() && "键盘习惯立即生效，仅保存在当前客户端，不修改云端设置。"}
                 </p>
                 <h4>工作台快捷键</h4>
                 <div className="shortcut-list">
@@ -582,9 +566,9 @@ export function SettingsPanel({
               <>
                 <div className="section-title">
                   <h3>环境与恢复</h3>
-                  <p>{isRemoteClient() ? "项目位于云端，Cage 中的改动会直接保存到云端文件。" : "本机与 Cage 中的改动会双向同步。"}</p>
+                  <p>本机与 Eden 中的改动会双向同步。</p>
                 </div>
-                {status.local_vm_storage && !isRemoteClient() && <EnvironmentStorage status={status} onConfirm={onConfirm} />}
+                {status.local_vm_storage && <EnvironmentStorage status={status} onConfirm={onConfirm} />}
                 <div className="setting-summary-row">
                   <span>当前项目</span>
                   <strong title={current.workspace}>
@@ -592,12 +576,12 @@ export function SettingsPanel({
                   </strong>
                 </div>
                 <p className="field-help">
-                  {isRemoteClient() ? "点击侧栏“项目”标题旁的加号，可浏览并选择云端文件夹。" : "点击侧栏“项目”标题旁的加号，可选择其他本地文件夹。"}
+                  点击侧栏“项目”标题旁的加号，可选择其他本地文件夹。
                 </p>
                 <div className="project-explanation">
                   <FolderOpen size={22} />
                   <div>
-                    <strong>所有项目共用一个 Cage 环境</strong>
+                    <strong>所有项目共用一个 Eden 环境</strong>
                     <p>
                       明确打开的项目文件夹会共享到同一个环境。主机的 Claude
                       登录、SSH 密钥和个人配置不会自动导入。浏览器下载统一保存到
@@ -610,15 +594,6 @@ export function SettingsPanel({
                 </p>
                 {!status.storage_recovery?.required && <EnvironmentVersions status={status} onConfirm={onConfirm} />}
                 {!status.storage_recovery?.required && <EnvironmentCache status={status} onConfirm={onConfirm} />}
-                {status.guest_system === "macos" && <section aria-label="客机系统权限">
-                  <h4>客机系统权限</h4>
-                  <p className="field-help">在受限的客机系统设置窗口中完成授权，Cage 会自动检查并重新连接项目。</p>
-                  <div className="project-recovery-actions">
-                    <MacOSLogin maintenance="projects" label="文件共享权限" disabled={!status.ready || busy} />
-                    <MacOSLogin maintenance="screen" label="屏幕录制权限" disabled={!status.ready || busy} />
-                    <MacOSLogin maintenance="input" label="辅助功能权限" disabled={!status.ready || busy} />
-                  </div>
-                </section>}
                 {!status.storage_recovery?.required && <ResourceSettings status={status} onConfirm={onConfirm} onDirtyChange={setResourceDirty} />}
  <DiagnosticSettings />
                 {status.can_restore && (
@@ -673,7 +648,7 @@ export function SettingsPanel({
             </div>
           )}
         </div>
-        {(!["appearance", "browser", "account", "vault", "mobile", "archived-sessions", "project", "about"].includes(section) || changed) && (
+        {(!["appearance", "browser", "account", "vault", "archived-sessions", "project", "about"].includes(section) || changed) && (
           <footer className="settings-footer">
             {" "}
             <>

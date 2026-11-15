@@ -12,9 +12,9 @@ func TestInternalEnvironmentStopKeepsProxy(t *testing.T) {
 	s := transferMountServer(t, false, "current")
 	bin := t.TempDir()
 	args := filepath.Join(bin, "stop-args")
-	t.Setenv("CAGE_TEST_STOP_ARGS", args)
-	s.exe = filepath.Join(bin, "cage")
-	if err := os.WriteFile(s.exe, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CAGE_TEST_STOP_ARGS\"\n"), 0700); err != nil {
+	t.Setenv("EDEN_TEST_STOP_ARGS", args)
+	s.exe = filepath.Join(bin, "eden")
+	if err := os.WriteFile(s.exe, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$EDEN_TEST_STOP_ARGS\"\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.stopEnvironment(); err != nil {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -122,17 +122,9 @@ test('missing, duplicate or mismatching Windows and source checksums reject the 
   }
 });
 
-function androidFixture() {
-  const release = fixture();
-  const name = `Eden-${release.tag_name.slice(1)}-android-arm64.apk`;
-  release.assets.push({ ...release.assets[0], name,
-    browser_download_url: `https://github.com/CarterLeeAlt/Claude-Eden/releases/download/${release.tag_name}/${name}` });
-  return release;
-}
-
 function versionedFixture(version, platforms) {
   const release = { tag_name: `v${version}`, prerelease: version.includes('-'), draft: false, assets: [] };
-  for (const suffix of ['windows-amd64-setup.exe', 'android-arm64.apk'].filter((_, index) => platforms.includes(index))) {
+  for (const suffix of ['windows-amd64-setup.exe'].filter((_, index) => platforms.includes(index))) {
     const name = `Eden-${version}-${suffix}`;
     release.assets.push({ name, state: 'uploaded', size: 100, digest: `sha256:${hash}`,
       browser_download_url: `https://github.com/CarterLeeAlt/Claude-Eden/releases/download/${release.tag_name}/${name}` });
@@ -141,43 +133,43 @@ function versionedFixture(version, platforms) {
   return release;
 }
 
-test('each platform retains its latest verified version and release notes independently', async () => {
+test('Windows retains the latest verified version and matching release notes', async () => {
   const latest = versionedFixture('0.3.0-rc', [0]);
-  const older = versionedFixture('0.2.8', [0, 1]);
+  const older = versionedFixture('0.2.8', [0]);
   const platforms = await resolvePlatforms([latest, older], async release => sums(release));
-  for (const [platform, version] of Object.entries({ windows: '0.3.0-rc', android: '0.2.8' })) {
+  for (const [platform, version] of Object.entries({ windows: '0.3.0-rc' })) {
     assert.equal(platforms[platform].version, version);
     assert.equal(platforms[platform].releaseURL, `https://github.com/CarterLeeAlt/Claude-Eden/releases/tag/v${version}`);
     assert.ok(platforms[platform].downloadURL.includes(`/v${version}/Eden-${version}-`));
   }
 });
 
-test('new Android package replaces the fallback without relabeling other platforms', async () => {
-  const latest = versionedFixture('0.3.0-rc', [0, 1]);
-  const platforms = await resolvePlatforms([latest, versionedFixture('0.2.9', [1])], async release => sums(release));
+test('a complete Windows package replaces the older release', async () => {
+  const latest = versionedFixture('0.3.0-rc', [0]);
+  const platforms = await resolvePlatforms([latest, versionedFixture('0.2.9', [0])], async release => sums(release));
   assert.deepEqual(platforms, platformMetadata(latest, sums(latest)));
-  assert.equal(platforms.android.version, '0.3.0-rc');
+  assert.equal(platforms.windows.version, '0.3.0-rc');
 });
 
 test('drafts, invalid assets, missing checksums and failed manifests preserve the older package', async () => {
-  const older = versionedFixture('0.2.0', [0, 1]);
+  const older = versionedFixture('0.2.0', [0]);
   for (const mutate of [
     r => { r.draft = true; }, r => { r.assets.at(-1).state = 'new'; },
-    r => { r.assets.at(-1).browser_download_url = older.assets[1].browser_download_url; },
+    r => { r.assets.at(-1).browser_download_url = older.assets.at(-1).browser_download_url; },
     r => { r.assets.push({ ...r.assets.at(-1) }); },
     r => { r.assets.at(-1).digest = `sha256:${'b'.repeat(64)}`; },
   ]) {
-    const invalid = versionedFixture('0.3.0', [1]); mutate(invalid);
+    const invalid = versionedFixture('0.3.0', [0]); mutate(invalid);
     const platforms = await resolvePlatforms([invalid, older], async release => sums(release));
-    assert.equal(platforms.android.version, '0.2.0');
+    assert.equal(platforms.windows.version, '0.2.0');
   }
   for (const fail of [false, true]) {
-    const latest = versionedFixture('0.3.0', [1]);
+    const latest = versionedFixture('0.3.0', [0]);
     const platforms = await resolvePlatforms([latest, older], async release => {
       if (release === latest) { if (fail) throw new Error('manifest unavailable'); return ''; }
       return sums(release);
     });
-    assert.equal(platforms.android.version, '0.2.0');
+    assert.equal(platforms.windows.version, '0.2.0');
   }
 });
 
@@ -191,7 +183,7 @@ test('unsigned Windows fallback retains its version and unsigned status', async 
 test('website CLI discovers paginated releases and pins fallbacks to the requested release or older', () => {
   const directory = mkdtempSync(join(tmpdir(), 'eden-platform-fallback-'));
   const latest = versionedFixture('0.3.0', [0]); latest.published_at = '2026-11-14T00:00:00Z';
-  const older = versionedFixture('0.2.0', [0, 1]); older.published_at = '2026-11-13T00:00:00Z';
+  const older = versionedFixture('0.2.0', [0]); older.published_at = '2026-11-13T00:00:00Z';
   for (const release of [latest, older]) {
     const text = sums(release);
     release.assets.push({ name: 'SHA256SUMS', state: 'uploaded', size: Buffer.byteLength(text), browser_download_url: `https://github.com/CarterLeeAlt/Claude-Eden/releases/download/${release.tag_name}/SHA256SUMS` });
@@ -217,40 +209,24 @@ test('website CLI discovers paginated releases and pins fallbacks to the request
       const result = spawnSync(process.execPath, ['--import', pathToFileURL(mock).href, fileURLToPath(new URL('./sync-release.mjs', import.meta.url)), '--output', output, ...(tag ? ['--tag', tag] : [])], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stderr);
       const metadata = JSON.parse(readFileSync(output, 'utf8'));
-      assert.equal(metadata.platforms.android.version, '0.2.0');
+      assert.deepEqual(Object.keys(metadata.platforms), ['windows']);
       assert.equal(metadata.platforms.windows.version, tag === older.tag_name ? '0.2.0' : '0.3.0');
     }
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
-test('Android APK is optional and requires a unique same-version asset and verified checksum', () => {
-  const release = androidFixture();
-  const apk = release.assets.at(-1);
-  assert.equal(releaseAssets(release).android.name, apk.name);
-  assert.equal(releaseMetadata(release, sums(release)).platforms.android.downloadURL, apk.browser_download_url);
-  assert.ok(!releaseMetadata(fixture(), sums(fixture())).platforms.android);
-  for (const mutate of [
-    asset => { asset.name = 'eden-mobile-debug.apk'; },
-    asset => { asset.name = asset.name.replace('arm64', 'amd64'); },
-    asset => { asset.state = 'new'; }, asset => { asset.size = 0; },
-    asset => { asset.size = 512 * 1024 * 1024 + 1; },
-    asset => { asset.browser_download_url = asset.browser_download_url.replace(release.tag_name, 'v0.1.0'); },
-  ]) {
-    const invalid = structuredClone(release); mutate(invalid.assets.at(-1));
-    const metadata = releaseMetadata(invalid, sums(invalid));
-    assert.ok(!metadata.platforms.android);
-    assert.equal(metadata.platforms.windows.downloadURL, release.assets[0].browser_download_url);
+test('unrelated release attachments do not become product downloads', () => {
+  const release = fixture();
+  for (const suffix of ['android-arm64.apk', 'linux-amd64.tar.gz', 'macos-arm64.dmg']) {
+    const name = `Eden-${release.tag_name.slice(1)}-${suffix}`;
+    release.assets.push({ ...release.assets[0], name, browser_download_url: `https://github.com/CarterLeeAlt/Claude-Eden/releases/download/${release.tag_name}/${name}` });
   }
-  const duplicate = structuredClone(release); duplicate.assets.push({ ...apk });
-  assert.ok(!releaseMetadata(duplicate, sums(duplicate)).platforms.android);
-  for (const text of [sums(fixture()), sums(release) + `${hash}  ${apk.name}\n`, sums(release).replace(`${hash}  ${apk.name}`, `${'b'.repeat(64)}  ${apk.name}`)]) {
-    assert.ok(!releaseMetadata(release, text).platforms.android);
-  }
+  assert.deepEqual(Object.keys(releaseMetadata(release, sums(release)).platforms), ['windows']);
 });
 
-test('archive-directory downloads the verified Android APK through the shipped CLI', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'eden-android-download-'));
-  const release = androidFixture();
+test('archive-directory downloads only the Windows installer and required source through the shipped CLI', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'eden-windows-download-'));
+  const release = fixture();
   const payloads = {};
   for (const asset of release.assets.filter(asset => asset.name !== 'SHA256SUMS')) {
     const bytes = Buffer.from(`fixture bytes for ${asset.name}\n`);
@@ -277,9 +253,11 @@ test('archive-directory downloads the verified Android APK through the shipped C
     const output = join(directory, 'release.json'), downloads = join(directory, 'downloads');
     const result = spawnSync(process.execPath, ['--import', pathToFileURL(mock).href, fileURLToPath(new URL('./sync-release.mjs', import.meta.url)), '--tag', release.tag_name, '--output', output, '--archive-directory', downloads], { encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
-    const apk = release.assets.at(-1);
-    assert.deepEqual(readFileSync(join(downloads, apk.name)), Buffer.from(payloads[apk.browser_download_url], 'base64'));
-    assert.equal(JSON.parse(readFileSync(output, 'utf8')).platforms.android.downloadURL, apk.browser_download_url);
+    for (const asset of release.assets.filter(asset => asset.name !== 'SHA256SUMS')) {
+      assert.deepEqual(readFileSync(join(downloads, asset.name)), Buffer.from(payloads[asset.browser_download_url], 'base64'));
+    }
+    assert.deepEqual(readdirSync(downloads).sort(), release.assets.map(asset => asset.name).sort());
+    assert.deepEqual(Object.keys(JSON.parse(readFileSync(output, 'utf8')).platforms), ['windows']);
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
@@ -315,9 +293,9 @@ test('unsigned Windows requires a prerelease and source checksums; signed Window
   assert.throws(() => releaseMetadata(release, sums(fixture())));
 });
 
-test('explicit RC manifest exposes Windows and Android with QEMU sources', async () => {
+test('explicit RC manifest exposes Windows with QEMU sources', async () => {
   const tag = 'v0.1.7-rc.1', version = tag.slice(1);
-  const names = [`Eden-${version}-windows-amd64-setup.exe`, 'mihomo-v1.19.33-source.tar.gz', 'qemu-11.1.0-windows-full-source.tar.gz', `qemu-${'a'.repeat(40)}-source.tar.gz`, `qemu-keycodemapdb-${'b'.repeat(40)}-source.tar.gz`, 'qemu-11.1.0-eden-changes-source.tar.gz', `Eden-${version}-android-arm64.apk`];
+  const names = [`Eden-${version}-windows-amd64-setup.exe`, 'mihomo-v1.19.33-source.tar.gz', 'qemu-11.1.0-windows-full-source.tar.gz', `qemu-${'a'.repeat(40)}-source.tar.gz`, `qemu-keycodemapdb-${'b'.repeat(40)}-source.tar.gz`, 'qemu-11.1.0-eden-changes-source.tar.gz'];
   const manifest = names.map(name => `${hash}  ${name}\n`).join('');
   const release = await publicManifestRelease(tag, async (url, options = {}) => {
     assert.equal(options.headers?.Authorization, undefined);
@@ -330,8 +308,7 @@ test('explicit RC manifest exposes Windows and Android with QEMU sources', async
   const metadata = releaseMetadata(release, manifest);
   assert.equal(metadata.version, version);
   assert.equal(metadata.platforms.windows.downloadURL, release.assets.find(asset => asset.name === names[0]).browser_download_url);
-  assert.equal(metadata.platforms.android.downloadURL, release.assets.find(asset => asset.name === names.at(-1)).browser_download_url);
-  assert.deepEqual(Object.keys(metadata.platforms).sort(), ['android', 'windows']);
+  assert.deepEqual(Object.keys(metadata.platforms), ['windows']);
   assert.ok(!metadata.platforms.windows.unsigned);
   assert.equal(metadata.releaseURL, `https://github.com/CarterLeeAlt/Claude-Eden/releases/tag/${tag}`);
 });
@@ -343,7 +320,7 @@ test('manifest source allowance keeps installer and source size bounds separate 
       ? new Response(names.map(name => `${hash}  ${name}\n`).join(''))
       : new Response('', { headers: { 'content-length': String(url.endsWith(oversized) ? size : 100) } })), /Missing or incomplete public asset/);
   }
-  for (const invalid of ['qemu-11.1.0-windows-full-source.tar.gz.exe', 'qemu-latest-windows-full-source.tar.gz', 'qemu-11.1.0-windows-full-source/escape.tar.gz', 'Eden-0.1.6-android-arm64.apk', 'Eden-0.1.7-rc.1-android-arm64.apk.exe', 'Eden-0.1.7-rc.1-android-amd64.apk']) {
+  for (const invalid of ['qemu-11.1.0-windows-full-source.tar.gz.exe', 'qemu-latest-windows-full-source.tar.gz', 'qemu-11.1.0-windows-full-source/escape.tar.gz', 'Eden-0.1.7-rc.1-android-arm64.apk', 'Eden-0.1.6-android-arm64.apk', 'Eden-0.1.7-rc.1-android-arm64.apk.exe', 'Eden-0.1.7-rc.1-android-amd64.apk']) {
     await assert.rejects(publicManifestRelease('v0.1.7-rc.1', async () => new Response([...names, invalid].map(name => `${hash}  ${name}\n`).join(''))));
   }
 });

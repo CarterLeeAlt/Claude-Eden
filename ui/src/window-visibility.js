@@ -1,14 +1,14 @@
 import { useSyncExternalStore } from "react";
 
 const visible = () =>
-  document.visibilityState !== "hidden" && window.cageWindowVisible !== false;
+  document.visibilityState !== "hidden" && window.edenWindowVisible !== false;
 
 function subscribe(notify) {
   document.addEventListener("visibilitychange", notify);
-  window.addEventListener("cage-window-visibility", notify);
+  window.addEventListener("eden-window-visibility", notify);
   return () => {
     document.removeEventListener("visibilitychange", notify);
-    window.removeEventListener("cage-window-visibility", notify);
+    window.removeEventListener("eden-window-visibility", notify);
   };
 }
 

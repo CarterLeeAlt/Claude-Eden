@@ -13,7 +13,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const audioCaptureCommand = "exec /usr/bin/parec --server=unix:/run/cage-audio/native --record --raw --format=s16le --rate=48000 --channels=2 --device=cage_output.monitor --latency-msec=20"
+const audioCaptureCommand = "exec /usr/bin/parec --server=unix:/run/workbench-audio/native --record --raw --format=s16le --rate=48000 --channels=2 --device=workbench_output.monitor --latency-msec=20"
 
 var audioFormat = struct {
 	Format     string `json:"format"`
@@ -50,18 +50,10 @@ func (s *Server) audio(w http.ResponseWriter, r *http.Request) {
 	available := !s.closing && !s.guestUpdateRequired
 	s.mu.Unlock()
 	if !available || !s.vmRunning() {
-		http.Error(w, "请先启动并更新 Cage 环境", http.StatusConflict)
+		http.Error(w, "请先启动并更新 Eden 环境", http.StatusConflict)
 		return
 	}
 	if !websocket.IsWebSocketUpgrade(r) {
-		if s.macosGuest != nil {
-			s.macOSAudioStatus(w, r)
-			return
-		}
-		if s.windowsGuest != nil {
-			s.windowsAudioStatus(w, r)
-			return
-		}
 		jsonReply(w, audioFormat)
 		return
 	}
@@ -76,14 +68,6 @@ func (s *Server) audio(w http.ResponseWriter, r *http.Request) {
 	defer func() { s.mu.Lock(); s.audioClients--; s.mu.Unlock() }()
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	if s.macosGuest != nil {
-		s.macOSAudioCapture(w, r, ctx, cancel)
-		return
-	}
-	if s.windowsGuest != nil {
-		s.windowsAudioCapture(w, r, ctx, cancel)
-		return
-	}
 	cmd := s.sshCommand(ctx, "-T", s.sshTarget(), "--", audioCaptureCommand)
 	pipe, err := cmd.StdoutPipe()
 	if err != nil {

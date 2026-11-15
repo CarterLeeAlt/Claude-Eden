@@ -10,16 +10,15 @@ import (
 	"time"
 
 	"github.com/sylvinus/agent-vm/internal/diagnostics"
-	"github.com/sylvinus/agent-vm/internal/remotehost"
+	"github.com/sylvinus/agent-vm/internal/localsession"
 )
 
 // The shell owns connection views. The local controller owns its workload,
 // the original configuration and the stop/handoff decision.
 type DesktopLocalController interface {
 	Status(context.Context) (DesktopLocalStatus, error)
-	Connect(context.Context) (*remotehost.Session, error)
+	Connect(context.Context) (*localsession.Session, error)
 	Release(context.Context, DesktopLocalStatus, bool) error
-	ReleaseOwnedIdle(context.Context, DesktopLocalStatus) (bool, error)
 }
 
 type DesktopLocalStatus struct {
@@ -40,31 +39,26 @@ var (
 )
 
 type desktopCandidate struct {
-	ID         string                     `json:"id"`
-	Mode       string                     `json:"mode"`
-	Connection remotehost.ConnectionState `json:"connection"`
+	ID         string             `json:"id"`
+	Mode       string             `json:"mode"`
+	Connection localsession.State `json:"connection"`
 }
 
-// One target per connection generation. An SSH candidate has its own manager,
-// so opening a second host never closes or reroutes the current workbench.
+// Each connection generation owns its own view of the local controller.
 type desktopTarget struct {
 	id, mode  string
-	remote    *remotehost.Manager
 	ctx       context.Context
 	cancel    context.CancelFunc
 	mu        sync.Mutex
-	session   *remotehost.Session
+	session   *localsession.Session
 	localErr  error
 	localDone chan struct{}
 }
 
-func (t *desktopTarget) state() remotehost.ConnectionState {
-	if t.remote != nil {
-		return t.remote.Snapshot()
-	}
+func (t *desktopTarget) state() localsession.State {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	state := remotehost.ConnectionState{State: "connecting", ConnectionID: t.id, Phase: "local_connect", Message: "正在连接本机工作台"}
+	state := localsession.State{State: "connecting", ConnectionID: t.id, Phase: "local_connect", Message: "正在连接本机工作台"}
 	switch {
 	case t.localErr != nil:
 		state.State, state.Phase, state.ErrorCode, state.Message = "failed", "", "local_unavailable", t.localErr.Error()
@@ -78,10 +72,7 @@ func (t *desktopTarget) state() remotehost.ConnectionState {
 	return state
 }
 
-func (t *desktopTarget) acquire() (*remotehost.Session, error) {
-	if t.remote != nil {
-		return t.remote.Acquire(t.id)
-	}
+func (t *desktopTarget) acquire() (*localsession.Session, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.session == nil || t.ctx.Err() != nil || t.session.Context.Err() != nil {
@@ -95,10 +86,6 @@ func (t *desktopTarget) close() {
 		return
 	}
 	t.cancel()
-	if t.remote != nil {
-		_ = t.remote.Close()
-		return
-	}
 	if t.localDone != nil {
 		<-t.localDone
 	}
@@ -122,7 +109,6 @@ type desktopGateway struct {
 	// the current workbench must remain available while it finishes.
 	change          sync.Mutex
 	mu              sync.RWMutex
-	store           *remotehost.Store
 	local           DesktopLocalController
 	generation      string
 	active, pending *desktopTarget
@@ -130,9 +116,9 @@ type desktopGateway struct {
 	departing       bool
 }
 
-func newDesktopGateway(profile string, local DesktopLocalController) *remoteGateway {
-	g := newRemoteGateway(profile)
-	g.desktop = &desktopGateway{local: local, store: g.store, generation: randomToken()}
+func newDesktopGateway(local DesktopLocalController) *clientGateway {
+	g := newClientGateway()
+	g.desktop = &desktopGateway{local: local, generation: randomToken()}
 	return g
 }
 
@@ -140,23 +126,13 @@ func (d *desktopGateway) context() ClientContext {
 	d.mu.RLock()
 	generation, active, pending := d.generation, d.active, d.pending
 	d.mu.RUnlock()
-	c := ClientContext{DesktopGateway: true, Mode: "none", ConnectionID: generation, ClientPlatform: runtime.GOOS, State: remotehost.ConnectionState{State: "disconnected"}, Candidate: pending.candidate()}
+	c := ClientContext{DesktopGateway: true, Mode: "none", ConnectionID: generation, ClientPlatform: runtime.GOOS, State: localsession.State{State: "disconnected"}, Candidate: pending.candidate()}
 	if active == nil {
 		return c
 	}
 	c.Mode, c.State = active.mode, active.state()
-	c.HostID, c.InstanceID = c.State.HostID, c.State.InstanceID
-	if active.mode == "local" {
-		c.Name, c.ServerPlatform = "本机环境", runtime.GOOS
-	} else {
-		c.ServerPlatform = "linux"
-		if p, err := d.store.Get(c.HostID); err == nil {
-			c.Name = p.Name
-			if p.HostKey != nil {
-				c.HostFingerprint = p.HostKey.Fingerprint
-			}
-		}
-	}
+	c.InstanceID = c.State.InstanceID
+	c.Name, c.ServerPlatform = "本机环境", runtime.GOOS
 	return c
 }
 
@@ -164,9 +140,6 @@ type switchRequest struct {
 	ConnectionID      string `json:"connection_id"`
 	CandidateID       string `json:"candidate_id,omitempty"`
 	Mode              string `json:"mode,omitempty"`
-	HostID            string `json:"host_id,omitempty"`
-	Deploy            bool   `json:"deploy,omitempty"`
-	Passphrase        string `json:"passphrase,omitempty"`
 	LocalAction       string `json:"local_action,omitempty"`
 	LocalControllerID string `json:"local_controller_id,omitempty"`
 }
@@ -193,16 +166,6 @@ func (d *desktopGateway) prepare(in switchRequest) (*desktopCandidate, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &desktopTarget{mode: in.Mode, ctx: ctx, cancel: cancel}
 	switch in.Mode {
-	case "remote":
-		t.remote = remotehost.NewManager(d.store)
-		secret := []byte(in.Passphrase)
-		st, err := t.remote.Connect(in.HostID, remotehost.ConnectSecrets{Passphrase: secret, Deploy: in.Deploy})
-		clear(secret)
-		if err != nil {
-			t.close()
-			return nil, err
-		}
-		t.id = st.ConnectionID
 	case "local":
 		if d.active != nil && d.active.mode == "local" && d.active.state().State == "connected" {
 			t.close()
@@ -223,7 +186,7 @@ func (d *desktopGateway) prepare(in switchRequest) (*desktopCandidate, error) {
 		}()
 	default:
 		t.close()
-		return nil, errors.New("请选择本机或远程主机")
+		return nil, errors.New("请选择本机工作台")
 	}
 	d.mu.Lock()
 	d.pending = t
@@ -263,7 +226,7 @@ func (d *desktopGateway) discard(t *desktopTarget) {
 		return
 	}
 	if owner, ok := d.local.(interface {
-		ReleaseUnused(context.Context, *remotehost.Session) error
+		ReleaseUnused(context.Context, *localsession.Session) error
 	}); ok {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
@@ -329,42 +292,12 @@ func suspendLocalView(ctx context.Context, t *desktopTarget) error {
 	return nil
 }
 
-func (d *desktopGateway) leaveLocal(ctx context.Context, in switchRequest, old *desktopTarget) error {
-	switch in.LocalAction {
-	case "stop":
-		return d.stopLocal(ctx, in.LocalControllerID)
-	case "keep":
-		if old != nil && old.mode == "local" {
-			return suspendLocalView(ctx, old)
-		}
-		return nil
-	case "", "auto":
-		if d.local == nil {
-			return nil
-		}
-		st, err := d.local.Status(ctx)
-		if err != nil || !st.Known || st.Running || st.Busy || st.LiveTerminals > 0 {
-			return errors.New("本机环境可能仍有任务，请选择保留运行或停止本机")
-		}
-		if !st.ServiceRunning {
-			return nil
-		}
-		released, err := d.local.ReleaseOwnedIdle(ctx, st)
-		if err != nil {
-			return err
-		}
-		if !released && old != nil && old.mode == "local" && old.state().State == "connected" {
-			return suspendLocalView(ctx, old)
-		}
-		return nil
-	default:
-		return errors.New("本机处理方式无效")
-	}
-}
-
 func (d *desktopGateway) commit(ctx context.Context, in switchRequest) error {
 	d.change.Lock()
 	defer d.change.Unlock()
+	if in.LocalAction != "" && in.LocalAction != "auto" {
+		return errors.New("本机连接操作无效")
+	}
 	t, err := d.matchesCandidate(in)
 	if err != nil {
 		return err
@@ -376,11 +309,6 @@ func (d *desktopGateway) commit(ctx context.Context, in switchRequest) error {
 	if old != nil && old.mode == "local" {
 		resume := d.freezeView()
 		defer resume()
-	}
-	if t.mode == "remote" {
-		if err = d.leaveLocal(ctx, in, old); err != nil {
-			return err
-		}
 	}
 	if _, err = t.acquire(); err != nil {
 		return errors.New("候选工作台连接已中断，请重新连接")
@@ -434,17 +362,16 @@ func (d *desktopGateway) clearSelection() {
 	d.discard(pending)
 }
 
-func (d *desktopGateway) acquire(id string) (*remotehost.Session, bool, error) {
+func (d *desktopGateway) acquire(id string) (*localsession.Session, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	if d.closed || d.active == nil {
-		return nil, false, errViewChanged
+		return nil, errViewChanged
 	}
 	if d.departing || id == "" || id != d.generation {
-		return nil, d.active.mode == "remote", errViewChanged
+		return nil, errViewChanged
 	}
-	session, err := d.active.acquire()
-	return session, d.active.mode == "remote", err
+	return d.active.acquire()
 }
 
 func (d *desktopGateway) close() {

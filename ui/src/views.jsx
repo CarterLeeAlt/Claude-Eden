@@ -21,7 +21,6 @@ import { sendFiles, shellFilePaths } from "./file-transfer";
 import { installRemoteInput } from "./remote-input";
 import { useWindowVisibility } from "./window-visibility";
 import { displayGeometry, displaySizeSync, watchPixelRatio } from "./remote-display.mjs";
-import { installLocalCursorFallback } from "./remote-cursor.mjs";
 import { guestKeys } from "./guest-keys.mjs";
 import { RefreshCw, Clipboard, ArrowUpRight } from "lucide-react";
 import { SessionAccount } from "./session-account";
@@ -30,7 +29,7 @@ import "@xterm/xterm/css/xterm.css";
 const terminalAccountRequest = (path, options) => api("/cli" + path, options.body);
 
 export const RemoteView = forwardRef(function RemoteView(
-  { visible, focused = true, keyboard, guestPlatform = "linux", systemClipboard = true, tabId, copyScope = tabId, onStatus, onFallback, desktop = false, zoom = 1 },
+  { visible, focused = true, keyboard, systemClipboard = true, tabId, copyScope = tabId, onStatus, onFallback, desktop = false, zoom = 1 },
   ref,
 ) {
   const windowVisible = useWindowVisibility();
@@ -40,7 +39,7 @@ export const RemoteView = forwardRef(function RemoteView(
     input = useRef(),
     current = useRef({ visible, keyboard, onStatus, onFallback }),
     displayResize = useRef();
-  current.current = { visible: screenVisible && focused, keyboard, guestPlatform, systemClipboard, tabId, onStatus, onFallback, zoom };
+  current.current = { visible: screenVisible && focused, keyboard, systemClipboard, tabId, onStatus, onFallback, zoom };
   const failures = useRef(0);
   const [connection, setConnection] = useState("connecting"),
     [attempt, setAttempt] = useState(0),
@@ -92,23 +91,17 @@ export const RemoteView = forwardRef(function RemoteView(
           container,
           runtimeSocketURL(`${desktopPrefix}/vnc`),
           {
-            credentials: { password }, cageBrowserDisplay: !desktop, cageCursorFallback: desktop && guestPlatform === "windows",
+            credentials: { password }, workbenchBrowserDisplay: !desktop,
             // The Linux browser scrolls its page by the distance of a trackpad
             // gesture. A menu or a second pane declines it and gets wheel steps.
-            cageWheelSink: !desktop && pixel_wheel === true
+            workbenchWheelSink: !desktop && pixel_wheel === true
               ? wheel => api("/browser/wheel", wheel).then(reply => reply?.handled === true)
               : undefined,
           },
         );
         rfb.current = client;
-        if (!/^(windows|darwin|macos)/.test(guestPlatform || "")) {
-          // A Linux guest takes key events as sent; see guest-keys.mjs. The
-          // other systems arrive here as "macos" and "windows-11".
-          keys = guestKeys(client.sendKey.bind(client));
-          client.sendKey = keys.sendKey;
-        }
-        installLocalCursorFallback(client._cursor,
-          !desktop && ["darwin", "macos"].includes(guestPlatform));
+        keys = guestKeys(client.sendKey.bind(client));
+        client.sendKey = keys.sendKey;
         client.scaleViewport = true;
         client.resizeSession = false;
         client.background = "#ffffff";
@@ -149,17 +142,16 @@ export const RemoteView = forwardRef(function RemoteView(
           };
           input.current = installRemoteInput({
             events: client,
-            setKeyboardTarget: target => client.cageSetKeyboardTarget(target),
+            setKeyboardTarget: target => client.workbenchSetKeyboardTarget(target),
             sendKey: (...key) => client.sendKey(...key),
             focus: () => client.focus(),
             pasteText: text => {
-              if (desktop || current.current.systemClipboard) return client.cagePasteText(text);
+              if (desktop || current.current.systemClipboard) return client.workbenchPasteText(text);
               const prepared = preparePaste();
-              return client.cageRunInput(() => prepared.send({ text })).finally(() => prepared.dispose());
+              return client.workbenchRunInput(() => prepared.send({ text })).finally(() => prepared.dispose());
             },
-            runKeyAction: action => client.cageRunInput(action),
+            runKeyAction: action => client.workbenchRunInput(action),
           }, container, {
-            guestPlatform: () => current.current.guestPlatform,
             systemClipboard: () => current.current.systemClipboard,
             copyText: !desktop
               ? (_sendCopy, valid, { id, context, key }) => {
@@ -168,7 +160,7 @@ export const RemoteView = forwardRef(function RemoteView(
                 return api("/browser/" + (key === "x" ? "cut" : "copy"), { id, context });
               }
               : undefined,
-            setCopyContext: desktop ? undefined : (context, valid) => client.cageRunInput(async () => {
+            setCopyContext: desktop ? undefined : (context, valid) => client.workbenchRunInput(async () => {
               if (!valid()) return;
               try { await api("/browser/copy-context", { id: current.current.tabId, context }); }
               catch {
@@ -183,7 +175,7 @@ export const RemoteView = forwardRef(function RemoteView(
             pasteContent: (content, prepared) => {
               const id = current.current.tabId;
               const valid = () => !disposed && current.current.visible && current.current.tabId === id;
-              return client.cagePasteContent(content,
+              return client.workbenchPasteContent(content,
                 (payload) => {
                   if (!valid()) throw new Error("输入目标已切换，请重新粘贴图片");
                   return payload.files || payload.fileSelection
@@ -193,8 +185,8 @@ export const RemoteView = forwardRef(function RemoteView(
             },
             insertText: (text) => {
               if (desktop) {
-                if (!window.cageSharedClipboardActive) return client.cagePasteText(text);
-                return client.cageRunInput(async () => {
+                if (!window.edenSharedClipboardActive) return client.workbenchPasteText(text);
+                return client.workbenchRunInput(async () => {
                   const valid = () => !disposed && current.current.visible;
                   const state = await api("/input", { target: "desktop", id: "desktop", mode: "status" });
                   if (!state.available || !valid()) throw new Error("输入位置已失去焦点，请重新点击输入框");
@@ -206,13 +198,13 @@ export const RemoteView = forwardRef(function RemoteView(
                 });
               }
               const id = current.current.tabId;
-              return client.cageRunInput(() => {
+              return client.workbenchRunInput(() => {
                 if (disposed || !current.current.visible || current.current.tabId !== id)
                   throw new Error("输入位置已切换，请重新输入");
                 return api("/browser/insert-text", { id, text });
               });
             },
-            insertComposition: (id, value) => client.cageRunInput(async () => {
+            insertComposition: (id, value) => client.workbenchRunInput(async () => {
               if (value.mode !== "cancel" && (disposed || !current.current.visible ||
                   (desktop ? "desktop" : current.current.tabId) !== id))
                 throw new Error("输入位置已切换，请重新输入");
@@ -461,7 +453,7 @@ export function TerminalView({ session, visible, focused = true, onStatus, onCon
         // Honor xterm's bracketed-paste mode without enqueuing behind this job.
         emittingPaste = true;
         try { terminal.paste(text); } finally { emittingPaste = false; }
-        onStatus(value.png || value.files || value.fileSelection ? "附件已保存到 Cage，路径已插入终端" : "已粘贴");
+        onStatus(value.png || value.files || value.fileSelection ? "附件已保存到 Eden，路径已插入终端" : "已粘贴");
       }).catch((error) => { if (!disposed) onStatus(error.message); });
     };
     const host = box.current;

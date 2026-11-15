@@ -128,7 +128,7 @@ func TestImportCompilesOnlyOwnedNetworkBoundary(t *testing.T) {
 	if config["mixed-port"] != 17896 || config["allow-lan"] != false || config["ipv6"] != false || config["external-controller"] != nil {
 		t.Fatalf("import changed boundary: %v", config)
 	}
-	if !strings.Contains(string(b), "MATCH,CAGE") || strings.Contains(string(b), "DIRECT") || strings.Contains(string(b), "enable: true\nproxies:") {
+	if !strings.Contains(string(b), "MATCH,EDEN") || strings.Contains(string(b), "DIRECT") || strings.Contains(string(b), "enable: true\nproxies:") {
 		t.Fatal("unsafe imported routing")
 	}
 	if config["tun"].(map[string]any)["enable"] != false {
@@ -206,7 +206,7 @@ func TestMieruMixedSubscription(t *testing.T) {
 	}
 	node, ok := loaded.Find(s.Selected)
 	if !ok || node.Type != "mieru" || node.Config["transport"] != "TCP" || node.Config["username"] != "test-user" || node.Config["password"] != "test-password" || node.Config["udp"] != false {
-		t.Fatal("Mieru options or Cage UDP boundary lost during persistence")
+		t.Fatal("Mieru options or Eden UDP boundary lost during persistence")
 	}
 	other, err := Parse([]byte(data.String()), "source")
 	if err != nil || other[113].ID != node.ID {
@@ -254,7 +254,7 @@ func checkMieruRuntime(t *testing.T, profile string, s Store) {
 	}
 	// Run the compiled test binary beside the bundled mihomo to exercise the
 	// same candidate-config validation used by subscription import and refresh.
-	if os.Getenv("CAGE_PROXY_INTEGRATION") == "1" {
+	if os.Getenv("EDEN_PROXY_INTEGRATION") == "1" {
 		if err := Validate(context.Background(), profile, s); err != nil {
 			t.Fatal(err)
 		}
@@ -283,7 +283,7 @@ func TestRefreshIdentityAndInvalidUpdatePreserveNodes(t *testing.T) {
 }
 func TestSubscriptionFetchAndMetadata(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.UserAgent() != "clash.meta/Cage" {
+		if r.UserAgent() != "clash.meta/Eden" {
 			t.Error("incorrect subscription user agent")
 		}
 		w.Header().Set("Subscription-Userinfo", "upload=2; download=3; total=100; expire=123; secret=credential")

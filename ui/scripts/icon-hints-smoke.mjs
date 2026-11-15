@@ -46,12 +46,3 @@ try {
 } finally {
   await browser.close();
 }
-
-const mobile = await createWorkbench({ url: new URL("/mobile.html", process.env.CAGE_UI_URL || "http://127.0.0.1:5198").href, waitForReady: false, viewport: { width: 390, height: 844 } });
-try {
-  const back = mobile.page.getByRole("link", { name: "返回工作台" });
-  await back.focus();
-  assert.equal(await mobile.page.getByRole("tooltip").textContent(), "返回工作台");
-  assert.deepEqual(mobile.errors, []);
-  console.log("Mobile entry: icon hint passed");
-} finally { await mobile.browser.close(); }

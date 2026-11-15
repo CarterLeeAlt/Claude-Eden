@@ -10,17 +10,14 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
 	"github.com/sylvinus/agent-vm/internal/cli"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/paths"
 	"github.com/sylvinus/agent-vm/internal/vmname"
 )
 
 func TestControllerNamesMatchCLIForIndependentProfiles(t *testing.T) {
 	base := os.TempDir()
-	if filepath.Separator == '/' {
-		base = "/tmp"
-	}
 	root, err := os.MkdirTemp(base, "vn")
 	if err != nil {
 		t.Fatal(err)
@@ -42,7 +39,7 @@ func TestControllerNamesMatchCLIForIndependentProfiles(t *testing.T) {
 	b := &Server{profile: filepath.Join(root, "another-profile")}
 	cliName := func(s *Server) string {
 		t.Helper()
-		t.Setenv(cage.ConfigEnv, filepath.Join(s.profile, "config.json"))
+		t.Setenv(eden.ConfigEnv, filepath.Join(s.profile, "config.json"))
 		t.Setenv("AGENT_VM_STATE_DIR", filepath.Join(s.profile, "state"))
 		t.Setenv("AGENT_VM_LIMA_HOME", filepath.Join(s.profile, "state", "lima"))
 		var out, stderr bytes.Buffer
@@ -65,8 +62,8 @@ func TestControllerNamesMatchCLIForIndependentProfiles(t *testing.T) {
 	if an != wantA || bn != wantB {
 		t.Fatalf("CLI names differ from their profile budgets: %q != %q, %q != %q", an, wantA, bn, wantB)
 	}
-	// /tmp keeps the POSIX fixture short enough to exercise different socket
-	// budgets. Deep Windows temp paths can legitimately reach the same minimum
+	// The isolated TEMP keeps the fixture within the workspace. Deep Windows
+	// temp paths can legitimately reach the same minimum
 	// name; independent profile directories still isolate their state.
 	if filepath.Separator == '/' && (an == bn || len(bn) >= len(an) || len(an) >= 76) {
 		t.Fatalf("test requires different truncations: %q, %q", an, bn)
@@ -89,11 +86,11 @@ func TestControllerNamesMatchCLIForIndependentProfiles(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	loc, err := cage.GetStorageLocation(b.profile)
+	loc, err := eden.GetStorageLocation(b.profile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = cage.MoveStorage(context.Background(), b.profile, filepath.Join(root, strings.Repeat("data-", 10)), loc, nil); err != nil {
+	if _, err = eden.MoveStorage(context.Background(), b.profile, filepath.Join(root, strings.Repeat("data-", 10)), loc, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := cliName(b); got != bn || b.sshTarget() != "lima-"+bn {

@@ -26,8 +26,8 @@ const waitFor = async (predicate) => {
   assert.fail("Desktop polling condition did not complete");
 };
 const visible = (value) => page.evaluate((value) => {
-  window.cageWindowVisible = value;
-  window.dispatchEvent(new Event("cage-window-visibility"));
+  window.edenWindowVisible = value;
+  window.dispatchEvent(new Event("eden-window-visibility"));
 }, value);
 try {
   state.status.vm_running = state.status.ready = true;

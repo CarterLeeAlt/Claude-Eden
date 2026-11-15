@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createWorkbench } from "./workbench-fixture.mjs";
-const output = process.env.CAGE_VAULT_CAPTURE || fileURLToPath(new URL("../../docs/test-reports/2026-11-05-password-vault/", import.meta.url));
+const output = process.env.EDEN_VAULT_CAPTURE || fileURLToPath(new URL("../../.tmp/guest-neutralization/ui-eden/password-vault/", import.meta.url));
 await fs.mkdir(output, { recursive: true });
 let clipboard = "";
 const { browser, page, state, errors } = await createWorkbench({ nativeRequest: async ({ action, text }) => {
@@ -12,7 +12,7 @@ const { browser, page, state, errors } = await createWorkbench({ nativeRequest: 
 let entries = [], blocked = [], candidate = null, filled = null, sequence = 0;
 await page.route("**/api/vault**", async route => {
   const req = route.request(), input = req.method() === "POST" ? req.postDataJSON() : {};
-  if (!state.account.unlocked) return route.fulfill({ status: 423, body: "Cage 已锁定" });
+  if (!state.account.unlocked) return route.fulfill({ status: 423, contentType: "text/plain; charset=utf-8", body: "Eden 已锁定" });
   const redacted = value => { const { password, ...rest } = value; return rest; };
   if (new URL(req.url()).pathname === "/api/vault/browser") {
     if (input.action === "status") return route.fulfill({ json: {
@@ -39,7 +39,7 @@ await page.route("**/api/vault**", async route => {
     else entries.push({ ...entry, id: `saved-${++sequence}` });
   }
   if (input.action === "reveal") {
-    if (input.account_password !== state.accountPassword) return route.fulfill({ status: 400, body: "密码不正确" });
+    if (input.account_password !== state.accountPassword) return route.fulfill({ status: 400, contentType: "text/plain; charset=utf-8", body: "密码不正确" });
     return route.fulfill({ json: { password: entries.find(e => e.id === input.id).password } });
   }
   if (input.action === "delete") entries = entries.filter(e => e.id !== input.id);
@@ -63,17 +63,17 @@ try {
   assert.equal(entries.length, 1);
   assert.equal(await page.getByText("fixture-mail-secret", { exact: true }).count(), 0);
   await page.getByRole("button", { name: "查看密码", exact: true }).click();
-  await page.getByLabel("Cage 账户密码", { exact: true }).fill("wrong-password");
+  await page.getByLabel("Eden 账户密码", { exact: true }).fill("wrong-password");
   await page.getByRole("button", { name: "验证并查看" }).click();
   await page.getByRole("alert").filter({ hasText: "密码不正确" }).waitFor();
   assert.equal(await page.getByLabel("已保存的网站密码").count(), 0);
-  await page.getByLabel("Cage 账户密码", { exact: true }).fill(state.accountPassword);
+  await page.getByLabel("Eden 账户密码", { exact: true }).fill(state.accountPassword);
   await page.getByRole("button", { name: "验证并查看" }).click();
   await page.getByLabel("已保存的网站密码").waitFor();
   assert.equal(await page.getByLabel("已保存的网站密码").textContent(), "fixture-mail-secret");
   await page.getByRole("button", { name: "隐藏密码" }).click();
   await page.getByRole("button", { name: "复制密码", exact: true }).click();
-  await page.getByLabel("Cage 账户密码", { exact: true }).fill(state.accountPassword);
+  await page.getByLabel("Eden 账户密码", { exact: true }).fill(state.accountPassword);
   await page.getByRole("button", { name: "验证并复制" }).click();
   await page.getByRole("status").filter({ hasText: "密码已复制" }).waitFor();
   assert.equal(clipboard, "fixture-mail-secret");
@@ -97,21 +97,21 @@ try {
   await page.getByRole("button", { name: "浏览器菜单", exact: true }).click();
   await page.getByRole("menuitem", { name: /密码 · 1 个账号/ }).waitFor();
   const trigger = page.getByRole("menuitem", { name: /密码 · 1 个账号/ });
-  const before = await page.locator(".browser-chrome").boundingBox();
+  const before = await page.locator(".browser-more-menu .vault-browser").boundingBox();
   await trigger.press("Enter");
   const picker = page.getByRole("region", { name: "当前网站的密码" });
   await picker.waitFor();
-  const after = await page.locator(".browser-chrome").boundingBox();
-  assert.ok(after.height > before.height + 60, "password picker did not occupy layout space");
+  const after = await page.locator(".browser-more-menu .vault-browser").boundingBox();
+  assert.ok(after.height > before.height + 60, "password picker must expand its section inside the browser menu");
   await picker.getByRole("button", { name: /work@example.test/ }).focus();
   await page.keyboard.press("Enter");
   await page.getByRole("status").filter({ hasText: "已填写" }).waitFor();
   assert.equal(filled, entries[0].id);
-  const filledHeight = (await page.locator(".browser-chrome").boundingBox()).height;
+  const filledHeight = (await page.locator(".browser-more-menu .vault-browser").boundingBox()).height;
   const pickerHeight = (await picker.boundingBox()).height;
   await trigger.press("Escape");
   await picker.waitFor({ state: "hidden" });
-  assert.equal(Math.round((await page.locator(".browser-chrome").boundingBox()).height), Math.round(filledHeight - pickerHeight),
+  assert.equal(Math.round((await page.locator(".browser-more-menu .vault-browser").boundingBox()).height), Math.round(filledHeight - pickerHeight),
     "closing the password picker releases its space while preserving the fill confirmation");
   candidate = { id: "pending", tab: "web-vault", origin: "https://mail.example.test", username: "work@example.test", password: "new-fixture-secret" };
   await page.getByText("更新此账号的密码？", { exact: true }).waitFor();
@@ -131,8 +131,8 @@ try {
   await page.getByText("还没有保存密码", { exact: true }).waitFor();
   await page.getByRole("button", { name: "返回工作台", exact: true }).click();
   await page.getByRole("button", { name: /^账户菜单，/ }).click();
-  await page.getByRole("menuitem", { name: /锁定 Cage/ }).click();
-  await page.getByRole("region", { name: "解锁 Cage", exact: true }).waitFor();
+  await page.getByRole("menuitem", { name: /锁定 Eden/ }).click();
+  await page.getByRole("region", { name: "解锁 Eden", exact: true }).waitFor();
   assert.equal(await page.locator(".vault-browser").count(), 0);
   assert.deepEqual(errors, []);
   console.log("PASS: vault UI CRUD, search, reauthentication, clipboard, inline keyboard picker, save/update/never, lock and small viewport");

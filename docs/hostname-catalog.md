@@ -1,6 +1,6 @@
 # Public hardware names for guest hostnames
 
-`hardware.csv` contains factual PC/model names from vendor catalogs and compact
+`shared/guestidentity/hardware.csv` contains factual PC/model names from vendor catalogs and compact
 aliases derived for hostnames. It does not contain serial numbers, service tags,
 MAC addresses, user identities, driver binaries, or host inventory. The aliases
 are project-defined abbreviations, not manufacturer-assigned computer names.
@@ -39,9 +39,9 @@ The Windows `DESKTOP-` shape is documented by
 [Dell](https://www.dell.com/support/kbdoc/en-us/000137111/computer-name-shows-as-desktop-xxxxxx-on-dell-systems-that-ship-with-windows-10).
 A motherboard model does not determine a machine's hostname. A sampled name is
 not a claim about its SMBIOS, CPU, operating system, or actual physical hardware.
-The generator is shared by Linux containers and Lima guests; it does not select
-an operating-system-specific hardware profile. Native Windows Setup continues
-to generate its own name. Existing persisted hostnames remain valid and stable.
+The generator names the local Debian 13 Lima guest; it does not select an
+operating-system-specific hardware profile. Existing persisted hostnames remain
+valid and stable.
 
 All data is embedded. Creation performs no network requests, inspects no host
 hardware, and installs no drivers. Malformed embedded catalog data is an error.
@@ -67,5 +67,7 @@ The compiler uses only the Python standard library and makes no network calls.
 It rejects XML entity/DOCTYPE declarations, limits input size, deduplicates model
 records, and writes the CSV and source manifest deterministically. Check the
 resulting model names and aliases, update the snapshot counts above, and run the
-`guestidentity` tests. Regenerate `patches/lima/0037-random-guest-identity.patch`
-when updating this bundled Lima extension.
+`shared/guestidentity` module tests through the workspace runner. The main module
+and bundled Lima module import this single Apache-2.0 implementation and catalog.
+`patches/lima/0037-random-guest-identity.patch` records Lima's integration with the
+shared module; catalog updates belong in `shared/guestidentity`.

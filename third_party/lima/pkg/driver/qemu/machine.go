@@ -8,7 +8,7 @@ func appendQ35Machine(args []string, accel string) []string {
 	if accel == "whpx" {
 		// QEMU 11 can fail to enable nested virtualization on WHPX even
 		// when Windows reports it as supported (HRESULT 80370302). Use
-		// QEMU's interrupt controller emulation for the Cage Linux guest.
+		// QEMU's interrupt controller emulation for the managed Linux guest.
 		machine += ",kernel-irqchip=off"
 	}
 	return appendArgsIfNoConflict(args, "-machine", machine)

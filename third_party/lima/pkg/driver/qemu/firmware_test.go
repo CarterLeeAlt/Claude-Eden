@@ -13,7 +13,7 @@ import (
 )
 
 func TestWindowsFirmwareArgument(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "测试安装, Cage", "share")
+	dir := filepath.Join(t.TempDir(), "测试安装, Eden", "share")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

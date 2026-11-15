@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/host"
 )
 
@@ -18,7 +18,7 @@ func TestResourceAllocationSaveAndStartup(t *testing.T) {
 	s := testServer(t)
 	check := func(memory, cpus int) {
 		t.Helper()
-		m, c, err := cage.ConfiguredResourceLimits(s.configPath)
+		m, c, err := eden.ConfiguredResourceLimits(s.configPath)
 		if err != nil || m != memory || c != cpus {
 			t.Fatalf("startup limits = %d/%d, %v", m, c, err)
 		}

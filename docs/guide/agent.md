@@ -6,7 +6,7 @@ order: 5
 keywords: Agent CLI JSON 自动化 配置 接口 安装 诊断 修复 capabilities doctor llms
 ---
 
-你可以把下面这段话交给自己的 Agent，让它准备 Claude Eden。提供自己的代理来源、选择工作环境，并完成系统要求的授权。账户密码、Claude 登录、许可证确认和项目共享范围由你决定。
+你可以把下面这段话交给自己的 Agent，让它准备 Windows 10 上的 Claude Eden 与本地 Debian 13 客机。提供自己的代理来源，并完成系统要求的授权。账户密码、Claude 登录、许可证确认和项目共享范围由你决定。
 
 > 请阅读 https://github.com/CarterLeeAlt/Claude-Eden/blob/main/AGENT-USE.md ，协助我安装、配置并验证 Claude Eden。先检查本机安装和接口能力，再按实际状态操作；完成后说明环境是否就绪、网络是否通过检查，以及还需要我完成什么。保留现有账户、项目和虚拟机数据。
 
@@ -19,11 +19,10 @@ keywords: Agent CLI JSON 自动化 配置 接口 安装 诊断 修复 capabiliti
 | 平台 | 默认 CLI 位置 | 调用示例 |
 | --- | --- | --- |
 | Windows | 安装目录的 `resources\eden.exe`。新装默认使用本地固定 D 盘的 `D:\Eden`，否则为 `%LOCALAPPDATA%\Programs\Eden`；自定义位置以安装记录为准 | `& 'D:\Eden\resources\eden.exe' agent capabilities` |
-| Linux 云端 | 部署说明默认 `~/.local/lib/eden/eden`，以服务器部署配置为准 | `"$HOME/.local/lib/eden/eden" agent capabilities` |
 
 `agent capabilities` 输出协议版本、操作清单、输入字段和退出码，不启动后台或创建配置。首次配置与升级后先读取一次。已部署网站另提供 `/agent.md`、`/llms.txt`、`/llms-full.txt`；仓库入口为 [AGENT-USE.md](../../AGENT-USE.md)。
 
-所有 `agent` 命令自动输出 JSON，`--json` 可省略。`--config /absolute/path/config.json` 明确选择配置；省略时使用 `EDEN_CONFIG`，再省略则使用 `~/.eden/config.json`。输出的 `config_path` 是实际目标。桌面远端选择不会改变 local 范围的目标；管理服务器可使用 desktop / selected 范围，或在授权 SSH 通道内运行服务器接口。
+所有 `agent` 命令自动输出 JSON，`--json` 可省略。`--config /absolute/path/config.json` 明确选择配置；省略时使用 `EDEN_CONFIG`，再省略则使用 `~/.eden/config.json`。输出的 `config_path` 是实际目标。`local` 访问本机工作负载，`desktop` 管理本机窗口连接，`selected` 访问当前连接代次的同一本机工作负载。
 
 ## 下载、校验与安装
 
@@ -35,7 +34,7 @@ node .\agent-bootstrap.mjs plan --platform win32-amd64
 node .\agent-bootstrap.mjs download --platform win32-amd64 --destination 'D:\Downloads\Eden'
 ```
 
-省略平台时识别当前 Node 进程的平台和架构，非 Windows x64 返回 `unsupported_platform`。指定 `--version` 固定发行标签；省略时查询 GitHub latest，它可能不包含预发行版。没有公开安装包时按[构建说明](../windows.md)操作。Linux 服务器使用[云端部署说明](../../deploy/cloud/README.md)。Git Bash 可使用仓库的 `www/public/eden-install.sh` 调用同一下载助手。
+省略平台时识别当前 Node 进程的平台和架构，非 Windows x64 返回 `unsupported_platform`。指定 `--version` 固定发行标签；省略时查询 GitHub latest，它可能不包含预发行版。没有公开安装包时按[构建说明](../windows.md)操作。Git Bash 可使用仓库的 `www/public/eden-install.sh` 调用同一下载助手。
 
 助手从同一标签读取安装包与 `SHA256SUMS`，拒绝不完整附件、重复校验项、HTTP 降级和校验不符。下载使用独立临时文件，成功后才生成目标文件；目标已存在时保留它并报错。失败后可以重新下载到新的目标目录。Windows 只有未签名预览包时，返回 `unsigned_package_requires_consent`；用户明确选择该预览后才添加 `--allow-unsigned`。
 
@@ -44,13 +43,12 @@ node .\agent-bootstrap.mjs download --platform win32-amd64 --destination 'D:\Dow
 | 平台 | 安装与验证 |
 | --- | --- |
 | Windows | 检查下载包的签名状态；在用户授权的安装上下文运行安装器。`/S` 支持静默安装；已有自定义安装目录以安装记录为准。系统安全提示、Windows 虚拟机监控程序平台启用与重启可能需要用户操作。 |
-| Linux 云端 | 构建并部署 `eden` 后端，核对 rootless 引擎、用户服务、配置路径及容器网络；按服务器指南验证。 |
 
 安装、更新与卸载保留 `.eden`、指定的数据目录、共享项目与持久磁盘。已有账户重新出现创建界面时先核对 `config_path` 和原数据。下载成功后仍须执行安装、验证实际 CLI 和 `agent capabilities`，再开始配置。
 
 ## 第一次配置的完整顺序
 
-先明确用户希望使用本机 Linux 客机还是 Linux 云端，以及哪个目录可以共享。Agent 可以探测主机条件、根据报告提出选择，不能替用户接受许可证、降低出口规则或授权未指定的主机目录。
+先明确本地 Debian 13 的存储位置，以及哪个目录可以共享。Agent 可以探测主机条件、根据报告提出建议，不能替用户接受许可证、降低出口规则或授权未指定的主机目录。
 
 ```sh
 eden agent capabilities
@@ -113,9 +111,9 @@ eden agent call resources.get
 eden agent call settings.get
 ```
 
-根据 `guest.options` 返回的 `linux_systems` 选择可用的 Linux 发行版，将对应值作为 `guest_system` 传给 `environment.start`。镜像下载量、磁盘与虚拟化条件见[客机系统指南](guest-systems.md)。已有安装按 `pending` 继续，保留原系统、磁盘和进度。
+`guest.options` 返回 Debian 13 镜像及可恢复的安装状态。首次将 `{"guest_system":"debian-13"}` 传给 `environment.start`。镜像下载量、磁盘与虚拟化条件见[客机系统指南](guest-systems.md)。已有安装按 `pending` 继续，保留原系统、磁盘和进度。
 
-首次需要换存储位置时，在安装前用 `storage.set`，输入 `directory`、`previous`、`migrate`；后两项分别来自 `storage.get` 的 `directory` 和 `has_environment`。已有环境的迁移会停止任务并保留备份，应先保存工作。资源配置用 `resources.set` 的 `allocation` 对象；修改保存后再以 `{}` 调用应用资源，会重启环境。容器资源由服务器部署管理。
+首次需要换存储位置时，在安装前用 `storage.set`，输入 `directory`、`previous`、`migrate`；后两项分别来自 `storage.get` 的 `directory` 和 `has_environment`。已有环境的迁移会停止任务并保留备份，应先保存工作。资源配置用 `resources.set` 的 `allocation` 对象；修改保存后再以 `{}` 调用应用资源，会重启环境。
 
 只发送需要修改的设置，先预检再应用；browser_home_url 单独通过 browser.preferences.set 保存，环境设置分开提交；未指定字段会保留，包括出口规则对象中未指定的 IP、国家和城市基准。`null` 不用于清空字段。
 
@@ -130,7 +128,7 @@ eden agent call settings.patch --input /private/path/settings-apply.json --wait 
 eden agent call environment.start --input /private/path/guest-choice.json --wait 30m
 ```
 
-已有环境的 `environment.start` 可以不带输入。首次选择只传 `{"guest_system":"guest.options 返回的系统值"}`。可用系统以 `guest.options` 为准；有 `pending` 时继续原安装，请求中断后先查询作业和实际状态。
+已有环境的 `environment.start` 可以不带输入。有 `pending` 时继续原 Debian 13 安装，请求中断后先查询作业和实际状态。
 
 主机虚拟化启用或重启需要用户完成时，报告具体操作与恢复查询命令。安装进度在 `setup_progress` 中；`prepared`、安装完成、运行和联网分别检查。
 
@@ -172,7 +170,7 @@ eden agent job 012345abcdef --wait 30m
 
 `--wait` 为有限等待，范围为 0 到 24 小时；不指定时立即返回。等待或客户端断开不会自动取消作业。后台只保留最近一个作业，后续作业会替换查询记录，重启也可能失去记录。`job_not_found`、`outcome_unknown` 或连接中断后，先读 `status` 和相应配置，核对副作用；不要把其他任务成功当成原任务成功。`job_canceled` 单独表示取消，不能视为完成。
 
-命名 call 的输入必须是单个 JSON 对象，最大 12 MiB；request 支持原始二进制文件流。未知命令和字段会被拒绝。能力清单的 `input_schema` 描述允许字段；当前平台、系统状态和字段组合仍由后台验证。错误说明经过脱敏，正常业务结果保持接口原值。用户可以查看的密码、Cookie、配对码等，在同样的再次验证和权限检查通过后也可由 Agent 读取，应通过私有管道处理，避免默认记录或回显。
+命名 call 的输入必须是单个 JSON 对象，最大 12 MiB；request 支持原始二进制文件流。未知命令和字段会被拒绝。能力清单的 `input_schema` 描述允许字段；当前平台、系统状态和字段组合仍由后台验证。错误说明经过脱敏，正常业务结果保持接口原值。用户可以查看的密码、Cookie 等，在同样的再次验证和权限检查通过后也可由 Agent 读取，应通过私有管道处理，避免默认记录或回显。
 
 ## 定位问题与恢复
 
@@ -206,7 +204,7 @@ eden agent diagnostics --output /absolute/path/eden-diagnostics.zip
 
 ## 交付给用户的结果
 
-完成后用几句话说明：实际安装的版本和路径、使用的配置与客机、代理是否应用、环境是否运行、网络检查是否通过、项目是否连接。列出需要用户完成的授权和登录，以及尚未验证的范围。仅完成下载、模拟请求或单平台编译时，分别报告，不写成完整安装或三平台实测成功。
+完成后用几句话说明：实际安装的版本和路径、使用的配置与客机、代理是否应用、环境是否运行、网络检查是否通过、项目是否连接。列出需要用户完成的授权和登录，以及尚未验证的范围。仅完成下载、模拟请求或编译时，分别报告，不写成完整安装与真实使用成功。
 
 ## 用户与 Agent 的操作空间
 
@@ -216,12 +214,11 @@ eden agent diagnostics --output /absolute/path/eden-diagnostics.zip
 
 | 范围 | 目标 |
 | --- | --- |
-| `local`，完整应用默认 | 明确 config_path 对应的本机工作负载，固定本机，不跟随 SSH 切换。 |
-| `desktop` | 完整应用的桌面连接配置、SSH 主机、本机信任和原生窗口队列。需要桌面连接服务运行。 |
-| `selected` | 完整应用桌面当前选择的环境，必须带 `--connection`，值取 client.context.connection_id。切换后旧代次被拒绝。 |
-| `client`，轻量客户端默认 | 轻量客户端的连接服务；业务请求必须带当前 `--connection`，连接管理请求可不带。 |
+| `local`，默认 | 明确 config_path 对应的本机工作负载。 |
+| `desktop` | 本机桌面连接、本机信任和原生窗口队列。需要桌面连接服务运行。 |
+| `selected` | 桌面当前连接的本机环境，必须带 `--connection`，值取 client.context.connection_id。重新连接后旧代次被拒绝。 |
 
-完整应用的 `--config` 指主配置；desktop 范围定位对应 desktop-entry 服务。轻量客户端使用其安装包 CLI，默认配置为 `~/.eden/client/config.json`。需要窗口时可正常启动 Claude Eden，再继续接口操作。
+`--config` 指主配置；desktop 范围定位对应 desktop-entry 服务。需要窗口时可正常启动 Claude Eden，再继续接口操作。
 
 ```sh
 eden agent call client.context --scope desktop
@@ -240,14 +237,13 @@ eden agent call settings.get --scope selected --connection 当前连接代次
 | 快捷登录 | native.submit 提交 accountDevice，operation 为 status/enable/disable/unlock；设备密钥由原生安全存储管理。以实际 capabilities 和界面能力为准。 |
 | 外观、字体、配色、自定义主题 | appearance.get/set 读写完整对象，appearance.codex 读取本机 Codex 外观导入；读取后保留未修改字段。 |
 | 出口位置检测、测速、连接和日志 | settings.probe 输入完整设置草稿；proxy.delay 输入 node_id；proxy.connections/logs。dry_run 仅静态校验。 |
-| 尚未开始安装时重选系统 | guest.reselect 输入 guest.options.pending.id，仍由原安装状态约束。 |
 | Claude 账号、额度、分组、启停、调度与排序 | claude-accounts.get/change，动作与字段类型由 capabilities 给出；业务 action 与界面相同。 |
 | 密码保险箱 | vault.get 列元数据；vault.change 的 action 为 save/delete/unblock/reveal；reveal 仍需 account_password，再次验证后返回真实密码；vault.browser 提供页面填充和保存。 |
-| 手机配对 | mobile.get/pair/remove；自建中继输入 admin/relay，配对结果是私密邀请码。 |
 | Tailscale 与 SSH 公钥 | tailscale.get，以及 install/connect/login/disconnect/logout/add-key/remove-key；公钥字段为 key。 |
 | 浏览器首页 | browser.preferences.get/set；set 立即更新浏览器，失败保留旧值，长度限制与界面一致。settings.patch 单独修改首页时复用同一保存流程。 |
 | Cookie、权限、扩展、收藏 | browser.cookies/settings/extensions；favorites.get/change。Cookie 的 mode、scope、id、cookieKey 与界面相同。 |
-| SSH 主机与部署、指纹核对、连接与切换 | desktop 范围 client.hosts、client.hosts.create、client.candidate/commit/cancel/disconnect/local-stop；更新/删除主机使用 PUT/DELETE /api/client/hosts/主机ID。保留同一连接代次、候选、指纹和本机任务去留规则。 |
+| 连接本机工作台 | desktop 范围 client.context、client.candidate/commit/cancel；candidate 使用 `mode:"local"`，提交和取消沿用返回的候选标识与连接代次。 |
+| 管理本机连接与后台 | desktop 范围 client.local-status 查询本机控制器身份与运行状态；client.disconnect 暂停账户视图并断开当前桌面连接；client.local-stop 核对 connection_id 和 local_controller_id 后停止本机工作负载。 |
 | 已归档会话、名称、固定、账户切换 | request 访问 /api/cli/sessions 和 /api/cli/sessions/会话ID/{metadata,account,archive,restore,purge,open}。 |
 | 文件选择、主题导入导出、App 更新 | native.submit 调现有 chooseFolder、importTheme、exportTheme、appUpdate 等原生 action。系统选择器和签名检查照常执行。 |
 
@@ -258,7 +254,6 @@ eden agent request GET /api/settings
 eden agent request POST /api/browser/extensions/upload \
   --input /private/path/extension.zip --content-type application/octet-stream
 eden agent request GET /api/diagnostics/export --output /absolute/path/new-report.zip
-eden agent request DELETE /api/client/hosts/主机ID --scope desktop
 ```
 
 JSON 请求通过私有文件或 `--input -` 传递；二进制请求使用文件流和正确的 Content-Type。输入大小由同一生产处理器约束。输出给出 http_status、content_type、必要的 recovery，以及 body 或保存文件的 path，合法的 202 会保留。输出文件排他创建，已有文件保留。同步请求期限为两分钟，长安装通过异步任务跟踪。
@@ -282,18 +277,16 @@ eden agent request GET /api/agent/native/返回的ID --scope desktop
 
 原生队列属于当前窗口所在的监听器。认领与回执需要原生启动桥换取的窗口证明，普通网页会话无法抢占；证明只留在窗口闭包，不返回给 Agent。窗口只认领一次；pending/running 需要继续查询原 ID，completed 表示收到真实回执，failed 返回原生失败。连接切换、窗口关闭或丢失回执后不自动重放动作；两分钟内未被窗口认领的请求失败。记录过期或被后续记录替换后，先核对副作用。只有依赖原生窗口的操作需要打开窗口，普通配置可直接调用后台。
 
-客户端的布局、音量与缩放使用 WebView 的原有存储。提交 `request.action:"clientPreferences"`，operation 为 get/set；set 的 values 使用下表原始字符串，null 恢复默认。写入成功回执后刷新当前窗口，使实际界面应用；远端偏好按同一实例后缀隔离。
+客户端的布局、音量与缩放使用 WebView 的原有存储。提交 `request.action:"clientPreferences"`，operation 为 get/set；set 的 values 使用下表原始字符串，null 恢复默认。写入成功回执后刷新当前窗口，使实际界面应用。
 
 | 逻辑键 | 原始字符串编码 |
 | --- | --- |
 | eden-sidebar-collapsed | `true` 或 `false` |
 | eden-browser-tab-layout | JSON 字符串，例如 `"vertical"`，在外层 JSON 中需要转义引号 |
-| eden-keyboard | `mac` / `native` 快捷键习惯，仅远端客户端；本机使用 settings.keyboard |
 | eden.audio | JSON 对象，例如 `{"muted":false,"volume":0.5}` |
 | eden-desktop-zoom | 0.75、0.9、1、1.1、1.25、1.5 |
 | eden-active | 当前标签 ID |
 | eden-tab-layout | get 返回的按项目保存名称、固定和顺序的对象 JSON |
-| eden-recent-environment | local 或主机 ID |
 
 外观走 appearance 持久接口，WebView 中保存缓存；保存后可通过原生 reconnect 刷新。原生动作交给 Windows 桌面接收者，平台不支持时返回不可用结果。已授权 Agent 可操作产品内的授权窗口，系统认证仍由系统执行。
 

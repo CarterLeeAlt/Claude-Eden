@@ -37,7 +37,7 @@ func TestPinnedDownloadResumesInterruptedBody(t *testing.T) {
 	}))
 	defer s.Close()
 	cache := t.TempDir()
-	t.Setenv("CAGE_LIMA_CACHE_DIR", cache)
+	t.Setenv("EDEN_LIMA_CACHE_DIR", cache)
 	r, err := Download(t.Context(), "", s.URL, WithCache(), WithExpectedDigest(digest.FromString(data)))
 	if err != nil {
 		t.Fatal(err)

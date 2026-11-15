@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/paths"
 	"github.com/sylvinus/agent-vm/internal/state"
 	"github.com/sylvinus/agent-vm/internal/ui"
@@ -22,7 +22,7 @@ type app struct {
 	state          state.Dir
 	privateStorage []string
 	names          vmname.Limit
-	cageProfile    string
+	edenProfile    string
 
 	migrateOnce sync.Once
 	migrate     func() // moves 0.2's VMs, when set
@@ -180,11 +180,11 @@ func newApp(io IO) (*app, error) {
 	// name): cut in their folder part, not refused.
 	e.names = vmname.Limit(vm.MaxName(LimaHome(st)))
 	e.migrate = func() { e.migrateOld(context.Background(), oldLimaHome(), LimaHome(st)) }
-	// Cage owns a separate profile; it never imports another tool's VMs.
-	if config := os.Getenv(cage.ConfigEnv); config != "" {
+	// Eden owns a separate profile; it never imports another tool's VMs.
+	if config := os.Getenv(eden.ConfigEnv); config != "" {
 		e.migrate = nil
-		e.cageProfile = filepath.Dir(config)
-		e.privateStorage, err = cage.StoragePrivatePaths(filepath.Dir(config))
+		e.edenProfile = filepath.Dir(config)
+		e.privateStorage, err = eden.StoragePrivatePaths(filepath.Dir(config))
 		if err != nil {
 			return nil, err
 		}
@@ -194,7 +194,7 @@ func newApp(io IO) (*app, error) {
 		// Every VM there is agent-vm's: list, rm and destroy-all take them
 		// all. Never a Lima home the user's own VMs live in.
 		if h := LimaHome(st); sameDir(h, oldLimaHome()) {
-			return nil, fmt.Errorf("agent-vm's Lima home %s is also your own Lima's home: set AGENT_VM_LIMA_HOME to a folder for agent-vm alone", h)
+			return nil, fmt.Errorf("%s's Lima home %s is also your own Lima's home: set AGENT_VM_LIMA_HOME to a folder for %s alone", Command, h, Command)
 		}
 		return vm.NewLima(LimaHome(st), string(st))
 	}
@@ -202,8 +202,8 @@ func newApp(io IO) (*app, error) {
 }
 
 func (e *app) instanceName(dir string) string {
-	if e.cageProfile != "" {
-		return cage.InstanceName(e.cageProfile, dir)
+	if e.edenProfile != "" {
+		return eden.InstanceName(e.edenProfile, dir)
 	}
 	return e.names.Name(dir)
 }

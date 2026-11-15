@@ -3,6 +3,7 @@
 param([string]$Destination = $env:RUNNER_TEMP)
 
 $ErrorActionPreference = 'Stop'
+& (Join-Path $PSScriptRoot 'assert-workspace.ps1')
 if (-not $Destination) { throw 'Set RUNNER_TEMP or pass -Destination for the NSIS tool directory.' }
 $version = '3.13'
 $expectedSHA256 = 'ba63dffc4410ee89193e1cb5a41989991bd77c61068da17e3156d136b7b0b3d8'

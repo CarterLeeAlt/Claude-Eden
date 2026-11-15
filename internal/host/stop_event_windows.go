@@ -18,7 +18,7 @@ func stopEventName(instanceDir string) (*uint16, error) {
 		return nil, err
 	}
 	hash := sha256.Sum256([]byte(sid.String() + "\x00" + strings.ToLower(filepath.Clean(instanceDir))))
-	return windows.UTF16PtrFromString(fmt.Sprintf(`Local\CageHostagentStop-%x`, hash[:16]))
+	return windows.UTF16PtrFromString(fmt.Sprintf(`Local\EdenHostagentStop-%x`, hash[:16]))
 }
 
 // ListenInstanceStop receives graceful-stop requests without a console.
@@ -70,7 +70,7 @@ func ListenInstanceStop(instanceDir string, onStop func()) (func(), error) {
 	return stop, nil
 }
 
-// RequestInstanceStop returns false when no Cage hostagent owns the event.
+// RequestInstanceStop returns false when no Eden hostagent owns the event.
 func RequestInstanceStop(instanceDir string) (bool, error) {
 	name, err := stopEventName(instanceDir)
 	if err != nil {

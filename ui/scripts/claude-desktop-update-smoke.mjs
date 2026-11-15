@@ -44,13 +44,8 @@ try {
   await toolbar.getByRole("button", { name: "关闭应用", exact: true }).waitFor();
   assert.deepEqual(actions, ["update", "update", "start"]);
   assert.equal(desktop.installed, true);
-  state.status.guest_system = "windows-11";
-  await page.reload();
-  await page.getByRole("button", { name: "Claude Desktop", exact: true }).click();
-  await toolbar.getByText("v4.4213.0", { exact: true }).waitFor();
-  assert.equal(await toolbar.getByRole("button", { name: "更新应用", exact: true }).count(), 0, "Windows uses its official in-app updater");
   assert.deepEqual(errors, []);
-  console.log("PASS: Linux update confirmation/cancel, failure preservation, retry/reopen, Windows in-app update boundary");
+  console.log("PASS: Linux update confirmation/cancel, failure preservation and retry/reopen");
 } finally {
   await browser.close();
 }

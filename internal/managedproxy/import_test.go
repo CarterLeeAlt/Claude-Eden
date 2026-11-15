@@ -38,7 +38,7 @@ func TestHysteria2SubscriptionAliasesPreserveTransportAndPin(t *testing.T) {
 	if hy2["ports"] != "35000-39000" || hy2["fingerprint"] != pin || hy2["mport"] != nil || hy2["pinSHA256"] != nil {
 		t.Fatalf("aliases did not preserve transport and certificate pin: %v", hy2)
 	}
-	if os.Getenv("CAGE_PROXY_INTEGRATION") == "1" {
+	if os.Getenv("EDEN_PROXY_INTEGRATION") == "1" {
 		if err := Validate(context.Background(), profile, s); err != nil {
 			t.Fatal(err)
 		}

@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -23,6 +24,9 @@ func setupFunction(t *testing.T, name string, end string) string {
 }
 
 func TestRepositoryKeyFailurePreservesTrustedFile(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("executes the Linux setup script with POSIX tool fixtures")
+	}
 	for _, mode := range []string{"eof", "empty", "invalid", "success"} {
 		t.Run(mode, func(t *testing.T) {
 			dir := t.TempDir()
@@ -60,7 +64,7 @@ fi
 				}
 			}
 			cmd := exec.Command("bash", "-c", setupFunction(t, "install_repository_key", ")")+`install_repository_key https://example.invalid/key "$KEY_TARGET"`)
-			cmd.Env = append(os.Environ(), "HOME="+dir, "PATH="+dir+":"+os.Getenv("PATH"), "KEY_MODE="+mode, "KEY_TARGET="+key)
+			cmd.Env = append(os.Environ(), "HOME="+dir, "PATH="+dir+":"+os.Getenv("PATH"), "KEY_MODE="+mode, "KEY_TARGET="+key, "TMPDIR="+dir)
 			out, err := cmd.CombinedOutput()
 			data, readErr := os.ReadFile(key)
 			if readErr != nil {
@@ -82,6 +86,9 @@ fi
 }
 
 func TestAPTFailureRecordsOOMWithoutChangingExitCode(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("executes Linux APT and cgroup OOM diagnostics with POSIX tool fixtures")
+	}
 	dir := t.TempDir()
 	commands := map[string]string{
 		"sudo": `#!/bin/sh
@@ -98,9 +105,74 @@ exit 99
 		}
 	}
 	cmd := exec.Command("bash", "-c", "set -euo pipefail\n"+setupFunction(t, "apt_get", "}")+"apt_get install package")
-	cmd.Env = append(os.Environ(), "HOME="+dir, "PATH="+dir+":"+os.Getenv("PATH"), "CLAUDE_CAGE=1")
+	cmd.Env = append(os.Environ(), "HOME="+dir, "PATH="+dir+":"+os.Getenv("PATH"), "WORKBENCH_SETUP=1")
 	out, err := cmd.CombinedOutput()
 	if err == nil || cmd.ProcessState.ExitCode() != 137 || !strings.Contains(string(out), "oom_kill before=3") || !strings.Contains(string(out), "Killed process") {
 		t.Fatalf("lost failure evidence: %v %s", err, out)
+	}
+}
+
+func TestProxySudoersStagingUsesTMPDIRAndPreservesOnFailure(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("executes the Linux setup script with POSIX tool fixtures")
+	}
+	start := strings.Index(SetupScript, "(\n  proxy_sudoers=")
+	if start < 0 {
+		t.Fatal("missing proxy sudoers transaction")
+	}
+	end := strings.Index(SetupScript[start:], "\n)\n")
+	if end < 0 {
+		t.Fatal("missing proxy sudoers transaction end")
+	}
+	for _, mode := range []string{"success", "invalid"} {
+		t.Run(mode, func(t *testing.T) {
+			root := t.TempDir()
+			temporary := filepath.Join(root, "temporary")
+			if err := os.Mkdir(temporary, 0700); err != nil {
+				t.Fatal(err)
+			}
+			target := filepath.Join(root, "installed-sudoers")
+			if err := os.WriteFile(target, []byte("trusted"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			sudo := `#!/bin/sh
+set -eu
+case "$1" in
+  visudo)
+    case "$3" in "$TMPDIR"/agent-vm-proxy.*) ;; *) echo 'sudoers escaped TMPDIR' >&2; exit 43;; esac
+    test "$MODE" = success || exit 42
+    grep -q 'Defaults env_keep' "$3"
+    ;;
+  install)
+    shift
+    while test "$#" -gt 2; do shift; done
+    cp "$1" "$2"
+    ;;
+  *) exit 44;;
+esac
+`
+			if err := os.WriteFile(filepath.Join(root, "sudo"), []byte(sudo), 0755); err != nil {
+				t.Fatal(err)
+			}
+			script := "set -euo pipefail\n" + strings.ReplaceAll(SetupScript[start:start+end+3], "/etc/sudoers.d/10-agent-vm-proxy", target)
+			cmd := exec.Command("bash", "-c", script)
+			cmd.Env = append(os.Environ(), "TMPDIR="+temporary, "PATH="+root+":"+os.Getenv("PATH"), "MODE="+mode)
+			output, err := cmd.CombinedOutput()
+			data, readErr := os.ReadFile(target)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if mode == "success" {
+				if err != nil || !strings.Contains(string(data), "Defaults env_keep") {
+					t.Fatalf("sudoers installation failed: %v %s", err, output)
+				}
+			} else if err == nil || cmd.ProcessState.ExitCode() != 42 || string(data) != "trusted" {
+				t.Fatalf("validation failure replaced sudoers or lost its exit status: %v %s %q", err, output, data)
+			}
+			entries, err := os.ReadDir(temporary)
+			if err != nil || len(entries) != 0 {
+				t.Fatalf("sudoers transaction leaked temporary files: %v %v", entries, err)
+			}
+		})
 	}
 }

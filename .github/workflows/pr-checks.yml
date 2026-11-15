@@ -33,7 +33,7 @@ jobs:
               *) platforms=true ;;
             esac
             case "$path" in
-              README*.md|www/*|assets/*|docs/guide/*|scripts/agent-*.mjs|scripts/verify-macos-release.sh|.github/workflows/www.yml|.github/actions/build-website/*|.github/workflows/pr-checks.yml) website=true ;;
+              README*.md|www/*|assets/*|docs/guide/*|scripts/agent-*.mjs|.github/workflows/www.yml|.github/actions/build-website/*|.github/workflows/pr-checks.yml) website=true ;;
             esac
           done < "$RUNNER_TEMP/pr-files"
           printf 'platforms=%s\nwebsite=%s\n' "$platforms" "$website" >> "$GITHUB_OUTPUT"

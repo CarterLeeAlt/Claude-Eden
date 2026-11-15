@@ -5,12 +5,12 @@ import { writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-const { chromium } = await import(pathToFileURL(process.env.CAGE_NATIVE_DISPLAY_PLAYWRIGHT).href);
+const { chromium } = await import(pathToFileURL(process.env.EDEN_NATIVE_DISPLAY_PLAYWRIGHT).href);
 let input = "";
 for await (const chunk of process.stdin) input += chunk;
 const config = JSON.parse(input);
 const browser = await chromium.launch({
-  executablePath: process.env.CAGE_NATIVE_DISPLAY_CHROMIUM || path.join(process.env["ProgramFiles(x86)"], "Microsoft", "Edge", "Application", "msedge.exe"),
+  executablePath: process.env.EDEN_NATIVE_DISPLAY_CHROMIUM || path.join(process.env["ProgramFiles(x86)"], "Microsoft", "Edge", "Application", "msedge.exe"),
   headless: true,
 });
 const measurements = [], errors = [];
@@ -36,8 +36,8 @@ page.on("websocket", socket => {
 const canvas = page.locator(".remote-canvas canvas:visible").last();
 const execute = promisify(execFile);
 async function cpuSample() {
-  if (!process.env.CAGE_NATIVE_DISPLAY_SAMPLE) return null;
-  const result = await execute("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", process.env.CAGE_NATIVE_DISPLAY_SAMPLE, "-ServiceProcessId", String(process.ppid)]);
+  if (!process.env.EDEN_NATIVE_DISPLAY_SAMPLE) return null;
+  const result = await execute("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", process.env.EDEN_NATIVE_DISPLAY_SAMPLE, "-ServiceProcessId", String(process.ppid)]);
   return JSON.parse(result.stdout.replace(/^\uFEFF/, ""));
 }
 async function measure(name, milliseconds) {
@@ -83,7 +83,7 @@ try {
 
   await point(120, 65);
   const typed = performance.now();
-  await page.keyboard.type("Cage live 123", { delay: 30 });
+  await page.keyboard.type("Workbench live 123", { delay: 30 });
   await page.waitForFunction(() => [...document.querySelectorAll(".remote-canvas canvas")].some(element => {
     if (element.getBoundingClientRect().width < 100 || element.width < 320) return false;
     const pixel = element.getContext("2d").getImageData(20, 20, 1, 1).data;
@@ -131,15 +131,15 @@ try {
   }), null, { timeout: 5000 });
   measurements.push({ name: "resized_edge_click", confirmed: true });
 
-  await page.evaluate(() => { window.cageWindowVisible = false; window.dispatchEvent(new Event("cage-window-visibility")); });
+  await page.evaluate(() => { window.edenWindowVisible = false; window.dispatchEvent(new Event("eden-window-visibility")); });
   await measure("hide_transition", 500);
   const hidden = await measure("hidden", 2000);
   assert.equal(hidden.messages, 0, "hidden workbench retained its frame stream");
-  await page.evaluate(() => { window.cageWindowVisible = true; window.dispatchEvent(new Event("cage-window-visibility")); });
+  await page.evaluate(() => { window.edenWindowVisible = true; window.dispatchEvent(new Event("eden-window-visibility")); });
   await canvas.waitFor();
   const resumed = await measure("resume", 2000);
   assert(resumed.bytes > 0, "restoring the workbench did not deliver pixels");
-  if (process.env.CAGE_NATIVE_DISPLAY_DESKTOP === "1") {
+  if (process.env.EDEN_NATIVE_DISPLAY_DESKTOP === "1") {
     await page.getByRole("navigation", { name: "主导航" }).getByRole("button", { name: "Claude Desktop", exact: true }).click();
     await page.waitForFunction(() => [...document.querySelectorAll('section[aria-label="Claude Desktop"] canvas')].some(element => {
       if (element.getBoundingClientRect().width < 100 || element.width < 320 || element.height < 240) return false;
@@ -153,11 +153,11 @@ try {
     await page.screenshot({ path: path.join(config.evidence, "windows-claude-live.png") });
     const desktop = await measure("claude_visible", 5000);
     assert.equal(desktop.closed, 0, "the official Claude window disconnected while visible");
-    await page.evaluate(() => { window.cageWindowVisible = false; window.dispatchEvent(new Event("cage-window-visibility")); });
+    await page.evaluate(() => { window.edenWindowVisible = false; window.dispatchEvent(new Event("eden-window-visibility")); });
     await measure("claude_hide_transition", 500);
     const desktopHidden = await measure("claude_hidden", 2000);
     assert.equal(desktopHidden.messages, 0);
-    await page.evaluate(() => { window.cageWindowVisible = true; window.dispatchEvent(new Event("cage-window-visibility")); });
+    await page.evaluate(() => { window.edenWindowVisible = true; window.dispatchEvent(new Event("eden-window-visibility")); });
     const desktopResumed = await measure("claude_resume", 2000);
     assert(desktopResumed.bytes > 0);
   }

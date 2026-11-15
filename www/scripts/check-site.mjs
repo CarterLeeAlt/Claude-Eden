@@ -40,6 +40,7 @@ for (const file of htmlFiles) {
 const published = JSON.parse(fs.readFileSync(path.join(root, 'www/src/data/release.json'), 'utf8'));
 const downloads = published.platforms;
 assert.ok(downloads, 'Per-platform release metadata is missing');
+assert.ok(Object.keys(downloads).every(platform => platform === 'windows'), 'Retired product download metadata remains');
 for (const code of codes) {
   const html = fs.readFileSync(path.join(dist,code === 'zh' ? '' : code,'index.html'),'utf8');
   const picker = html.match(/<details\b[^>]*id="site-language"[^>]*>([\s\S]*?)<\/details>/)?.[1];
@@ -65,25 +66,23 @@ for (const code of codes) {
   assert.ok(!downloadSection?.includes('vnull') && !downloadSection?.includes('CLAUDE CAGE'), `${code}: stale or fabricated release label`);
   assert.equal([...html.matchAll(/<a\b[^>]*\bdata-download-open(?:\s|>)/g)].length, 3, `${code}: all download entries must open the platform chooser`);
   assert.ok(html.includes('aria-labelledby="platform-title"'), `${code}: platform dialog has no accessible title`);
-  assert.ok(!html.includes('data-platform="iOS"'), `${code}: retired mobile platform is advertised`);
-  for (const platform of ['Windows', 'Android']) {
+  assert.ok(!html.includes('data-platform="iOS"') && !html.includes('data-platform="Android"'), `${code}: retired mobile platform is advertised`);
+  for (const platform of ['Windows']) {
     assert.ok(html.includes(`data-platform="${platform}"`), `${code}: missing ${platform} choice`);
   }
   const windowsLinks = [...html.matchAll(/href="([^"]*windows-amd64-setup\.exe)"/g)].map(match => match[1]);
   assert.deepEqual(windowsLinks, downloads.windows && !downloads.windows.unsigned ? [downloads.windows.downloadURL, downloads.windows.downloadURL] : [], `${code}: Windows download must match the verified optional release metadata`);
-  for (const [suffix, url] of [['android-arm64.apk', downloads.android?.downloadURL], ['windows-amd64-setup-unsigned.exe', downloads.windows?.unsigned ? downloads.windows.downloadURL : undefined]]) {
+  for (const [suffix, url] of [['windows-amd64-setup-unsigned.exe', downloads.windows?.unsigned ? downloads.windows.downloadURL : undefined]]) {
     const links = [...html.matchAll(/href="([^"]+)"/g)].map(match => match[1]).filter(link => link.endsWith(suffix));
     assert.deepEqual(links, url ? [url, url] : [], `${code}: ${suffix} must match verified metadata`);
   }
-  for (const [name, key] of Object.entries({ Windows: 'windows', Android: 'android' })) {
+  for (const [name, key] of Object.entries({ Windows: 'windows' })) {
     const entry = downloads[key];
     if (!entry) continue;
     const article = html.match(new RegExp(`<article\\b[^>]*data-platform="${name}"[^>]*>([\\s\\S]*?)<\\/article>`))?.[1];
     assert.ok(article?.includes(` · v${entry.version}</bdi>`), `${code}: ${name} version must match its package`);
     assert.ok(article?.includes(`href="${entry.releaseURL}"`), `${code}: ${name} notes must match its package`);
   }
-  const android = html.match(/<article\b[^>]*data-platform="Android"[^>]*>([\s\S]*?)<\/article>/)?.[1];
-  assert.ok(android?.includes('/platforms/android.svg'), `${code}: Android platform icon is missing`);
 }
 assert.ok(!fs.existsSync(path.join(dist,'en/index.html')), 'Old English page still present');
 console.log(`Verified ${codes.length} README languages, dropdowns, directions and local assets.`);
@@ -106,6 +105,7 @@ for (const relative of guideFiles) {
   const current = `/docs/${relative.replace(/index\.html$/, '').replaceAll(path.sep, '/')}`;
   for (const match of html.matchAll(/href="([^\"]+)"/g)) {
     const href = match[1].replaceAll('&amp;', '&');
+    assert.ok(!/^(?:\.\.?\/)*[^:#]*\.md(?:#|$)/.test(href), `${relative}: repository Markdown link was not resolved ${href}`);
     if (!href.startsWith('/') && !href.startsWith('#')) continue;
     const url = new URL(href, `https://example.test${current}`);
     const local = decodeURIComponent(url.pathname.slice(1));
@@ -125,6 +125,8 @@ for (const code of codes) {
 console.log(`Verified ${guideFiles.length} user guide pages, local links, anchors, search and homepage entries.`);
 
 const agentGuide = fs.readFileSync(path.join(dist, 'agent.md'), 'utf8');
+assert.ok(agentGuide.includes('Debian 13') && agentGuide.includes('Windows 10'), 'Agent guide must describe the local Debian product');
+assert.ok(!/guest\.reselect|client\.hosts|mobile\.get|\.eden\/client|Linux 云端/.test(agentGuide), 'Agent guide advertises retired operations');
 assert.equal(agentGuide, fs.readFileSync(path.join(dist, 'llms-full.txt'), 'utf8'), 'Agent text copies must share the same source');
 assert.ok(agentGuide.includes('agent capabilities') && agentGuide.includes('job_not_found'), 'Agent guide lacks discovery or recovery contract');
 assert.ok(!agentGuide.includes('title: 让 Agent'), 'Agent Markdown must omit frontmatter');
@@ -134,5 +136,8 @@ for (const name of ['agent.md', 'llms.txt', 'agent-bootstrap.mjs', 'eden-install
   assert.ok(text.includes('CarterLeeAlt/Claude-Eden'), `${name}: current repository missing`);
   assert.ok(!/https:\/\/(?:claude-cage\.com|claude-eden\.com|lee-xeo\.github\.io)/.test(text), `${name}: obsolete or unverified website URL remains`);
 }
+const discovery = fs.readFileSync(path.join(dist, 'llms.txt'), 'utf8');
+assert.ok(discovery.includes('Windows 10') && discovery.includes('Debian 13'), 'Agent discovery must describe the local Debian product');
+assert.ok(!/Android|Linux cloud|lightweight client|deploy\/cloud|--scope client/.test(discovery), 'Agent discovery advertises a retired product');
 assert.ok(fs.readFileSync(path.join(dist, 'docs/agent/index.html'), 'utf8').includes('JSON 结果和异步任务'), 'Rendered Agent guide missing');
 console.log('Verified Agent Markdown, discovery, download helper and rendered guide.');

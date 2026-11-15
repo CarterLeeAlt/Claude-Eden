@@ -8,7 +8,7 @@ import {
   sameTheme,
 } from "../src/appearance-state.mjs";
 const output = fileURLToPath(
-  new URL("../../docs/test-reports/2026-11-02-themes/", import.meta.url),
+  new URL("../../.tmp/guest-neutralization/ui-eden/screenshots/themes/", import.meta.url),
 );
 await fs.mkdir(output, { recursive: true });
 let imported = "",
@@ -95,7 +95,7 @@ try {
   await page.getByRole("button", { name: "导出主题", exact: true }).click();
   await page.getByRole("status").filter({ hasText: "主题已导出" }).waitFor();
   assert.ok(sameTheme(parseThemeDocument(exported.text), savedTheme));
-  assert.equal(exported.filename, "森林日光.cage-theme.json");
+  assert.equal(exported.filename, "森林日光.eden-theme.json");
   cancelExport = true;
   await page.getByRole("button", { name: "导出主题", exact: true }).click();
   await page.waitForFunction(
@@ -113,7 +113,7 @@ try {
   imported = "";
   await page.getByRole("button", { name: "导入主题", exact: true }).click();
   assert.equal(JSON.stringify(state.appearance), original);
-  imported = '{"format":"cage-theme","version":2}';
+  imported = '{"format":"eden-theme","version":2}';
   await page.getByRole("button", { name: "导入主题", exact: true }).click();
   await page
     .getByRole("alert")
@@ -187,12 +187,12 @@ try {
   );
   // Exercise the actual browser file input and download fallback as well.
   await page.evaluate(() => {
-    delete window.webkit;
+    delete window.edenNativeBridge;
   });
   const downloadEvent = page.waitForEvent("download");
   await page.getByRole("button", { name: "导出主题", exact: true }).click();
   const download = await downloadEvent;
-  const path = output + "browser-export.cage-theme.json";
+  const path = output + "browser-export.eden-theme.json";
   await download.saveAs(path);
   const data = parseThemeDocument(await fs.readFile(path, "utf8"));
   assert.ok(sameTheme(data, state.appearance));
@@ -225,10 +225,10 @@ try {
   await saved();
   await page.getByRole("button", { name: "返回工作台", exact: true }).click();
   await page
-    .getByRole("button", { name: "启动 Cage 环境", exact: true })
+    .getByRole("button", { name: "启动 Eden 环境", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "新建终端", exact: true })
+    .getByRole("button", { name: /^在 .* 新建终端$/ })
     .first()
     .click();
   await page.getByRole("menuitem", { name: "普通终端", exact: true }).click();

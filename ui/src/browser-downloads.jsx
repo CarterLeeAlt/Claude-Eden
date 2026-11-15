@@ -17,7 +17,6 @@ import { api, native, nativeAvailable } from "./api";
 import {
   assertConnection,
   getClientContext,
-  isRemoteClient,
   runtimeURL,
 } from "./client-context.mjs";
 
@@ -131,10 +130,10 @@ export function useDesktopFiles(ready, onStatus, desktopVisible) {
               await api("/input/files/desktop/open", {
                 id: request.id,
                 stage: "complete",
-                error: "请在 Cage 桌面应用中打开文件",
+                error: "请在 Eden 桌面应用中打开文件",
               });
               throw new Error(
-                "请在 Cage 桌面应用中打开文件，或从下载列表保存文件",
+                "请在 Eden 桌面应用中打开文件，或从下载列表保存文件",
               );
             }
             await native("desktopFileAction", { id: request.id });
@@ -178,7 +177,7 @@ async function saveDownload(item) {
   });
   if (result?.path)
     window.dispatchEvent(
-      new CustomEvent("cage-download-saved", { detail: result }),
+      new CustomEvent("eden-download-saved", { detail: result }),
     );
   return result;
 }
@@ -190,7 +189,6 @@ export function BrowserDownloads({
   menu = false,
   anchorRef,
 }) {
-  const remote = isRemoteClient();
   const panelId = useId();
   const trigger = useRef(),
     panel = useRef();
@@ -236,13 +234,13 @@ export function BrowserDownloads({
     document.addEventListener("pointerdown", dismiss);
     document.addEventListener("focusin", dismiss);
     document.addEventListener("keydown", key, true);
-    document.addEventListener("cage-close-modal", restoreFocus);
+    document.addEventListener("eden-close-modal", restoreFocus);
     window.addEventListener("resize", position);
     return () => {
       document.removeEventListener("pointerdown", dismiss);
       document.removeEventListener("focusin", dismiss);
       document.removeEventListener("keydown", key, true);
-      document.removeEventListener("cage-close-modal", restoreFocus);
+      document.removeEventListener("eden-close-modal", restoreFocus);
       window.removeEventListener("resize", position);
     };
   }, [open, anchorRef]);
@@ -252,8 +250,8 @@ export function BrowserDownloads({
         .then((value) => setSaved(Array.isArray(value) ? value : []))
         .catch(() => {});
     refresh();
-    window.addEventListener("cage-download-saved", refresh);
-    return () => window.removeEventListener("cage-download-saved", refresh);
+    window.addEventListener("eden-download-saved", refresh);
+    return () => window.removeEventListener("eden-download-saved", refresh);
   }, [open]);
   const items = downloads.map((item) => {
     const local = saved.find((entry) => entry.id === item.id);
@@ -274,8 +272,8 @@ export function BrowserDownloads({
   const failed = items.some((item) => item.state === "failed" || item.openError);
   const labels = {
     downloading: "正在下载",
-    saving: remote ? "正在保存到云端" : "正在保存到本机",
-    saved: remote ? "已保存到云端" : "已保存到本机",
+    saving: "正在保存到本机",
+    saved: "已保存到本机",
     failed: "保存失败",
     canceled: "下载已取消",
   };
@@ -352,11 +350,6 @@ export function BrowserDownloads({
                       </span>
                       {item.path && (
                         <span className="download-path" title={item.path}>
-                          {remote
-                            ? item.localSaved
-                              ? "本机："
-                              : "云端："
-                            : ""}
                           {item.path}
                         </span>
                       )}
@@ -396,7 +389,6 @@ export function BrowserDownloads({
                         )}
                         {nativeAvailable() &&
                           item.state === "saved" &&
-                          (!remote || item.localSaved) &&
                           [
                             ["open", "打开文件"],
                             ["reveal", "在文件夹中显示"],

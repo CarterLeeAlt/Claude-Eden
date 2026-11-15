@@ -4,6 +4,8 @@ param(
     [switch]$Release,
     [switch]$Sign,
     [switch]$SkipUI,
+    # Reuse Linux helper binaries; the Debian template closure is always refreshed.
+    [switch]$SkipVMAssets,
     [string]$OutputDirectory,
     [string]$DependencyCache
 )
@@ -13,13 +15,14 @@ if (-not $OutputDirectory) { $OutputDirectory = Join-Path $repository '_output/w
 if (-not $DependencyCache) { $DependencyCache = Join-Path $repository '_output/windows-deps' }
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath (Join-Path $OutputDirectory 'Uninstall.exe')) { throw 'Do not build over an installed application. Choose a separate output directory and use the installer to upgrade.' }
-$version = Get-CageVersion $repository
+$version = Get-EdenVersion $repository
 $signed = $Release -or $Sign
 if ($signed) { Assert-WindowsSigningConfiguration }
 $go = Get-BuildCommand @('go')
 $dotnet = Get-BuildCommand @('dotnet')
 $node = Get-BuildCommand @('node')
-$npm = Get-BuildCommand @('npm.cmd', 'npm')
+$npm = Join-Path (Split-Path $node -Parent) 'node_modules/npm/bin/npm-cli.js'
+if (-not (Test-Path -LiteralPath $npm -PathType Leaf)) { throw 'The selected workspace Node toolchain must include node_modules/npm/bin/npm-cli.js.' }
 $sevenZip = Get-BuildCommand @('7z.exe', '7zz', '7z')
 $dependencies = Get-Content -LiteralPath (Join-Path $repository 'packaging/windows/dependencies.json') -Raw | ConvertFrom-Json
 $stage = Join-Path $repository ("_output/windows-build-" + [guid]::NewGuid().ToString('N'))
@@ -28,63 +31,58 @@ New-Item -ItemType Directory -Path $stage -Force | Out-Null
 Push-Location $repository
 try {
     if (-not $SkipUI) {
-        Invoke-BuildTool $npm @('--prefix', 'ui', 'ci', '--no-audit', '--no-fund')
-        Invoke-BuildTool $npm @('run', '--prefix', 'ui', 'build')
+        Invoke-BuildTool $node @($npm, '--prefix', 'ui', 'ci', '--no-audit', '--no-fund')
+        Invoke-BuildTool $node @($npm, 'run', '--prefix', 'ui', 'build')
     } else {
         Invoke-BuildTool $node @('ui/scripts/verify-build.mjs')
     }
     $limaVersion = (Get-Content 'internal/limaembed/lima-version' -Raw).Trim()
-    $assets = Join-Path $repository 'internal/limaembed/assets'
-    $guest = Join-Path $assets 'lima-guestagent.Linux-x86_64'
-    $env:GOOS = 'linux'; $env:GOARCH = 'amd64'; $env:CGO_ENABLED = '0'
-    Invoke-BuildTool $go @('build', '-trimpath', '-ldflags', "-s -w -X github.com/lima-vm/lima/v2/pkg/version.Version=$limaVersion", '-o', $guest, 'github.com/lima-vm/lima/v2/cmd/lima-guestagent')
-    $inputStream = [IO.File]::OpenRead($guest)
-    $outputStream = [IO.File]::Create("$guest.gz")
-    try {
-        $gzip = [IO.Compression.GZipStream]::new($outputStream, [IO.Compression.CompressionLevel]::SmallestSize, $true)
-        try { $inputStream.CopyTo($gzip) } finally { $gzip.Dispose() }
-    } finally { $inputStream.Dispose(); $outputStream.Dispose() }
-    Remove-Item -LiteralPath $guest
-    New-Item -ItemType Directory -Path (Join-Path $assets 'templates') -Force | Out-Null
-    Copy-Item 'third_party/lima/templates/*' (Join-Path $assets 'templates') -Recurse -Force
+    if (-not $SkipVMAssets) {
+        $assets = Join-Path $repository 'internal/limaembed/assets'
+        $guest = Join-Path $assets 'lima-guestagent.Linux-x86_64'
+        $env:GOOS = 'linux'; $env:GOARCH = 'amd64'; $env:CGO_ENABLED = '0'
+        Invoke-BuildTool $go @('build', '-trimpath', '-ldflags', "-s -w -X github.com/lima-vm/lima/v2/pkg/version.Version=$limaVersion", '-o', $guest, 'github.com/lima-vm/lima/v2/cmd/lima-guestagent')
+        $inputStream = [IO.File]::OpenRead($guest)
+        $outputStream = [IO.File]::Create("$guest.gz")
+        try {
+            $gzip = [IO.Compression.GZipStream]::new($outputStream, [IO.Compression.CompressionLevel]::SmallestSize, $true)
+            try { $inputStream.CopyTo($gzip) } finally { $gzip.Dispose() }
+        } finally { $inputStream.Dispose(); $outputStream.Dispose() }
+        Remove-Item -LiteralPath $guest
+    }
+    Invoke-BuildTool $node @('scripts/prepare-lima-templates.mjs', (Join-Path $repository 'internal/limaembed/assets/templates'))
     $app = Join-Path $stage 'app'
     $resources = Join-Path $app 'resources'
     New-Item -ItemType Directory -Path $resources -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $resources 'runtime') -Force | Out-Null
-    $guestSetup = New-Item -ItemType Directory -Path (Join-Path $resources 'guest-os')
-    Copy-Item -LiteralPath 'scripts/guest-os/new-windows-test-vm.ps1' -Destination (Join-Path $guestSetup.FullName 'new-windows-guest.ps1')
-    Copy-Item -LiteralPath 'scripts/guest-os/windows-host-image.ps1' -Destination $guestSetup.FullName
-    foreach ($file in @('windows-guest-media.ps1', 'install-guest-powershell.cmd', 'setup-windows-guest.ps1', 'complete-windows-guest.ps1', 'install-windows-host-manager.ps1', 'install-windows-workbench-components.ps1', 'initialize-windows-workbench-user.ps1', 'windows-host-enrollment.ps1', 'maintain-windows-workbench.ps1', 'update-windows-workbench-components.ps1', 'publish-windows-component-manifest.ps1', 'windows-workbench-packages.ps1')) {
-        Copy-Item -LiteralPath (Join-Path 'scripts/guest-os' $file) -Destination $guestSetup.FullName
+    if (-not $SkipVMAssets) {
+        $tailnetAssets = Join-Path $repository 'internal/tailnetassets/assets'
+        New-Item -ItemType Directory -Path $tailnetAssets -Force | Out-Null
+        foreach ($tailnetArch in @('amd64','arm64')) {
+            $env:GOOS = 'linux'; $env:GOARCH = $tailnetArch; $env:CGO_ENABLED = '0'
+            $tailnetOutput = Join-Path $stage ('workbench-tailnet-linux-'+$tailnetArch)
+            Push-Location (Join-Path $repository 'tools/tailnet')
+            try { Invoke-BuildTool $go @('build','-trimpath','-ldflags','-s -w','-o',$tailnetOutput,'.') } finally { Pop-Location }
+            $source = [IO.File]::OpenRead($tailnetOutput)
+            $target = [IO.File]::Create((Join-Path $tailnetAssets ('workbench-tailnet-linux-'+$tailnetArch+'.gz')))
+            try { $compressed = [IO.Compression.GZipStream]::new($target,[IO.Compression.CompressionMode]::Compress); try { $source.CopyTo($compressed) } finally { $compressed.Dispose() } } finally { $source.Dispose(); $target.Dispose() }
+        }
+        Write-Host 'Embedded VM assets refreshed: Lima guest agent, Debian 13 templates, Tailscale amd64/arm64.'
+    } else {
+        Write-Host 'Reusing prepared VM assets; the built backend will verify the embedded payloads.'
     }
-    $bridgeSetup = New-Item -ItemType Directory -Path (Join-Path $guestSetup.FullName 'guest-clipboard-windows')
-    foreach ($file in @('install.ps1', 'install-network.ps1')) {
-        Copy-Item -LiteralPath (Join-Path 'scripts/guest-os/guest-clipboard-windows' $file) -Destination $bridgeSetup.FullName
-    }
-    & (Join-Path $PSScriptRoot 'guest-os/build-windows-workbench-payload.ps1') -Destination (Join-Path $guestSetup.FullName 'payload')
-    $tailnetAssets = Join-Path $repository 'internal/tailnetassets/assets'
-    New-Item -ItemType Directory -Path $tailnetAssets -Force | Out-Null
-    foreach ($tailnetArch in @('amd64','arm64')) {
-        $env:GOOS = 'linux'; $env:GOARCH = $tailnetArch; $env:CGO_ENABLED = '0'
-        $tailnetOutput = Join-Path $stage ('cage-tailnet-linux-'+$tailnetArch)
-        Push-Location (Join-Path $repository 'tools/tailnet')
-        try { Invoke-BuildTool $go @('build','-trimpath','-ldflags','-s -w','-o',$tailnetOutput,'.') } finally { Pop-Location }
-        $source = [IO.File]::OpenRead($tailnetOutput)
-        $target = [IO.File]::Create((Join-Path $tailnetAssets ('cage-tailnet-linux-'+$tailnetArch+'.gz')))
-        try { $compressed = [IO.Compression.GZipStream]::new($target,[IO.Compression.CompressionMode]::Compress); try { $source.CopyTo($compressed) } finally { $compressed.Dispose() } } finally { $source.Dispose(); $target.Dispose() }
-    }
+    $env:CGO_ENABLED = '0'
     $env:GOARCH = 'amd64'
     $env:GOOS = 'windows'
     $tags = 'external_hcs,external_wsl2,yq_noxml,yq_nolua,yq_noini,yq_nohcl,yq_notoml,yq_noprops,yq_nocsv,yq_nouri,yq_nobase64,yq_nosh,yq_noshell'
     $ldflags = "-s -w -X github.com/sylvinus/agent-vm/internal/version.Version=$version -X github.com/lima-vm/lima/v2/pkg/version.Version=$limaVersion"
-    Invoke-BuildTool $go @('build', '-trimpath', '-tags', $tags, '-ldflags', $ldflags, '-o', (Join-Path $resources 'cage.exe'), './cmd/cage')
-    Invoke-BuildTool (Join-Path $resources 'cage.exe') @('verify-vm-assets')
-    Invoke-BuildTool (Join-Path $resources 'cage.exe') @('verify-web-assets')
-    Invoke-BuildTool $dotnet @('publish', 'desktop/windows/Cage.Windows.csproj', '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true',
+    Invoke-BuildTool $go @('build', '-trimpath', '-tags', $tags, '-ldflags', $ldflags, '-o', (Join-Path $resources 'eden.exe'), './cmd/eden')
+    Invoke-BuildTool (Join-Path $resources 'eden.exe') @('verify-vm-assets')
+    Invoke-BuildTool (Join-Path $resources 'eden.exe') @('verify-web-assets')
+    $dotnetArtifacts = Join-Path $repository '_output/windows-dotnet'
+    Invoke-BuildTool $dotnet @('publish', 'desktop/windows/Eden.Windows.csproj', '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '--artifacts-path', $dotnetArtifacts,
         '-p:EnableWindowsTargeting=true', '-p:PublishSingleFile=true', '-p:RestoreLockedMode=true', "-p:Version=$version", "-p:InformationalVersion=$version", '-o', $app)
     Get-ChildItem -LiteralPath $app -File | Where-Object { $_.Extension -in @('.pdb', '.xml') } | Remove-Item -Force
-    node scripts/bundle-cloud-kit.mjs $resources
-    if ($LASTEXITCODE -ne 0) { throw "Cloud deployment kit verification failed." }
     $coreArchive = Get-VerifiedDependency $dependencies.mihomo $DependencyCache
     $core = Join-Path $stage 'mihomo'
     Expand-BuildArchive $coreArchive $core $sevenZip
@@ -96,17 +94,17 @@ try {
     Expand-BuildArchive $sshArchive $ssh $sevenZip
     $sshTarget = Join-Path $resources 'runtime/openssh'
     Copy-Item -LiteralPath (Join-Path $ssh 'OpenSSH-Win64') -Destination $sshTarget -Recurse
-    # No SSH service is installed. Only the client is used by Cage/Lima.
+    # No SSH service is installed. Only the client is used by Eden/Lima.
     foreach ($serverFile in @('sshd.exe', 'sshd-session.exe', 'sshd-auth.exe', 'install-sshd.ps1', 'uninstall-sshd.ps1')) {
         Remove-Item -LiteralPath (Join-Path $sshTarget $serverFile) -Force -ErrorAction SilentlyContinue
     }
     $qemuArchive = Get-VerifiedDependency $dependencies.qemu $DependencyCache
     $qemuTarget = Join-Path $resources 'runtime/qemu'
     Expand-BuildArchive $qemuArchive $qemuTarget $sevenZip
-    $qemuBuilt = Join-Path $DependencyCache 'qemu-cage'
+    $qemuBuilt = Join-Path $DependencyCache 'qemu-eden'
     & (Join-Path $PSScriptRoot 'build-qemu-windows.ps1') -DependencyCache $DependencyCache -OutputDirectory $qemuBuilt
-    $runtimeManifest = Get-Content (Join-Path $qemuBuilt 'cage-build.json') -Raw | ConvertFrom-Json
-    $ownedRuntime = @($runtimeManifest.files | ForEach-Object { $_.name }) + @('cage-build.json')
+    $runtimeManifest = Get-Content (Join-Path $qemuBuilt 'eden-build.json') -Raw | ConvertFrom-Json
+    $ownedRuntime = @($runtimeManifest.files | ForEach-Object { $_.name }) + @('eden-build.json')
     foreach ($name in $ownedRuntime) {
         if ([IO.Path]::GetFileName($name) -ne $name) { throw 'Invalid QEMU runtime manifest path.' }
         Copy-Item -LiteralPath (Join-Path $qemuBuilt $name) -Destination $qemuTarget -Force
@@ -147,7 +145,7 @@ try {
     Copy-Item -LiteralPath $coreLicense -Destination (Join-Path $coreNotices 'LICENSE')
     [IO.File]::WriteAllText((Join-Path $coreNotices 'NOTICE'), "Mihomo $($dependencies.mihomo.version), unmodified separate executable.`nSource: $($dependencies.mihomo.source)`nLicense: GPL-3.0; corresponding source accompanies the installer.`n")
     # Runtime packs and WebView2 are absent from the frontend license collector.
-    $resolvedAssets = Get-Content -LiteralPath 'desktop/windows/obj/project.assets.json' -Raw | ConvertFrom-Json
+    $resolvedAssets = Get-Content -LiteralPath (Join-Path $dotnetArtifacts 'obj/Eden.Windows/project.assets.json') -Raw | ConvertFrom-Json
     $nuget = @($resolvedAssets.packageFolders.PSObject.Properties.Name)[0]
     $runtimeVersion = $dependencies.dotnet.runtimeVersion
     $runtimePacks = @($resolvedAssets.project.frameworks.PSObject.Properties.Value.downloadDependencies |
@@ -168,20 +166,21 @@ try {
     Copy-Item -LiteralPath 'packaging/windows/dependencies.json' -Destination (Join-Path $resources 'dependencies.json')
     Copy-Item -LiteralPath 'packaging/windows/README.txt' -Destination (Join-Path $app 'README.txt')
     Copy-Item -LiteralPath 'LICENSE' -Destination (Join-Path $app 'LICENSE.txt')
-    [IO.File]::WriteAllText((Join-Path $app 'Cage.install-id'), 'io.github.lee-xeo.claude-cage')
+    [IO.File]::WriteAllText((Join-Path $app 'Eden.install-id'), 'io.github.carterleealt.claude-eden')
     [IO.File]::WriteAllText((Join-Path $app 'version.txt'), $version)
     if ($signed) {
         $signTool = Get-SigningTool
-        foreach ($file in @('Cage.exe', 'resources/cage.exe', 'resources/mihomo.exe')) { Sign-CageFile (Join-Path $app $file) $signTool }
+        foreach ($file in @('Eden.exe', 'resources/eden.exe', 'resources/mihomo.exe')) { Sign-EdenFile (Join-Path $app $file) $signTool }
     } else {
-        [IO.File]::WriteAllText((Join-Path $app 'DEVELOPMENT-BUILD.txt'), "Unsigned development build. Automatic update installation is disabled. Windows 10/11 runtime acceptance is still required.`n")
+        [IO.File]::WriteAllText((Join-Path $app 'DEVELOPMENT-BUILD.txt'), "Unsigned development build. Automatic update installation is disabled. Runtime acceptance on the target Windows 10 system is still required.`n")
     }
     Assert-WindowsWorkbench $app
+    Invoke-BuildTool $node @('scripts/generate-windows-cleanup.mjs', $app)
     $previousOutput = $null
     if (Test-Path -LiteralPath $OutputDirectory) {
-        $marker = Join-Path $OutputDirectory 'Cage.install-id'
-        if (-not (Test-Path -LiteralPath $marker) -or (Get-Content -LiteralPath $marker -Raw) -ne 'io.github.lee-xeo.claude-cage') {
-            throw 'Output directory exists and is not a Cage build.'
+        $marker = Join-Path $OutputDirectory 'Eden.install-id'
+        if (-not (Test-Path -LiteralPath $marker) -or (Get-Content -LiteralPath $marker -Raw) -ne 'io.github.carterleealt.claude-eden') {
+            throw 'Output directory exists and is not a Claude Eden build.'
         }
         $previousOutput = $OutputDirectory + '.previous-' + [guid]::NewGuid().ToString('N')
         Move-Item -LiteralPath $OutputDirectory -Destination $previousOutput

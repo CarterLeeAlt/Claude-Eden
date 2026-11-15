@@ -2,16 +2,16 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { chromium } = require(
-  process.env.CAGE_PLAYWRIGHT_MODULE || "playwright",
+  process.env.EDEN_PLAYWRIGHT_MODULE || "playwright",
 );
 const browser = await chromium.launch({
   headless: true,
-  executablePath: process.env.CAGE_TEST_BROWSER_PATH,
+  executablePath: process.env.EDEN_TEST_BROWSER_PATH,
 });
 const page = await browser.newPage();
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
-const origin = process.env.CAGE_UI_URL || "http://127.0.0.1:5173";
+const origin = process.env.EDEN_UI_URL || "http://127.0.0.1:5173";
 const received = [];
 let release,
   fail = false;
@@ -28,7 +28,7 @@ await page.route("**/api/input/image", async (route) => {
       ? { status: 502, contentType: "text/plain; charset=utf-8", body: "测试：图片传递失败" }
       : {
           json: {
-            path: "/home/cage/.local/share/cage/attachments/image-test.png",
+            path: "/home/developer/.local/share/workbench/attachments/image-test.png",
             ok: true,
           },
         },
@@ -92,28 +92,28 @@ try {
     const rfb = new EventTarget(),
       container = document.getElementById("remote"),
       order = [];
-    for (const name of ["_cageQueueInput", "cagePasteContent", "sendKey"])
+    for (const name of ["_workbenchQueueInput", "workbenchPasteContent", "sendKey"])
       rfb[name] = RFB.prototype[name].bind(rfb);
-    rfb.cageSetKeyboardTarget = (target) => {
+    rfb.workbenchSetKeyboardTarget = (target) => {
       rfb.target = target;
     };
     rfb.focus = () => rfb.target?.focus();
-    rfb._cageRunInput = (action) => action();
-    rfb._cageSendKey = (sym) => order.push(sym);
-    rfb._cagePasteText = (text) => {
+    rfb._workbenchRunInput = (action) => action();
+    rfb._workbenchSendKey = (sym) => order.push(sym);
+    rfb._workbenchPasteText = (text) => {
       order.push(text);
       return Promise.resolve();
     };
-    rfb.cagePasteText = (text) =>
-      rfb._cageQueueInput(() => rfb._cagePasteText(text));
+    rfb.workbenchPasteText = (text) =>
+      rfb._workbenchQueueInput(() => rfb._workbenchPasteText(text));
     let active = true;
     const input = installRemoteInput({
       events: rfb,
-      setKeyboardTarget: target => rfb.cageSetKeyboardTarget(target),
+      setKeyboardTarget: target => rfb.workbenchSetKeyboardTarget(target),
       sendKey: (...key) => rfb.sendKey(...key),
       focus: () => rfb.focus(),
-      pasteText: text => rfb.cagePasteText(text),
-      runKeyAction: action => rfb._cageQueueInput(() => action((...key) => rfb._cageSendKey(...key))),
+      pasteText: text => rfb.workbenchPasteText(text),
+      runKeyAction: action => rfb._workbenchQueueInput(() => action((...key) => rfb._workbenchSendKey(...key))),
     }, container, {
       mode: () => "mac",
       isActive: () => active,
@@ -123,7 +123,7 @@ try {
       },
       onFallback() {},
       pasteContent: (content) =>
-        rfb.cagePasteContent(
+        rfb.workbenchPasteContent(
           content,
           async (payload) => {
             await sendImage(payload.files ? await imagePayload(payload.files[0]) : payload, "browser", "tab-1");
@@ -142,7 +142,7 @@ try {
     };
     rfb.focus();
   });
-  await imageEvent("[aria-label='Cage 网页输入']", "paste");
+  await imageEvent("[aria-label='Eden 网页输入']", "paste");
   await poll(() => received.length === 1);
   await page.evaluate(() => probe.rfb.sendKey(0xff0d, "Enter", true));
   assert.deepEqual(await page.evaluate(() => probe.order), []);
@@ -169,7 +169,7 @@ try {
     const delayed = new Promise((resolve) => {
       finish = resolve;
     });
-    const pending = probe.rfb.cagePasteContent(
+    const pending = probe.rfb.workbenchPasteContent(
       delayed,
       () => {
         throw new Error("stale image was sent");
@@ -211,7 +211,7 @@ try {
   assert.deepEqual(
     messages.filter((m) => m.type === "input").map((m) => m.data),
     [
-      "\x1b[200~'/home/cage/.local/share/cage/attachments/image-test.png' \x1b[201~",
+      "\x1b[200~'/home/developer/.local/share/workbench/attachments/image-test.png' \x1b[201~",
       "\r",
     ],
   );

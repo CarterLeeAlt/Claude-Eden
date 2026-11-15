@@ -24,10 +24,10 @@ func TestImageInput(t *testing.T) {
 	l := newTestLima(t)
 	state := t.TempDir()
 	t.Setenv("AGENT_VM_STATE_DIR", state)
-	if port := os.Getenv("CAGE_TEST_PROXY_PORT"); port != "" {
+	if port := os.Getenv("EDEN_TEST_PROXY_PORT"); port != "" {
 		n, err := strconv.Atoi(port)
 		if err != nil || n < 1 || n > 65535 {
-			t.Fatal("invalid CAGE_TEST_PROXY_PORT")
+			t.Fatal("invalid EDEN_TEST_PROXY_PORT")
 		}
 		if err := os.WriteFile(filepath.Join(state, "network"), []byte("allow 127.0.0.1:"+port+"\n"), 0600); err != nil {
 			t.Fatal(err)
@@ -60,11 +60,11 @@ func TestImageInput(t *testing.T) {
 		t.Log(text)
 	}
 	run("sudo apt-get update -qq && sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libgtk-3-0 xdotool xvfb xauth python3-gi gir1.2-gtk-3.0", nil)
-	helper, err := os.ReadFile("../cage/image-input.py")
+	helper, err := os.ReadFile("../eden/image-input.py")
 	if err != nil {
 		t.Fatal(err)
 	}
-	run("cat > /tmp/cage-image-input.py", helper)
+	run("cat > /tmp/workbench-image-input.py", helper)
 	run("xvfb-run -a python3 -", []byte(imageInputAcceptance))
 }
 
@@ -84,7 +84,7 @@ images=[png(1),png(2)]
 received=[]
 errors=[]
 window=Gtk.Window()
-window.set_title('Cage image input test')
+window.set_title('Workbench image input test')
 field=Gtk.TextView()
 window.add(field)
 def key(_widget,event):
@@ -98,11 +98,11 @@ window.show_all()
 field.grab_focus()
 def worker():
     try:
-        subprocess.run(['xdotool','search','--name','Cage image input test','windowfocus','--sync'],check=True,timeout=3)
+        subprocess.run(['xdotool','search','--name','Workbench image input test','windowfocus','--sync'],check=True,timeout=3)
         for image in images:
-            result=subprocess.run(['python3','/tmp/cage-image-input.py','paste'],input=image,capture_output=True,timeout=15)
+            result=subprocess.run(['python3','/tmp/workbench-image-input.py','paste'],input=image,capture_output=True,timeout=15)
             assert result.returncode==0,(result.returncode,result.stderr)
-        result=subprocess.run(['python3','/tmp/cage-image-input.py','save'],input=images[0],capture_output=True,check=True)
+        result=subprocess.run(['python3','/tmp/workbench-image-input.py','save'],input=images[0],capture_output=True,check=True)
         path=pathlib.Path(json.loads(result.stdout)['path'])
         assert path.read_bytes()==images[0]
         assert path.stat().st_mode & 0o777 == 0o600

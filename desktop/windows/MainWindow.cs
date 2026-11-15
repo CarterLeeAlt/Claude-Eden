@@ -2,13 +2,13 @@ using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
-namespace Cage.Windows;
+namespace Eden.Windows;
 
 internal sealed class MainWindow : Form
 {
     private WebView2 web = new() { Dock = DockStyle.Fill, Visible = false };
     private readonly NativeInput nativeInput;
-    private readonly Label message = new() { AutoSize = true, MaximumSize = new Size(720, 0), Text = "正在启动 Cage 工作台…", Margin = new Padding(12) };
+    private readonly Label message = new() { AutoSize = true, MaximumSize = new Size(720, 0), Text = "正在启动 Claude Eden 工作台…", Margin = new Padding(12) };
     private readonly FlowLayoutPanel status = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(48), WrapContents = false };
     private readonly Button retry = new() { Text = "重试连接", AutoSize = true, Visible = false };
     private readonly Button existing = new() { Text = "打开现有环境保存文件", AutoSize = true, Visible = false };
@@ -24,10 +24,10 @@ internal sealed class MainWindow : Form
 
     public MainWindow()
     {
-        nativeInput = new NativeInput(value => Script("window.dispatchEvent(new CustomEvent('cage-native-input',{detail:" + JsonSerializer.Serialize(value) + "}));"));
-        Deactivate += (_, _) => Script("window.dispatchEvent(new Event('cage-window-deactivated'));");
+        nativeInput = new NativeInput(value => Script("window.dispatchEvent(new CustomEvent('eden-native-input',{detail:" + JsonSerializer.Serialize(value) + "}));"));
+        Deactivate += (_, _) => Script("window.dispatchEvent(new Event('eden-window-deactivated'));");
         AutoScaleMode = AutoScaleMode.Dpi; AutoScaleDimensions = new SizeF(96, 96);
-        Text = "Cage";
+        Text = "Claude Eden";
         StartPosition = FormStartPosition.CenterScreen; BackColor = Color.FromArgb(247, 247, 247);
         Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application;
         status.Controls.AddRange([message, retry, existing, complete]);
@@ -41,13 +41,13 @@ internal sealed class MainWindow : Form
             if (ConfirmStop()) await Bootstrap("--complete-update");
         };
         var trayMenu = new TrayMenu();
-        trayMenu.Items.Add("打开 Cage", null, (_, _) => RestoreWindow());
+        trayMenu.Items.Add("打开 Claude Eden", null, (_, _) => RestoreWindow());
         trayMenu.Items.Add("检查应用更新…", null, (_, _) => updater!.Handle("check"));
-        trayMenu.Items.Add("关于 Cage", null, (_, _) => MessageBox.Show(this, $"Cage {AppUpdater.Version}\n本机隔离编码工作区", "关于 Cage"));
+        trayMenu.Items.Add("关于 Claude Eden", null, (_, _) => MessageBox.Show(this, $"Claude Eden {AppUpdater.Version}\n本机隔离编码工作区", "关于 Claude Eden"));
         trayMenu.Items.Add(new ToolStripSeparator());
-        trayMenu.Items.Add("退出 Cage…", null, (_, _) => RequestQuit());
+        trayMenu.Items.Add("退出 Claude Eden…", null, (_, _) => RequestQuit());
         trayMenu.Opening += (_, _) => (chrome ?? new WindowChrome(BackColor, ForeColor, false)).ApplyMenu(trayMenu);
-        tray = new NotifyIcon { Icon = Icon, Text = "Cage", Visible = true, ContextMenuStrip = trayMenu };
+        tray = new NotifyIcon { Icon = Icon, Text = "Claude Eden", Visible = true, ContextMenuStrip = trayMenu };
         tray.DoubleClick += (_, _) => RestoreWindow();
         updater = new AppUpdater(PublishUpdate, () => { allowQuit = true; Close(); }, () => _ = Bootstrap());
         Shown += async (_, _) => {
@@ -126,7 +126,7 @@ internal sealed class MainWindow : Form
     }
 
     private bool ConfirmStop() => MessageBox.Show(this,
-        "请先保存编辑器中的文件并结束正在运行的工作。继续后 Cage 会停止环境、安装已验证的更新并重新启动。",
+        "请先保存编辑器中的文件并结束正在运行的工作。继续后 Claude Eden 会停止环境、安装已验证的更新并重新启动。",
         "保存并停止环境后安装重启", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) == DialogResult.OK;
 
     public void RestoreWindow() { Show(); if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal; Activate(); PublishVisibility(); }
@@ -136,11 +136,11 @@ internal sealed class MainWindow : Form
         if (web.Visible) Action("quit");
         else { allowQuit = true; Close(); }
     }
-    private void Action(string name) => Script("window.cageNativeAction?.(" + JsonSerializer.Serialize(name) + ")");
-    private void PublishVisibility() => Script($"window.cageWindowVisible = {(Visible && WindowState != FormWindowState.Minimized ? "true" : "false")}; window.dispatchEvent(new Event('cage-window-visibility'));");
+    private void Action(string name) => Script("window.edenNativeAction?.(" + JsonSerializer.Serialize(name) + ")");
+    private void PublishVisibility() => Script($"window.edenWindowVisible = {(Visible && WindowState != FormWindowState.Minimized ? "true" : "false")}; window.dispatchEvent(new Event('eden-window-visibility'));");
     private void PublishUpdate(Dictionary<string, object?> state) {
         if (state.TryGetValue("phase", out var phase) && phase as string == "failed") _ = Backend.Report("App update failed: " + state.GetValueOrDefault("message"));
-        Script("window.dispatchEvent(new CustomEvent('cage-app-update',{detail:" + JsonSerializer.Serialize(state) + "}));");
+        Script("window.dispatchEvent(new CustomEvent('eden-app-update',{detail:" + JsonSerializer.Serialize(state) + "}));");
     }
     private async void Script(string script)
     {
@@ -200,7 +200,7 @@ internal sealed class MainWindow : Form
         }
         catch (WebView2RuntimeNotFoundException)
         {
-            Error("缺少 Microsoft Edge WebView2 Runtime。请运行 Cage 安装程序安装随附运行时后重试。");
+            Error("缺少 Microsoft Edge WebView2 Runtime。请运行 Claude Eden 安装程序安装随附运行时后重试。");
             webFailed = true;
         }
         catch (Exception error) { webFailed = true; Error("无法初始化工作台：" + error.Message); }
@@ -234,7 +234,7 @@ internal sealed class MainWindow : Form
             {
                 try
                 {
-                    var snapshot = await web.CoreWebView2.ExecuteScriptAsync("({title:document.title,ready:document.readyState,text:(document.body?.innerText||'').slice(0,4096),errors:window.__cageSmokeErrors||[]})");
+                    var snapshot = await web.CoreWebView2.ExecuteScriptAsync("({title:document.title,ready:document.readyState,text:(document.body?.innerText||'').slice(0,4096),errors:window.__edenSmokeErrors||[]})");
                     page = JsonDocument.Parse(snapshot).RootElement.Clone();
                     await using var capture = File.Create(Path.ChangeExtension(Program.SmokeOutput, ".png"));
                     await web.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, capture);
@@ -293,7 +293,7 @@ internal sealed class MainWindow : Form
     {
         if (bootstrapping || web.CoreWebView2 == null) return;
         bootstrapping = true;
-        message.Text = "正在连接 Cage 工作台…"; status.Show(); status.BringToFront();
+        message.Text = "正在连接 Claude Eden 工作台…"; status.Show(); status.BringToFront();
         retry.Hide(); existing.Hide(); complete.Hide();
         try
         {
@@ -308,7 +308,7 @@ internal sealed class MainWindow : Form
             }
             var entry = UpdatePolicy.Entry(data.Text("url")); expectedPort = entry.Port;
             smokePhase = "loading_workbench";
-            Text = controllerNeedsUpdate ? "Cage（更新待完成）" : "Cage";
+            Text = controllerNeedsUpdate ? "Claude Eden（更新待完成）" : "Claude Eden";
             web.CoreWebView2.Navigate(entry.AbsoluteUri);
         }
         catch (OperationCanceledException) { if (!lifetime.IsCancellationRequested) Error("启动工作台失败：等待本机后台响应超时。请点击“重试连接”；仍失败时请保留此提示并反馈给维护者。"); }
@@ -364,7 +364,7 @@ internal sealed class MainWindow : Form
                         ? new { returnedFocus = accepted && returnedFocus } : accepted;
                     break;
                 case "exportDiagnostics":
-                    using (var picker = new SaveFileDialog { Title = "导出诊断包", Filter = "诊断包 (*.zip)|*.zip", FileName = "cage-diagnostics.zip", DefaultExt = "zip", AddExtension = true })
+                    using (var picker = new SaveFileDialog { Title = "导出诊断包", Filter = "诊断包 (*.zip)|*.zip", FileName = "eden-diagnostics.zip", DefaultExt = "zip", AddExtension = true })
                     {
                         if (picker.ShowDialog(this) != DialogResult.OK) { result = new { canceled = true }; break; }
                         var connection = request.Text("connection_id");
@@ -378,7 +378,7 @@ internal sealed class MainWindow : Form
                     updater.MarkReady(); result = true; _ = CompleteSmoke(); break;
                 case "appUpdate": result = updater.Handle(request.Text("operation")); break;
                 case "importTheme":
-                    using (var picker = new OpenFileDialog { Filter = "Cage 主题 (*.json)|*.json", Title = "导入主题", Multiselect = false })
+                    using (var picker = new OpenFileDialog { Filter = "Claude Eden 主题 (*.json)|*.json", Title = "导入主题", Multiselect = false })
                     {
                         if (picker.ShowDialog(this) != DialogResult.OK) { result = ""; break; }
                         using var stream = File.OpenRead(picker.FileName);
@@ -401,29 +401,15 @@ internal sealed class MainWindow : Form
                     var themeText = request.Text("text");
                     if (System.Text.Encoding.UTF8.GetByteCount(themeText) > 256 * 1024) throw new InvalidDataException("主题文件不能超过 256 KB");
                     var themeDocument = JsonDocument.Parse(themeText).RootElement;
-                    if (themeDocument.Text("format") != "cage-theme" || themeDocument.GetProperty("version").GetInt32() != 1) throw new InvalidDataException("主题文件格式无效");
-                    using (var picker = new SaveFileDialog { Filter = "Cage 主题 (*.json)|*.json", Title = "导出主题", FileName = Path.GetFileName(request.Text("filename")), DefaultExt = "json", AddExtension = true })
+                    if (themeDocument.Text("format") != "eden-theme" || themeDocument.GetProperty("version").GetInt32() != 1) throw new InvalidDataException("主题文件格式无效");
+                    using (var picker = new SaveFileDialog { Filter = "Claude Eden 主题 (*.json)|*.json", Title = "导出主题", FileName = Path.GetFileName(request.Text("filename")), DefaultExt = "json", AddExtension = true })
                     {
                         if (picker.ShowDialog(this) != DialogResult.OK) { result = false; break; }
                         File.WriteAllText(picker.FileName, themeText, new System.Text.UTF8Encoding(false)); result = true;
                     }
                     break;
-                case "shareLocalProject":
-                {
-                    var connection = request.Text("connection_id");
-                    var accessMode = request.Text("mode");
-                    if (connection.Length == 0 || accessMode is not ("read" or "write")) throw new InvalidDataException("请在云端工作台重新选择项目");
-                    using var picker = new FolderBrowserDialog {
-                        Description = accessMode == "write" ? "云端 Cage 可以读取、修改和删除所选项目中的文件。" : "云端 Cage 可以读取所选项目中的文件。",
-                        UseDescriptionForTitle = true, ShowNewFolderButton = false
-                    };
-                    if (picker.ShowDialog(this) != DialogResult.OK) { result = new { canceled = true }; break; }
-                    var response = await Backend.Json(["share-project", "--json", "--connection", connection, accessMode, picker.SelectedPath], lifetime.Token, TimeSpan.FromSeconds(90));
-                    if (response.Exit != 0) throw new IOException(response.Data.Text("message"));
-                    result = response.Data; break;
-                }
                 case "chooseFolder":
-                    using (var picker = new FolderBrowserDialog { Description = request.Text("purpose") == "environmentStorage" ? "请选择用于保存镜像和虚拟磁盘的空文件夹。" : "仅此文件夹会与 Cage 共享。请选择具体项目。", UseDescriptionForTitle = true, ShowNewFolderButton = true })
+                    using (var picker = new FolderBrowserDialog { Description = request.Text("purpose") == "environmentStorage" ? "请选择用于保存镜像和虚拟磁盘的空文件夹。" : "仅此文件夹会与 Claude Eden 共享。请选择具体项目。", UseDescriptionForTitle = true, ShowNewFolderButton = true })
                         result = picker.ShowDialog(this) == DialogResult.OK ? picker.SelectedPath : "";
                     break;
                 case "clipboardRead": result = Clipboard.ContainsText() ? Clipboard.GetText() : ""; break;
@@ -475,25 +461,13 @@ internal sealed class MainWindow : Form
                     }
                     else result = new { text = Clipboard.ContainsText() ? Clipboard.GetText() : "" };
                     break;
-                case "chooseGuestMedia":
-                    using (var picker = new OpenFileDialog { Title = "选择 Windows 11 x64 安装镜像", Filter = "Windows ISO (*.iso)|*.iso", Multiselect = false })
-                        result = picker.ShowDialog(this) == DialogResult.OK ? picker.FileName : "";
-                    break;
                 case "appReference":
                     var appReference = request.Text("kind") switch {
-                        "source" => "https://github.com/Lee-xeo/Claude-Cage/commits/main",
-                        "releases" => "https://github.com/Lee-xeo/Claude-Cage/releases",
+                        "source" => "https://github.com/CarterLeeAlt/Claude-Eden/commits/main",
+                        "releases" => "https://github.com/CarterLeeAlt/Claude-Eden/releases",
                         _ => throw new InvalidDataException("未知的项目页面")
                     };
                     System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(appReference) { UseShellExecute = true });
-                    result = true; break;
-                case "guestInstallReference":
-                    var reference = request.Text("kind") switch {
-                        "windows-media" => "https://www.microsoft.com/software-download/windows11",
-                        "editor-license" => "https://aka.ms/vscode-server-license",
-                        _ => throw new InvalidDataException("未知的安装参考页面")
-                    };
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(reference) { UseShellExecute = true });
                     result = true; break;
                 case "chooseUploadFiles":
                     using (var picker = new OpenFileDialog { Title = "选择本机文件", Multiselect = request.TryGetProperty("multiple", out var multiple) && multiple.ValueKind == JsonValueKind.True, CheckFileExists = true })
@@ -553,7 +527,7 @@ internal sealed class MainWindow : Form
         (() => {
           if (window !== window.top || location.protocol !== 'http:' || location.hostname !== 'localhost') return;
           const errors = [];
-          Object.defineProperty(window, '__cageSmokeErrors', { value: errors });
+          Object.defineProperty(window, '__edenSmokeErrors', { value: errors });
           const ownPath = value => {
             try { const url = new URL(value, location.href); return url.origin === location.origin ? url.pathname : ''; }
             catch { return ''; }
@@ -588,26 +562,26 @@ internal sealed class MainWindow : Form
     private const string BridgeScript = """
         (() => {
           if (window !== window.top || location.protocol !== 'http:' || location.hostname !== 'localhost') return;
-          window.cageNativeIMEAvailable = true;
+          window.edenNativeIMEAvailable = true;
           const pending = new Map();
           const fileActions = new Set([
             'uploadHostFiles', 'chooseUploadFiles', 'clipboardSyncRead', 'clipboardSyncWrite',
             'saveBrowserDownload', 'browserDownloadAction', 'desktopFileAction', 'exportDiagnostics',
-            'importTheme', 'exportTheme', 'saveRecoveryKey', 'shareLocalProject', 'chooseFolder', 'chooseGuestMedia',
+            'importTheme', 'exportTheme', 'saveRecoveryKey', 'chooseFolder',
           ]);
           chrome.webview.addEventListener('message', ({data}) => {
             const item = pending.get(data.id); if (!item) return;
             pending.delete(data.id); clearTimeout(item.timer);
             data.error ? item.reject(new Error(data.error)) : item.resolve(data.result);
           });
-          const cage = {postMessage(request) { return new Promise((resolve, reject) => {
+          const eden = {postMessage(request) { return new Promise((resolve, reject) => {
             const id = crypto.randomUUID();
             // File commands have a 30-minute backend deadline. Leave time for
             // the native file dialog and the final subprocess response.
             const timer = setTimeout(() => { pending.delete(id); reject(new Error('原生操作超时，请重试')); }, fileActions.has(request.action) ? 3600000 : 240000);
             pending.set(id, {resolve, reject, timer}); chrome.webview.postMessage({id, request});
           }); }};
-          Object.defineProperty(window, 'webkit', {value: {messageHandlers: {cage}}, writable: false});
+          Object.defineProperty(window, 'edenNativeBridge', {value: eden, writable: false});
         })();
         """;
 }

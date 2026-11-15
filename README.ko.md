@@ -18,7 +18,7 @@
 
 클로드와 대화하고 협업하고 싶은 사용자로서 VPS, 브라우저 지문 프로필과 환경 검사를 설정하는 데 지쳤으며 계정 정지와 금전적 손실을 걱정합니다. **Claude Eden**을 소개합니다. **자신의 프록시를 설정하고 격리 환경, 시간대, 언어와 환경 검사를 한 곳에서 관리하는 데스크톱 작업 공간입니다.**
 
-Claude Eden은 Windows 데스크톱에서 터미널, 브라우저, 편집기와 공식 Claude Desktop을 모읍니다. 로컬 Linux 게스트를 사용하거나 SSH로 자신의 Linux 클라우드 서버에 연결하세요. 필요한 프로젝트만 공유하고 네트워크를 따로 관리하며 휴대폰에서 작업을 이어갈 수 있습니다. 게스트 기능과 호스트 요구 사항은 시스템 안내를 참조하세요. 주요 기능:
+Claude Eden은 Windows 10에서 로컬 Debian 13 게스트를 관리하며 터미널, 브라우저, 편집기와 공식 Claude Desktop을 한 작업대에 모읍니다. 필요한 프로젝트만 공유하고 네트워크를 따로 관리하세요. 호스트 기능과 자원은 각 컴퓨터에서 실제로 확인합니다. 주요 기능:
 
 - 호스트와 격리된 네트워크 설정: Claude Eden은 자체 프록시를 통해 환경 내부의 모든 네트워크 트래픽을 라우팅합니다.
 - 네트워크 프록시의 IP 위치에 대한 자동 동기화를 통해 시간대 및 언어를 포함하여 호스트에서 격리된 브라우저 지문 설정
@@ -28,13 +28,11 @@ Claude Eden은 Windows 데스크톱에서 터미널, 브라우저, 편집기와 
 ## Claude Eden으로 할 수 있는 일
 
 - **단일 창에서 작업합니다.** 터미널에서 Claude Code를 실행하고, 편집기에서 변경 사항을 검토하고, Workbench 브라우저로 서비스를 미리 보고 로그인하세요.
-- **독립된 Linux 환경에서 개발하세요.** Debian 또는 Ubuntu를 선택하고 Linux 도구를 사용하며 명시적으로 허용한 프로젝트만 공유하세요. [게스트 시스템 선택](docs/guide/guest-systems.md)
+- **독립된 Linux 환경에서 개발하세요.** 로컬 Debian 13에서 Linux 도구를 사용하며 명시적으로 허용한 프로젝트만 공유하세요. [Debian 13 게스트](docs/guide/guest-systems.md)
 - **공유하는 내용을 제어하세요.** 기본 작업공간과 명시적으로 열린 프로젝트 폴더만 공유됩니다. 호스트의 Claude 로그인 상태, 브라우저 프로필 및 SSH 키는 자동으로 가져오지 않습니다.
 - **네트워크 상태를 확인하세요.** 내장된 네트워크 프록시 관리를 통해 구독을 가져오고, 엔드포인트를 선택하고, 종료 IP를 확인할 수 있습니다. 중요한 검사가 통과될 때까지 환경은 오프라인 상태로 유지됩니다. 네트워크 프록시를 사용할 수 없는 경우 직접 연결로 대체할 수 없습니다.
 - **다음에 계속하세요.** 도구, 파일 및 로그인 상태는 가상 디스크에 유지됩니다. 창을 닫아도 백그라운드 작업이 계속 실행될 수 있습니다.
 - **Claude Code 계정을 여러 개 관리하세요.** 사용 한도를 확인하고 새 세션에 계정을 배정하며, 명시적으로 허용한 뒤 계정을 바꾸어 대화 기록을 이어가세요. [Claude Code](docs/guide/accounts.md)
-- **휴대폰에서 이어서 작업하세요.** QR 코드나 페어링 코드로 Android 휴대폰을 컴퓨터에 연결하세요. 같은 Claude Code 대화를 이어가고 메시지를 보내거나 도구 실행을 승인하며, 원격 브라우저와 컴퓨터의 Claude Desktop 창을 조작할 수 있습니다.
-- **클라우드에서 Claude Eden을 실행하세요.** 조건을 충족하는 Linux x86_64 VPS에 Claude Eden을 배포하고 SSH로 연결합니다. KVM은 필요 없으며 데이터와 네트워크 출구는 서버에 있습니다.
 - **사설망으로 연결하세요.** Claude Eden 안에서 Tailscale에 로그인해 호스트와 환경 사이에 양방향 SSH 연결을 사용하세요. [Tailscale / SSH](docs/guide/tailscale.md)
 
 ## 빠른 시작
@@ -49,13 +47,13 @@ https://github.com/CarterLeeAlt/Claude-Eden의 최신 소스 코드를 받아 Wi
 
 ## 다운로드 및 설치
 
-Claude Eden의 데스크톱 호스트는 Windows 10 x64이며 로컬 게스트는 Debian 13 또는 Ubuntu 22.04입니다. Linux 클라우드 배포와 백엔드도 사용할 수 있습니다. 시스템과 가상화 기능은 각 컴퓨터의 실제 지원 능력을 기준으로 감지합니다. [Windows](docs/windows.md) · [Linux 클라우드](docs/linux.md).
+Claude Eden의 데스크톱 호스트는 Windows 10 x64이며 로컬 게스트는 Debian 13입니다. 시스템과 가상화 기능은 각 컴퓨터의 실제 지원 능력을 기준으로 감지합니다. [Windows](docs/windows.md) · [Debian 13 게스트](docs/guide/guest-systems.md).
 
 1. [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases)에서 실제 게시된 Windows 설치 파일을 확인하세요. 게시된 버전이 없으면 [빌드 안내](docs/windows.md)를 따르세요.
-2. Windows 설치 프로그램을 실행하고 **Claude Eden**을 시작하세요. 서버 배포는 [Linux 클라우드](docs/guide/cloud.md)를 참조하세요.
+2. Windows 설치 프로그램을 실행하고 **Claude Eden**을 시작하세요.
 3. 앱 내 지침에 따라 자신의 네트워크 프록시를 구성하고, 환경을 시작하고, 프로젝트를 엽니다.
 
-설치 패키지에는 작업 공간과 프록시 엔진이 포함됩니다. Go, Node.js, Docker, Clash를 미리 설치할 필요가 없습니다. 환경을 만들 때 게스트 시스템과 저장 위치를 선택하고 공식 이미지와 개발 도구를 준비하세요. Claude Eden은 운영체제 라이선스, 프록시 서비스나 Claude 계정을 제공하지 않습니다.
+설치 패키지에는 작업 공간과 프록시 엔진이 포함됩니다. Go, Node.js, Docker, Clash를 미리 설치할 필요가 없습니다. 환경을 만들 때 Debian 13 저장 위치를 선택하고 공식 이미지와 개발 도구를 준비하세요. 프록시 서비스와 Claude 계정은 사용자가 준비합니다.
 
 소스 코드는 공개되어 있습니다. 게시된 버전의 안내와 체크섬은 [Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases)에서 확인하세요.
 
@@ -71,7 +69,7 @@ Claude Eden의 데스크톱 호스트는 Windows 10 x64이며 로컬 게스트�
 
 ### 2. 환경 시작
 
-처음 만들 때 Debian 또는 Ubuntu 게스트와 저장 위치를 지정하세요. 게스트를 설치하고 환경을 시작한 뒤 필요한 권한을 승인하세요. 작업 상세에서 진행 상태와 오류를 볼 수 있습니다. 이후에는 같은 환경을 다시 사용합니다.
+처음 만들 때 Debian 13의 저장 위치를 지정하세요. 게스트를 설치하고 환경을 시작한 뒤 필요한 권한을 승인하세요. 작업 상세에서 진행 상태와 오류를 볼 수 있습니다. 이후에는 같은 환경을 다시 사용합니다.
 
 ### 3. 프로젝트를 열고 Claude를 실행하세요.
 
@@ -92,7 +90,7 @@ Claude Eden의 데스크톱 호스트는 Windows 10 x64이며 로컬 게스트�
 
 | 귀하의 작업 | 여기서 시작하세요 |
 |---|---|
-| Debian 13 / Ubuntu 22.04 | [게스트 시스템 선택](docs/guide/guest-systems.md) |
+| Debian 13 | [Debian 13 게스트](docs/guide/guest-systems.md) |
 | 네트워크 프록시 설치, 구성 및 첫 번째 프로젝트 열기 | [시작하기](docs/getting-started.md) |
 | 다운로드, 시작, 연결 및 로그인 문제 해결 | [FAQ 및 복구](docs/troubleshooting.md) |
 | 키보드 컨트롤, 모양, 데이터 지속성 및 종료 동작 알아보기 | [매일 사용](docs/getting-started.md#日常使用) |

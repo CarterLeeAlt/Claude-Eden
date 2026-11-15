@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func TestStopPreemptsJobWithoutLosingStopResult(t *testing.T) {
@@ -58,15 +58,15 @@ func TestPauseBypassesBusyQueueAndRevokesCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(s.profile, "state", "lima", cage.InstanceName(s.profile, s.environmentDir()))
+	dir := filepath.Join(s.profile, "state", "lima", eden.InstanceName(s.profile, s.environmentDir()))
 	if err = os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	g, err := cage.NewEgressGate(cfg)
+	g, err := eden.NewEgressGate(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	stop, err := cage.StartGateControl(s.configPath, dir, g)
+	stop, err := eden.StartGateControl(s.configPath, dir, g)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestPauseBypassesBusyQueueAndRevokesCheck(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("pause rejected while checking: %d %s", w.Code, w.Body.String())
 	}
-	if ctx.Err() == nil || g.Status().Mode != cage.GateClosed || !s.networkPaused {
+	if ctx.Err() == nil || g.Status().Mode != eden.GateClosed || !s.networkPaused {
 		t.Fatal("pause did not cancel and close the gate")
 	}
 }

@@ -14,6 +14,8 @@ export function guideHTML(html: string) {
   return html.replace(/(src|href)="\.\.\/\.\.\/www\/public\/([^\"]+)"/g, (_, attribute: string, asset: string) => `${attribute}="${import.meta.env.BASE_URL}${asset}"`)
     .replace(/href="([^"#]+)\.md(#[^"]*)?"/g, (original, name: string, hash = '') => {
     const page = guidePages.find(page => page.slug === name.replace(/^\.\//, ''));
-    return page ? `href="${guideURL(page.slug)}${hash}"` : original;
+    if (page) return `href="${guideURL(page.slug)}${hash}"`;
+    if (/^(?:[a-z][a-z\d+.-]*:|\/)/i.test(name)) return original;
+    return `href="${new URL(`${name}.md${hash}`, 'https://github.com/CarterLeeAlt/Claude-Eden/blob/main/docs/guide/').href}"`;
   });
 }

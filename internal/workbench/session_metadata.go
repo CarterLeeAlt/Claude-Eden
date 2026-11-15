@@ -14,18 +14,18 @@ type sessionMetadataInput struct {
 	Pinned *bool   `json:"pinned"`
 }
 
-func (s *Server) updateSessionMetadata(id string, input sessionMetadataInput, requestContext context.Context) (mobileSession, error) {
+func (s *Server) updateSessionMetadata(id string, input sessionMetadataInput, requestContext context.Context) (cliSession, error) {
 	if !s.op.TryLock() {
-		return mobileSession{}, errTerminalBusy
+		return cliSession{}, errTerminalBusy
 	}
 	defer s.op.Unlock()
 	if input.Title == nil && input.Pinned == nil {
-		return mobileSession{}, errors.New("请选择要修改的会话信息")
+		return cliSession{}, errors.New("请选择要修改的会话信息")
 	}
 	if input.Title != nil {
 		title := strings.TrimSpace(*input.Title)
 		if title == "" || !utf8.ValidString(title) || utf8.RuneCountInString(title) > 100 {
-			return mobileSession{}, errors.New("会话名称需要 1 至 100 个字符")
+			return cliSession{}, errors.New("会话名称需要 1 至 100 个字符")
 		}
 		input.Title = &title
 	}
@@ -34,19 +34,19 @@ func (s *Server) updateSessionMetadata(id string, input sessionMetadataInput, re
 	if requestContext != nil {
 		s.account.mu.Lock()
 		defer s.account.mu.Unlock()
-		if !s.mobileAuthorized(requestContext) {
-			return mobileSession{}, errMobileLocked
+		if !s.cliAuthorized(requestContext) {
+			return cliSession{}, errCLILocked
 		}
 	}
-	m := &s.mobileCLI
+	m := &s.cliSessions
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	record, err := m.record(s.profile, id)
 	if err != nil {
-		return mobileSession{}, err
+		return cliSession{}, err
 	}
 	if record.Deleted {
-		return mobileSession{}, os.ErrNotExist
+		return cliSession{}, os.ErrNotExist
 	}
 	previous := *record
 	if input.Title != nil {
@@ -57,9 +57,9 @@ func (s *Server) updateSessionMetadata(id string, input sessionMetadataInput, re
 	}
 	record.MetadataSet = true
 	record.changed()
-	if err := writePrivate(mobileRecordPath(s.profile, id), record); err != nil {
+	if err := writePrivate(cliSessionRecordPath(s.profile, id), record); err != nil {
 		*record = previous
-		return mobileSession{}, err
+		return cliSession{}, err
 	}
 	if m.catalog != nil {
 		m.catalog[id] = record.summary()
@@ -81,12 +81,12 @@ func (s *Server) setSessionArchived(id string, archived bool, requestContext con
 	}
 	s.conversationMu.Lock()
 	defer s.conversationMu.Unlock()
-	m := &s.mobileCLI
+	m := &s.cliSessions
 	if requestContext != nil {
 		s.account.mu.Lock()
-		if !s.mobileAuthorized(requestContext) {
+		if !s.cliAuthorized(requestContext) {
 			s.account.mu.Unlock()
-			return errMobileLocked
+			return errCLILocked
 		}
 	}
 	m.mu.Lock()
@@ -111,7 +111,7 @@ func (s *Server) setSessionArchived(id string, archived bool, requestContext con
 	}
 	record.Archived = archived
 	record.changed()
-	if err := writePrivate(mobileRecordPath(s.profile, id), record); err != nil {
+	if err := writePrivate(cliSessionRecordPath(s.profile, id), record); err != nil {
 		*record = previous
 		m.mu.Unlock()
 		if requestContext != nil {
@@ -121,11 +121,6 @@ func (s *Server) setSessionArchived(id string, archived bool, requestContext con
 	}
 	if m.catalog != nil {
 		m.catalog[id] = record.summary()
-	}
-	var done chan struct{}
-	if run := m.active[id]; archived && run != nil && run.cancel != nil {
-		run.cancel()
-		done = run.done
 	}
 	terminalID := record.TerminalID
 	m.mu.Unlock()
@@ -137,14 +132,11 @@ func (s *Server) setSessionArchived(id string, archived bool, requestContext con
 			s.terminals.remove(terminalID)
 		}
 	}
-	if done != nil {
-		<-done
-	}
 	return nil
 }
 
-func (s *Server) mobileSessionMetadata(w http.ResponseWriter, r *http.Request) {
-	view, _, ok := s.authorizedMobileSessionRecord(w, r)
+func (s *Server) cliSessionMetadata(w http.ResponseWriter, r *http.Request) {
+	view, _, ok := s.authorizedCLISessionRecord(w, r)
 	if !ok {
 		return
 	}
@@ -160,16 +152,16 @@ func (s *Server) mobileSessionMetadata(w http.ResponseWriter, r *http.Request) {
 	jsonReply(w, updated)
 }
 
-func (s *Server) mobileArchiveSession(w http.ResponseWriter, r *http.Request) {
+func (s *Server) cliArchiveSession(w http.ResponseWriter, r *http.Request) {
 	s.changeSessionArchive(w, r, true)
 }
 
-func (s *Server) mobileRestoreSession(w http.ResponseWriter, r *http.Request) {
+func (s *Server) cliRestoreSession(w http.ResponseWriter, r *http.Request) {
 	s.changeSessionArchive(w, r, false)
 }
 
 func (s *Server) changeSessionArchive(w http.ResponseWriter, r *http.Request, archived bool) {
-	view, _, ok := s.authorizedMobileSessionRecord(w, r)
+	view, _, ok := s.authorizedCLISessionRecord(w, r)
 	if !ok {
 		return
 	}
@@ -184,8 +176,7 @@ func (s *Server) changeSessionArchive(w http.ResponseWriter, r *http.Request, ar
 	jsonReply(w, map[string]bool{"ok": true})
 }
 
-func (s *Server) mobilePurgeSession(w http.ResponseWriter, r *http.Request) {
-	// A separate endpoint keeps old clients' "delete" requests reversible.
+func (s *Server) cliPurgeSession(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Confirm bool `json:"confirm"`
 	}
@@ -211,12 +202,12 @@ func (s *Server) purgeSession(ctx context.Context, id string) error {
 	s.conversationMu.Lock()
 	defer s.conversationMu.Unlock()
 	s.account.mu.Lock()
-	authorized := s.mobileAuthorized(ctx)
+	authorized := s.cliAuthorized(ctx)
 	s.account.mu.Unlock()
 	if !authorized {
-		return errMobileLocked
+		return errCLILocked
 	}
-	m := &s.mobileCLI
+	m := &s.cliSessions
 	m.mu.Lock()
 	record, err := m.record(s.profile, id)
 	m.mu.Unlock()
@@ -229,9 +220,6 @@ func (s *Server) purgeSession(ctx context.Context, id string) error {
 	if record.Purged {
 		return nil
 	}
-	if s.windowsGuest != nil && !record.Terminal && (record.Resume || len(record.Turns) > 0) {
-		return errWindowsLegacyMobile
-	}
 	if !record.Archived {
 		return errors.New("请先归档会话，再从已归档会话中永久删除")
 	}
@@ -240,7 +228,7 @@ func (s *Server) purgeSession(ctx context.Context, id string) error {
 	record.Deleting = true
 	record.changed()
 	m.mu.Lock()
-	if err := writePrivate(mobileRecordPath(s.profile, id), record); err != nil {
+	if err := writePrivate(cliSessionRecordPath(s.profile, id), record); err != nil {
 		m.mu.Unlock()
 		return err
 	}
@@ -260,9 +248,6 @@ func (s *Server) purgeSession(ctx context.Context, id string) error {
 			"account": execution.Account.GuestID, "workspace": guestPath(record.Workspace),
 			"expect_history": execution.CLIID != record.CLIID || record.Resume,
 		}
-		if err := s.windowsConversationInput(record, input); err != nil {
-			return err
-		}
 		if err := s.runCLIChannel(ctx, "purge", input, &result); err != nil {
 			return err
 		}
@@ -272,20 +257,19 @@ func (s *Server) purgeSession(ctx context.Context, id string) error {
 	}
 	// Keep only the identity needed to make retries and discovery idempotent.
 	// If this write fails, the archived record can safely retry guest cleanup.
-	tombstone := &mobileRecord{mobileSession: mobileSession{mobileSummary: mobileSummary{
+	tombstone := &cliSessionRecord{cliSession: cliSession{cliSessionSummary: cliSessionSummary{
 		ID: record.ID, Workspace: record.Workspace, Deleted: true, Purged: true,
 		Revision: record.Revision, Generation: record.Generation,
-	}, Turns: []mobileTurn{}}, CLIID: record.CLIID}
+	}, Turns: []cliSessionTurn{}}, CLIID: record.CLIID}
 	for _, execution := range record.Executions {
 		tombstone.Executions = append(tombstone.Executions, claudeExecution{CLIID: execution.CLIID})
 	}
 	tombstone.changed()
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if err := writePrivate(mobileRecordPath(s.profile, id), tombstone); err != nil {
+	if err := writePrivate(cliSessionRecordPath(s.profile, id), tombstone); err != nil {
 		return err
 	}
-	delete(m.active, id)
 	if m.catalog != nil {
 		m.catalog[id] = tombstone.summary()
 	}
@@ -317,7 +301,7 @@ func (s *Server) terminalSessionMetadata(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) terminalSummaries() []map[string]any {
 	list := s.terminals.snapshot()
-	m := &s.mobileCLI
+	m := &s.cliSessions
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, item := range list {
@@ -331,9 +315,6 @@ func (s *Server) terminalSummaries() []map[string]any {
 		}
 		item["custom_title"], item["pinned"], item["metadata_set"] = record.CustomTitle, record.Pinned, record.MetadataSet
 		item["title"] = record.snapshot().Title
-		if s.macOSLegacyWorkspace(record) != "" {
-			item["workspace_notice"] = macOSLegacyWorkspaceNotice
-		}
 	}
 	return list
 }

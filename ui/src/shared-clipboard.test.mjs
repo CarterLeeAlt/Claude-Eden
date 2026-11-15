@@ -68,7 +68,7 @@ function fixture({ available = true } = {}) {
     },
   });
   socket.onopen();
-  socket.onmessage({ data: JSON.stringify({ hello: { version: 1, os: "windows", session: "fixture-session", formats: ["text", "png", "files"], available } }) });
+  socket.onmessage({ data: JSON.stringify({ hello: { version: 1, os: "linux", session: "fixture-session", formats: ["text", "png", "files"], available } }) });
   return { socket, controller, sent, writes, active, notices, released,
     host: value => { content = value; revision++; },
     guest: value => socket.onmessage({ data: JSON.stringify(value) }),
@@ -152,7 +152,7 @@ for (const transition of ["lock", "switch", "disconnect"]) {
       const rejected = assert.rejects(f.controller.sync());
       await settle();
       if (transition === "disconnect") f.socket.close();
-      else f.guest({ hello: { version: 1, os: "windows", session: transition === "lock" ? "fixture-session" : "next-session",
+      else f.guest({ hello: { version: 1, os: "linux", session: transition === "lock" ? "fixture-session" : "next-session",
         formats: ["text", "png", "files"], available: transition !== "lock" } });
       f.acknowledge();
       await rejected;
@@ -200,7 +200,7 @@ test("a guest without an unlocked GUI cannot activate clipboard sharing", async 
     await settle(); await f.controller.poll();
     assert.deepEqual(f.sent, []);
     assert.equal(f.active.at(-1), false);
-    f.guest({ hello: { version: 1, os: "windows", session: "unlocked-session", formats: ["text", "png", "files"], available: true } });
+    f.guest({ hello: { version: 1, os: "linux", session: "unlocked-session", formats: ["text", "png", "files"], available: true } });
     await settle();
     assert.deepEqual(f.sent, [{ text: "host initial" }]);
     assert.equal(f.active.at(-1), true);
@@ -215,7 +215,7 @@ test("locking a guest invalidates an in-flight host clipboard snapshot", async (
     f.host({ text: "copy made before guest lock" });
     f.readDelay(new Promise(resolve => { release = resolve; }));
     const pending = f.controller.poll(); await settle();
-    f.guest({ hello: { version: 1, os: "windows", session: "locked", formats: ["text", "png", "files"], available: false } });
+    f.guest({ hello: { version: 1, os: "linux", session: "locked", formats: ["text", "png", "files"], available: false } });
     release(); await pending; await settle();
     assert.equal(f.sent.some(value => value.text === "copy made before guest lock"), false);
     assert.equal(f.active.at(-1), false);
@@ -226,7 +226,7 @@ test("a restarted GUI session seeds the current host selection again", async () 
   const f=fixture();
   try {
     await settle();
-    f.guest({hello:{version:1,os:"windows",session:"restarted-gui",formats:["text","png","files"],available:true}});
+    f.guest({hello:{version:1,os:"linux",session:"restarted-gui",formats:["text","png","files"],available:true}});
     await settle();
     assert.deepEqual(f.sent,[{text:"host initial"},{text:"host initial"}]);
     assert.equal(f.active.at(-1),true);
@@ -243,7 +243,7 @@ for (const transition of ["lock", "switch", "disconnect"]) {
       f.guest({ files: "old-session-selection" });
       await settle();
       if (transition === "disconnect") f.socket.close();
-      else f.guest({ hello: { version: 1, os: "windows", session: transition === "lock" ? "fixture-session" : "next-session",
+      else f.guest({ hello: { version: 1, os: "linux", session: transition === "lock" ? "fixture-session" : "next-session",
         formats: ["text", "png", "files"], available: transition !== "lock" } });
       release();
       await settle();
@@ -309,7 +309,7 @@ test("disposed connections cannot send snapshots or receive delayed writes", asy
 test("a failing guest clipboard reconnects with backoff that resets after a successful sync", async t => {
   const delays = [], pending = [];
   let fail = true, revision = 1;
-  const hello = { hello: { version: 1, os: "darwin", session: "gui-a", available: true, formats: ["text", "png", "files"] } };
+  const hello = { hello: { version: 1, os: "linux", session: "gui-a", available: true, formats: ["text", "png", "files"] } };
   const connect = () => {
     const socket = { readyState: 1, send: text => {
       const value = JSON.parse(text);

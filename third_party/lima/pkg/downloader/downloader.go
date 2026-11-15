@@ -80,12 +80,12 @@ func (o *options) apply(opts []Opt) error {
 
 type Opt func(*options) error
 
-// WithCache uses Cage's environment volume when configured, or the user's Lima cache.
+// WithCache uses Eden's environment volume when configured, or the user's Lima cache.
 func WithCache() Opt {
 	return func(o *options) error {
-		if dir := os.Getenv("CAGE_LIMA_CACHE_DIR"); dir != "" {
+		if dir := os.Getenv("EDEN_LIMA_CACHE_DIR"); dir != "" {
 			if !filepath.IsAbs(dir) {
-				return fmt.Errorf("CAGE_LIMA_CACHE_DIR must be absolute")
+				return fmt.Errorf("EDEN_LIMA_CACHE_DIR must be absolute")
 			}
 			return WithCacheDir(dir)(o)
 		}

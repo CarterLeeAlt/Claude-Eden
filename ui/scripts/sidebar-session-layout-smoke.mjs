@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
-const output = process.env.CAGE_TEST_CAPTURE || "/tmp/cage-sidebar-session-layout";
-const engine = process.env.CAGE_TEST_BROWSER || "chromium";
+const output = process.env.EDEN_TEST_CAPTURE || "../.tmp/guest-neutralization/ui-eden/sidebar-session-layout";
+const engine = process.env.EDEN_TEST_BROWSER || "chromium";
 const { page, state, browser, errors } = await createWorkbench({
-  url: process.env.CAGE_UI_URL || "http://127.0.0.1:5217",
+  url: process.env.EDEN_UI_URL || "http://127.0.0.1:5217",
 });
 const workspace = state.settings.workspace;
 const titles = ["你好", "软件宣传视频制作", "这是一段用于检查窄侧栏省略显示的很长很长的会话标题"];
@@ -18,7 +18,7 @@ try {
   await page.route("**/api/cli/sessions", route => route.fulfill({ json: { sessions } }));
   state.status.ready = state.status.vm_running = true;
   state.terminals = [{ id: "layout-live", workspace, title: "已打开的会话" }];
-  const project = page.getByRole("region", { name: "项目 .claude-cage-workspace", exact: true });
+  const project = page.getByRole("region", { name: "项目 .claude-eden-workspace", exact: true });
   const history = project.locator(".sidebar-session");
   await history.last().waitFor();
   await project.getByRole("tab", { name: "已打开的会话", exact: true }).waitFor();

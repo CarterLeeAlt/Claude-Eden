@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-var errClaudeAccessLost = errors.New("Cage 已锁定，请先解锁")
+var errClaudeAccessLost = errors.New("Eden 已锁定，请先解锁")
 
 type claudeAccountInput struct {
 	Action       string            `json:"action"`
@@ -379,7 +379,7 @@ func (s *Server) runClaudeRefresh(parent context.Context, id, guestID string, ca
 							err = list.observe(existing.ID, recovered, time.Now())
 							notice = "已恢复已有账号的登录，保留原目录、会话和参与设置"
 						} else {
-							notice = "此身份已在账号列表中，本次登录未更新原账号。请先等待该账号的手机任务结束，并关闭仍使用它的终端，再从原账号卡片重新登录。"
+							notice = "此身份已在账号列表中，本次登录未更新原账号。请关闭仍使用它的终端，再从原账号卡片重新登录。"
 						}
 					}
 				} else {
@@ -418,9 +418,6 @@ func (s *Server) recoverClaudeLogin(ctx context.Context, accountID, target, sour
 		return claudeGuestSnapshot{}, errTerminalBusy
 	}
 	defer s.op.Unlock()
-	if s.mobileCLI.activeAccounts()[accountID] > 0 {
-		return claudeGuestSnapshot{}, errors.New("请先结束该账号正在执行的移动 CLI 轮次，再重新登录")
-	}
 	if login, err := s.terminals.existingClaudeLogin(accountID, true); err != nil {
 		return claudeGuestSnapshot{}, err
 	} else if login != nil {
@@ -429,11 +426,8 @@ func (s *Server) recoverClaudeLogin(ctx context.Context, accountID, target, sour
 	if recover := s.claudeAccounts.recoverLogin; recover != nil {
 		return recover(ctx, target, source, subject)
 	}
-	if s.windowsGuest != nil {
-		return claudeGuestSnapshot{}, errors.New("请从原账号入口重新登录")
-	}
 	if !validClaudeID(target) || !validClaudeID(source) || len(subject) != 64 || strings.Trim(subject, "0123456789abcdef") != "" {
 		return claudeGuestSnapshot{}, errors.New("Claude 登录恢复参数无效")
 	}
-	return s.readClaudeGuestReport(ctx, target, "exec /usr/local/bin/cage-claude-account recover-login "+target+" "+source+" "+subject)
+	return s.readClaudeGuestReport(ctx, target, "exec /usr/local/bin/workbench-claude-account recover-login "+target+" "+source+" "+subject)
 }

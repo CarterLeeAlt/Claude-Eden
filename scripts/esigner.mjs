@@ -11,11 +11,11 @@ import { Writable } from 'node:stream';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const pin = JSON.parse(await readFile(new URL('../packaging/windows/signing.json', import.meta.url), 'utf8'));
 const configPath = 'conf/code_sign_tool.properties';
-const secretNames = ['CAGE_ESIGNER_PASSWORD', 'CAGE_ESIGNER_TOTP_SECRET'];
+const secretNames = ['EDEN_ESIGNER_PASSWORD', 'EDEN_ESIGNER_TOTP_SECRET'];
 const providerCodes = ['server_error', 'invalid_grant', 'invalid_client', 'access_denied', 'unauthorized', 'invalid_request', 'invalid_otp', 'malware_detected'];
 const rejectedOrUncertain = /timeout|timed out|abort|cancel|invalid_grant|invalid_client|access_denied|unauthorized|(?:otp|totp|authentication|authorization|credential|password)[^\n]*(?:invalid|expired|failed|rejected)|(?:invalid|expired|failed|rejected)[^\n]*(?:otp|totp|authentication|credential|password)/i;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-const toolDirectory = () => resolve(process.env.CAGE_ESIGNER_TOOL_DIR || join(root, '_output/esigner', `CodeSignTool-v${pin.version}`));
+const toolDirectory = () => resolve(process.env.EDEN_ESIGNER_TOOL_DIR || join(root, '_output/esigner', `CodeSignTool-v${pin.version}`));
 
 export function javaArgument(value) {
   // Java launcher @files, not a shell. Quotes/backslashes must round-trip literally.
@@ -80,7 +80,7 @@ async function prompt(label, hidden = false, signal) {
 
 // Exported for exercising the process boundary with an offline Java fixture.
 export async function invokeJava({ java = 'java', jar, config, arguments: args, otp, secrets = [] }) {
-  const temp = await mkdtemp(join(tmpdir(), 'cage-esigner-'));
+  const temp = await mkdtemp(join(tmpdir(), 'eden-esigner-'));
   let child;
   const controller = new AbortController();
   const knownSecrets = [...secrets];
@@ -175,11 +175,11 @@ export async function prepareVendorInput(input, stage) {
 }
 
 async function credentials() {
-  const username = process.env.CAGE_ESIGNER_USERNAME || await prompt('SSL.com username');
-  const password = process.env.CAGE_ESIGNER_PASSWORD || await prompt('SSL.com password', true);
-  const credential = process.env.CAGE_ESIGNER_CREDENTIAL_ID || await prompt('eSigner credential ID');
+  const username = process.env.EDEN_ESIGNER_USERNAME || await prompt('SSL.com username');
+  const password = process.env.EDEN_ESIGNER_PASSWORD || await prompt('SSL.com password', true);
+  const credential = process.env.EDEN_ESIGNER_CREDENTIAL_ID || await prompt('eSigner credential ID');
   if (!username || !password || !/^[a-f0-9-]{36}$/iu.test(credential)) throw new Error('A username, password and valid eSigner credential ID are required.');
-  return { username, password, credential, totp: process.env.CAGE_ESIGNER_TOTP_SECRET };
+  return { username, password, credential, totp: process.env.EDEN_ESIGNER_TOTP_SECRET };
 }
 
 // A provider-declared server error is a definite failure. Timeouts, OTP and
@@ -220,7 +220,7 @@ async function main(argv) {
   if (command === 'sign') await assertWindowsExecutable(resolve(input));
   const directory = await installTool();
   const auth = await credentials();
-  if (command === 'sign' && !auth.totp && !process.stdin.isTTY) throw new Error('Non-interactive signing requires CAGE_ESIGNER_TOTP_SECRET.');
+  if (command === 'sign' && !auth.totp && !process.stdin.isTTY) throw new Error('Non-interactive signing requires EDEN_ESIGNER_TOTP_SECRET.');
   const args = [command === 'sign' ? 'sign' : 'credential_info', `-username=${auth.username}`, `-password=${auth.password}`, `-credential_id=${auth.credential}`];
   let staged, output, vendor;
   try {

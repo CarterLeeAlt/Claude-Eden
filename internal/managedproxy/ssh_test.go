@@ -85,7 +85,7 @@ func TestSSHNodesImportWithInlineKeyOrPassword(t *testing.T) {
 	if !found {
 		t.Fatal("runtime lost the inline SSH private key")
 	}
-	if os.Getenv("CAGE_PROXY_INTEGRATION") == "1" {
+	if os.Getenv("EDEN_PROXY_INTEGRATION") == "1" {
 		if err := Validate(context.Background(), profile, loaded); err != nil {
 			t.Fatal(err)
 		}

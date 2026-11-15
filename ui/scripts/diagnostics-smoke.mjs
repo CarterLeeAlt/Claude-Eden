@@ -6,25 +6,25 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createRequire } from "node:module";
 const run = promisify(execFile);
-const cage = path.resolve(process.argv[2] || "_output/diagnostics-qa/cage-backend");
+const eden = path.resolve(process.argv[2] || "_output/diagnostics-qa/eden.exe");
 const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.CAGE_PLAYWRIGHT_MODULE || "playwright");
-const root = await fs.mkdtemp(path.join(os.tmpdir(), "cage-diagnostics-"));
+const { chromium } = require(process.env.EDEN_PLAYWRIGHT_MODULE || "playwright");
+const root = await fs.mkdtemp(path.join(os.tmpdir(), "eden-diagnostics-"));
 const profile = path.join(root, "profile");
-const env = { ...process.env, CLAUDE_CAGE_CONFIG: path.join(profile, "config.json") };
+const env = { ...process.env, EDEN_CONFIG: path.join(profile, "config.json") };
 let browser;
-const reportDirectory = process.env.CAGE_DIAGNOSTIC_REPORT
-  ? path.resolve(process.env.CAGE_DIAGNOSTIC_REPORT)
-  : await fs.mkdtemp(path.join(os.tmpdir(), "cage-diagnostics-report-"));
+const reportDirectory = process.env.EDEN_DIAGNOSTIC_REPORT
+  ? path.resolve(process.env.EDEN_DIAGNOSTIC_REPORT)
+  : await fs.mkdtemp(path.join(os.tmpdir(), "eden-diagnostics-report-"));
 await fs.mkdir(reportDirectory, { recursive: true });
 try {
-  const { stdout } = await run(cage, ["desktop", "--json"], { env });
+  const { stdout } = await run(eden, ["desktop", "--json"], { env });
   const entry = JSON.parse(stdout);
   assert.equal(entry.status, "ready");
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ acceptDownloads: true, viewport: { width: 1280, height: 900 } });
   await page.goto(entry.url);
-  await page.getByRole("heading", { name: "注册 Cage 账户", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "注册 Eden 账户", exact: true }).waitFor();
   await page.getByLabel("用户名", { exact: true }).fill("diagnostics_qa");
   await page.getByLabel("设置密码", { exact: true }).fill("Test-only-password-8712");
   await page.getByLabel("确认密码", { exact: true }).fill("Test-only-password-8712");
@@ -47,15 +47,15 @@ try {
   await page.screenshot({ path: path.join(reportDirectory, "settings.png") });
   // Native hosts use the same CLI command after their save picker completes.
   const nativeOutput = path.join(root, "native.zip");
-  const saved = await run(cage, ["diagnostics", "--json", nativeOutput], { env });
+  const saved = await run(eden, ["diagnostics", "--json", nativeOutput], { env });
   assert.equal(JSON.parse(saved.stdout).status, "ok");
   const selected = await page.evaluate(async () => (await fetch("/api/client/context")).json());
   const selectedOutput = path.join(root, "selected-native.zip");
-  const selectedSave = await run(cage, ["diagnostics", "--json", "--connection", selected.connection_id, selectedOutput], { env });
+  const selectedSave = await run(eden, ["diagnostics", "--json", "--connection", selected.connection_id, selectedOutput], { env });
   assert.equal(JSON.parse(selectedSave.stdout).status, "ok");
   // Stop only this isolated controller, then check the offline ZIP as well.
-  await run(cage, ["prepare-update", "--json"], { env });
-  const offline = await run(cage, ["diagnostics", "--json", path.join(root, "offline.zip")], { env });
+  await run(eden, ["prepare-update", "--json"], { env });
+  const offline = await run(eden, ["diagnostics", "--json", path.join(root, "offline.zip")], { env });
   assert.equal(JSON.parse(offline.stdout).status, "ok");
   const checks = [];
   for (const filename of ["browser.zip", "native.zip", "selected-native.zip", "offline.zip"]) {
@@ -73,6 +73,6 @@ try {
   console.log(JSON.stringify({ success: true, reportDirectory, checks }));
 } finally {
   await browser?.close();
-  await run(cage, ["prepare-update", "--json"], { env }).catch(() => {});
+  await run(eden, ["prepare-update", "--json"], { env }).catch(() => {});
   await fs.rm(root, { recursive: true, force: true });
 }

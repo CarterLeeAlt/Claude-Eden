@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace Cage.Windows;
+namespace Eden.Windows;
 
 internal sealed class TrayMenu : ContextMenuStrip
 {

@@ -3,17 +3,15 @@ import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
-const output = new URL("../../docs/test-reports/2026-11-08-remember-device/", import.meta.url);
+const output = new URL("../../.tmp/guest-neutralization/ui-eden/screenshots/account/", import.meta.url);
 await fs.mkdir(output, { recursive: true });
 
-for (const platform of ["windows", "darwin", "linux"]) {
+for (const platform of ["windows"]) {
   let fixture, failTrust = false;
   const actions = [];
   const clientContext = { mode: "local", desktop_gateway: true, connection_id: "local", client_platform: platform, server_platform: platform, connection: { state: "connected" } };
   fixture = await createWorkbench({
     clientContext,
-    // Automatic trust must work without the macOS-only Keychain bridge.
-    nativeRequest: async ({ action }) => action === "accountDevice" ? { supported: false } : null,
     clientRequest: async (route, path, body) => {
       if (path === "/client/context") return route.fulfill({ json: clientContext });
       if (path !== "/client/trusted-login") return route.fulfill({ json: {} });
@@ -23,10 +21,8 @@ for (const platform of ["windows", "darwin", "linux"]) {
       if (body.action === "enable") {
         assert.equal(body.password, fixture.state.accountPassword);
         a.trusted_login = true;
-        delete (a.devices ||= {}).automatic;
       } else if (body.action === "disable") {
         a.trusted_login = false;
-        delete (a.devices ||= {}).automatic;
       } else if (body.action === "resume") {
         assert.equal(a.require_authentication, false, "automatic login bypassed manual lock");
         assert.equal(a.trusted_login, true);
@@ -48,7 +44,7 @@ for (const platform of ["windows", "darwin", "linux"]) {
   const login = async (password = "fixture-password") => {
     await page.getByLabel("账户密码", { exact: true }).fill(password);
     const saved = password === "fixture-password" ? trustReply() : null;
-    await page.getByRole("button", { name: "解锁 Cage", exact: true }).click();
+    await page.getByRole("button", { name: "解锁 Eden", exact: true }).click();
     if (saved) await (await saved).finished();
   };
   const settings = async () => {
@@ -73,8 +69,8 @@ for (const platform of ["windows", "darwin", "linux"]) {
     assert.equal(actions.filter(a => a === "resume").length, 1);
 
     await menu().click();
-    await page.getByRole("menuitem", { name: /锁定 Cage/ }).click();
-    await page.getByRole("region", { name: "解锁 Cage", exact: true }).waitFor();
+    await page.getByRole("menuitem", { name: /锁定 Eden/ }).click();
+    await page.getByRole("region", { name: "解锁 Eden", exact: true }).waitFor();
     await page.reload();
     await remember().waitFor();
     assert.equal(await remember().isChecked(), true);
@@ -96,14 +92,6 @@ for (const platform of ["windows", "darwin", "linux"]) {
     await page.getByRole("button", { name: "关闭记住我", exact: true }).click();
     await page.getByLabel("验证账户密码", { exact: true }).waitFor();
 
-    // Existing macOS grants share the same opt-out control.
-    state.account.devices = { automatic: "legacy-keychain", biometric: "touch-id" };
-    await page.reload();
-    await settings();
-    await page.getByRole("button", { name: "关闭记住我", exact: true }).click();
-    await page.getByLabel("验证账户密码", { exact: true }).waitFor();
-    assert.deepEqual(state.account.devices, { biometric: "touch-id" });
-
     // A trust-storage failure must not undo a successful password login.
     await reopenLocked();
     await remember().check();
@@ -117,7 +105,7 @@ for (const platform of ["windows", "darwin", "linux"]) {
 
     Object.assign(state.account, { exists: false, unlocked: false, username: "", devices: {}, require_authentication: false });
     await page.reload();
-    await page.getByRole("heading", { name: "注册 Cage 账户", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "注册 Eden 账户", exact: true }).waitFor();
     await remember().waitFor();
     assert.equal(await remember().isChecked(), true);
     await page.getByLabel("用户名", { exact: true }).fill("测试工作区");
@@ -136,7 +124,7 @@ for (const platform of ["windows", "darwin", "linux"]) {
     await remember().waitFor();
     assert.equal(await remember().isChecked(), false);
     assert.deepEqual(errors, []);
-    console.log(`PASS ${platform}: create, password login, remember, reopen, manual lock, opt-out, legacy migration, settings, storage failure and logout`);
+    console.log(`PASS ${platform}: create, password login, remember, reopen, manual lock, opt-out, settings, storage failure and logout`);
   } catch (error) {
     await page.screenshot({ path: fileURLToPath(new URL(`${platform}-failure.png`, output)) });
     console.error(await page.locator("body").innerText());
@@ -145,15 +133,14 @@ for (const platform of ["windows", "darwin", "linux"]) {
   } finally { await browser.close(); }
 }
 
-const remote = await createWorkbench({
-  clientContext: { mode: "remote", desktop_gateway: true, connection_id: "remote", client_platform: "windows", server_platform: "linux", connection: { state: "connected" } },
-  nativeRequest: async ({ action }) => action === "accountDevice" ? { supported: false } : null,
+const direct = await createWorkbench({
+  clientContext: { mode: "local", connection_id: "direct", client_platform: "windows", server_platform: "windows", connection: { state: "connected" } },
 });
 try {
-  remote.state.account.unlocked = false;
-  await remote.page.reload();
-  await remote.page.getByLabel("账户密码", { exact: true }).waitFor();
-  assert.equal(await remote.page.getByRole("checkbox", { name: /^记住我/ }).count(), 0);
-  assert.deepEqual(remote.errors, []);
-  console.log("PASS remote: local computer trust is unavailable for a remote host");
-} finally { await remote.browser.close(); }
+  direct.state.account.unlocked = false;
+  await direct.page.reload();
+  await direct.page.getByLabel("账户密码", { exact: true }).waitFor();
+  assert.equal(await direct.page.getByRole("checkbox", { name: /^记住我/ }).count(), 0);
+  assert.deepEqual(direct.errors, []);
+  console.log("PASS: computer trust requires the desktop gateway");
+} finally { await direct.browser.close(); }

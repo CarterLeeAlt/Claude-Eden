@@ -11,8 +11,8 @@ import (
 	"time"
 
 	agentvm "github.com/sylvinus/agent-vm"
-	"github.com/sylvinus/agent-vm/internal/cage"
 	"github.com/sylvinus/agent-vm/internal/diagnostics"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/env"
 	"github.com/sylvinus/agent-vm/internal/host"
 	"github.com/sylvinus/agent-vm/internal/hostimage"
@@ -23,9 +23,9 @@ import (
 	"github.com/sylvinus/agent-vm/internal/vmname"
 )
 
-const setupUsage = "Usage: agent-vm setup [--disk GB] [--memory GB] [--cpus N] [--preinstall=LIST]"
+const setupUsage = "Usage: %s setup [--disk GB] [--memory GB] [--cpus N] [--preinstall=LIST]"
 
-const setupHelp = `Usage: agent-vm setup [options]
+const setupHelp = `Usage: %[1]s setup [options]
 
 Create a base VM template with dev tools and agents pre-installed. Runs an
 interactive wizard by default; the first prompt offers a "default install"
@@ -53,13 +53,13 @@ Options:
                         gh, claude, opencode, codex, vibe, pi, mcp-chrome,
                         mcp-playwright, code-server, code-claude,
                         code-opencode, code-codex, code-vibe
-                      'code-server' is VS Code in the browser, for
-                      'agent-vm code', with GitHub Copilot turned off.
+                      'code-server' is VS Code in the browser,
+                      with GitHub Copilot turned off.
                       'code-claude', 'code-opencode', 'code-codex' and
                       'code-vibe' add that agent's extension, and code-server
                       with it. The Claude, Codex and Vibe extensions bring
                       their own copy of the agent: 'claude', 'codex' and
-                      'vibe' are the command-line ones, for 'agent-vm claude'
+                      'vibe' are the command-line ones, for '%[1]s claude'
                       and the others. OpenCode's does not: 'code-opencode'
                       also installs 'opencode'.
                       Selecting codex or pi also installs node (npm). So does
@@ -157,7 +157,7 @@ func (e *app) setupCmd(ctx context.Context, args []string) int {
 				cpus = o.CPUs
 			default:
 				name, _, _ := strings.Cut(args[0], "=")
-				fmt.Fprintf(e.io.Stderr, "Unknown option: %s\n%s\n", name, setupUsage)
+				fmt.Fprintf(e.io.Stderr, "Unknown option: %s\n%s\n", name, fmt.Sprintf(setupUsage, Command))
 				return exitUsage
 			}
 			args = args[n:]
@@ -165,7 +165,7 @@ func (e *app) setupCmd(ctx context.Context, args []string) int {
 		}
 		switch a := args[0]; {
 		case a == "--help" || a == "-h":
-			fmt.Fprint(e.io.Stdout, setupHelp)
+			fmt.Fprintf(e.io.Stdout, setupHelp, Command)
 			return 0
 		case a == "--preinstall":
 			// Only a value that is not an option: a bare --preinstall is the
@@ -179,7 +179,7 @@ func (e *app) setupCmd(ctx context.Context, args []string) int {
 		case strings.HasPrefix(a, "--preinstall="):
 			preinstall, preinstallSeen, args = strings.TrimPrefix(a, "--preinstall="), true, args[1:]
 		default:
-			fmt.Fprintf(e.io.Stderr, "Unknown option: %s\n%s\n", a, setupUsage)
+			fmt.Fprintf(e.io.Stderr, "Unknown option: %s\n%s\n", a, fmt.Sprintf(setupUsage, Command))
 			return exitUsage
 		}
 	}
@@ -213,7 +213,7 @@ func (e *app) setupCmd(ctx context.Context, args []string) int {
 		}
 	}
 
-	fmt.Fprintln(e.io.Stdout, "Starting agent-vm setup...")
+	fmt.Fprintf(e.io.Stdout, "Starting %s setup...\n", Command)
 	if !skipPrereqs && (!host.LinuxPrereqs(e.io.Stderr) || !host.WindowsPrereqs(e.io.Stdout, e.io.Stderr)) {
 		return 1
 	}
@@ -236,7 +236,7 @@ func (e *app) swapBase(ctx context.Context, b vm.Backend) bool {
 	w := e.io.Stderr
 	unlock, err := e.lockVM(ctx, vmname.Template)
 	if err != nil {
-		fmt.Fprintf(w, "Error: could not lock the base template: %v. The new base is VM '%s'; 'agent-vm setup' again builds another.\n", err, building)
+		fmt.Fprintf(w, "Error: could not lock the base template: %v. The new base is VM '%s'; '%s setup' again builds another.\n", err, building, Command)
 		return false
 	}
 	defer unlock()
@@ -250,29 +250,29 @@ func (e *app) swapBase(ctx context.Context, b vm.Backend) bool {
 	// Forgets the old base's markers with it: from here on, nothing says a
 	// base is ready.
 	if !e.deleteVM(ctx, vmname.Template) {
-		fmt.Fprintf(w, "Error: could not replace the base VM. The new one is VM '%s'; 'agent-vm setup' again builds another.\n", building)
+		fmt.Fprintf(w, "Error: could not replace the base VM. The new one is VM '%s'; '%s setup' again builds another.\n", building, Command)
 		return false
 	}
 	if err := b.Clone(ctx, building, vmname.Template); err != nil {
-		fmt.Fprintf(w, "Error: could not copy the new base VM to '%s': %v\nThere is no base now. The new one is VM '%s'; 'agent-vm setup' again builds another.\n", vmname.Template, err, building)
+		fmt.Fprintf(w, "Error: could not copy the new base VM to '%s': %v\nThere is no base now. The new one is VM '%s'; '%s setup' again builds another.\n", vmname.Template, err, building, Command)
 		return false
 	}
 	// The clone copies the build's running record. The base never runs, and a
 	// record whose PID is later reused would hold every configuration change.
-	if err := os.Remove(filepath.Join(LimaHome(e.state), vmname.Template, "cage-running.json")); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(filepath.Join(LimaHome(e.state), vmname.Template, "eden-running.json")); err != nil && !os.IsNotExist(err) {
 		fmt.Fprintf(w, "Warning: could not remove the copied running record from the base VM: %v\n", err)
 	}
 	// The version last: it says the base can be cloned.
 	if err := e.state.Write(state.BaseBuiltBy, []byte(version.Version+"\n")); err != nil {
-		fmt.Fprintf(w, "Error: could not record the version that built the base: %v\nThe base VM is not marked ready: 'agent-vm setup' again.\n", err)
+		fmt.Fprintf(w, "Error: could not record the version that built the base: %v\nThe base VM is not marked ready: '%s setup' again.\n", err, Command)
 		return false
 	}
 	if err := e.state.Write(state.BaseVersion, []byte(strconv.FormatInt(time.Now().Unix(), 10)+"\n")); err != nil {
-		fmt.Fprintf(w, "Error: could not record when the base was built: %v\nThe base VM is not marked ready: 'agent-vm setup' again.\n", err)
+		fmt.Fprintf(w, "Error: could not record when the base was built: %v\nThe base VM is not marked ready: '%s setup' again.\n", err, Command)
 		return false
 	}
 	if !e.deleteVM(ctx, building) {
-		fmt.Fprintf(w, "Warning: the base is ready, but VM '%s' stays: 'agent-vm rm %s' frees its disk.\n", building, building)
+		fmt.Fprintf(w, "Warning: the base is ready, but temporary VM '%s' could not be removed. Its disk remains in %s.\n", building, filepath.Join(LimaHome(e.state), building))
 	}
 	return true
 }
@@ -291,17 +291,17 @@ func (e *app) wizard(in install, disk, memory, cpus int, memorySeen bool) (int, 
 	w := e.io.Stderr
 	u := e.ui
 	yn := func(q string, def bool) bool { return u.AskYN(q, def) }
-	fmt.Fprint(w, "\nagent-vm setup wizard\n─────────────────────\n\n"+
+	fmt.Fprintf(w, "\n%[1]s setup wizard\n─────────────────────\n\n"+
 		"These settings apply to the base VM image. Every per-project VM is\n"+
 		"cloned from it, so anything preinstalled here is available in all\n"+
 		"future agent VMs. You can still install extra tools inside any\n"+
-		"individual VM later (e.g. via `agent-vm shell`).\n\n"+
-		"For more: https://www.agent-vm.org/\n\n"+
+		"individual VM later (e.g. via `%[1]s shell`).\n\n"+
+		"Command options: %[1]s setup --help\n\n"+
 		"Software\n────────\n"+
 		"  Agents:   Claude Code, OpenCode, Codex CLI, Mistral Vibe\n"+
 		"  Tools:    Python, Node.js, Docker, Chromium, gh,\n"+
 		"            Chrome DevTools MCP\n"+
-		"  Skip:     Pi, Ruby, Rust, Go, Playwright MCP, code-server\n\n")
+		"  Skip:     Pi, Ruby, Rust, Go, Playwright MCP, code-server\n\n", Command)
 	if !yn("Use this default", true) {
 		fmt.Fprint(w, "\nAI coding agents\n────────────────\n")
 		in["claude"] = yn("Claude Code", true)
@@ -310,7 +310,7 @@ func (e *app) wizard(in install, disk, memory, cpus int, memorySeen bool) (int, 
 		in["vibe"] = yn("Mistral Vibe", true)
 		in["pi"] = yn("Pi", false)
 		fmt.Fprint(w, "\nEditor\n──────\n")
-		in["code-server"] = yn("code-server (VS Code in the browser, for 'agent-vm code')", false)
+		in["code-server"] = yn("code-server (VS Code in the browser)", false)
 		e.askCodeExtensions(in)
 		fmt.Fprint(w, "\nSystem tools\n────────────\n")
 		in["docker"] = yn("Docker", true)
@@ -338,7 +338,7 @@ func (e *app) wizard(in install, disk, memory, cpus int, memorySeen bool) (int, 
 	if in["code-server"] && !memorySeen {
 		memory = 4
 	}
-	fmt.Fprint(w, "\nDefault resources\n─────────────────\n(per-VM override with --disk / --memory / --cpus on any agent-vm command)\n\n")
+	fmt.Fprintf(w, "\nDefault resources\n─────────────────\n(per-VM override with --disk / --memory / --cpus on a %s VM command)\n\n", Command)
 	fmt.Fprintf(w, "  Disk     %d GB\n  Memory   %d GB\n  CPUs     %d\n\n", disk, memory, cpus)
 	if !yn("Use these defaults", true) {
 		disk = u.AskInt("Disk size in GB", disk, 0)
@@ -373,7 +373,7 @@ func (e *app) askCodeExtensions(in install) {
 	if in["opencode"] {
 		fmt.Fprintln(e.io.Stderr, "  (OpenCode's extension needs its command line: it stays installed.)")
 	}
-	choice := e.ui.AskChoice("Pick one", 1, "Extension and command line (agent-vm claude...)", "Extension only", "Command line only")
+	choice := e.ui.AskChoice("Pick one", 1, fmt.Sprintf("Extension and command line (%s claude...)", Command), "Extension only", "Command line only")
 	if choice == 3 {
 		return
 	}
@@ -421,7 +421,7 @@ func (e *app) buildBase(ctx context.Context, in install, disk, memory, cpus int)
 		}
 	}
 	resume := false
-	if os.Getenv("CLAUDE_CAGE_CONFIG") != "" {
+	if os.Getenv("EDEN_CONFIG") != "" {
 		previous, err := b.Get(ctx, building)
 		resume = err == nil && previous != nil
 	}
@@ -439,7 +439,7 @@ func (e *app) buildBase(ctx context.Context, in install, disk, memory, cpus int)
 	}
 	logPath := e.state.Path("setup.log")
 	var log io.WriteCloser
-	if configPath := os.Getenv(cage.ConfigEnv); configPath != "" {
+	if configPath := os.Getenv(eden.ConfigEnv); configPath != "" {
 		logPath = filepath.Join(filepath.Dir(configPath), "logs")
 		log = diagnostics.New(filepath.Dir(configPath)).Stream("setup", "info")
 	} else {
@@ -459,7 +459,7 @@ func (e *app) buildBase(ctx context.Context, in install, disk, memory, cpus int)
 		if err != nil {
 			fmt.Fprintf(log, "%v\n", err)
 			fmt.Fprintf(e.io.Stderr, "Error: %s\n", diagnostics.Redact(err.Error()))
-			if f, ok := e.io.Stdout.(*os.File); ok && ui.IsTerminal(f) && os.Getenv(cage.ConfigEnv) == "" {
+			if f, ok := e.io.Stdout.(*os.File); ok && ui.IsTerminal(f) && os.Getenv(eden.ConfigEnv) == "" {
 				fmt.Fprint(e.io.Stderr, ui.Tail(logPath, 20))
 			}
 			return false
@@ -495,7 +495,7 @@ func (e *app) buildBase(ctx context.Context, in install, disk, memory, cpus int)
 	fmt.Fprintln(e.io.Stdout, "Installing packages inside VM...")
 	if !windowed(func(w io.Writer) error {
 		code, err := b.Shell(ctx, building, vm.ShellOpts{Args: []string{"bash", "-l"},
-			Stdin: strings.NewReader(cageInstallEnv() + in.exports() + agentvm.SetupScript), Stdout: w, Stderr: w})
+			Stdin: strings.NewReader(edenInstallEnv() + in.exports() + agentvm.SetupScript), Stdout: w, Stderr: w})
 		if err == nil && code != 0 {
 			err = fmt.Errorf("exit status %d", code)
 		}
@@ -509,8 +509,8 @@ func (e *app) buildBase(ctx context.Context, in install, disk, memory, cpus int)
 	if user, ok := readRegular(e.state.Path("setup.sh")); ok {
 		fmt.Fprintf(e.io.Stdout, "Running custom setup from %s...\n", e.state.Path("setup.sh"))
 		shell := "zsh"
-		if os.Getenv(cage.ConfigEnv) != "" {
-			// Cage owns this script and its Bash functions. A guest's default
+		if os.Getenv(eden.ConfigEnv) != "" {
+			// Eden owns this script and its Bash functions. A guest's default
 			// login shell must not change their syntax or reserved variables.
 			shell = "bash"
 		}
@@ -525,21 +525,21 @@ func (e *app) buildBase(ctx context.Context, in install, disk, memory, cpus int)
 
 	// Ready only once stopped: Lima clones only a stopped instance.
 	if !e.stopVM(ctx, building) {
-		fmt.Fprintf(e.io.Stderr, "Error: the new base VM is set up but did not stop: 'agent-vm stop %s', then 'agent-vm setup' again. The base from before is untouched.\n", building)
+		fmt.Fprintf(e.io.Stderr, "Error: the new base VM is set up but did not stop: '%s stop %s', then '%s setup' again. The base from before is untouched.\n", Command, building, Command)
 		return 1
 	}
 	if !e.swapBase(ctx, b) {
 		return 1
 	}
 
-	fmt.Fprint(e.io.Stdout, "\nBase VM ready. Try one of these in any project directory:\n  agent-vm shell\n")
+	fmt.Fprintf(e.io.Stdout, "\nBase VM ready. Try one of these in any project directory:\n  %s shell\n", Command)
 	for _, a := range []string{"claude", "opencode", "codex", "vibe", "pi"} {
 		if in[a] {
-			fmt.Fprintf(e.io.Stdout, "  agent-vm %s\n", a)
+			fmt.Fprintf(e.io.Stdout, "  %s %s\n", Command, a)
 		}
 	}
 	if in["code-server"] {
-		fmt.Fprintln(e.io.Stdout, "  agent-vm code")
+		fmt.Fprintln(e.io.Stdout, "  Browser editor: code-server is installed in the guest.")
 	}
 	// Only worth saying to someone with a VM to re-clone.
 	if vms, err := e.agentVMs(ctx); err == nil && len(vms) > 1 {
@@ -548,13 +548,13 @@ func (e *app) buildBase(ctx context.Context, in install, disk, memory, cpus int)
 	return 0
 }
 
-func cageInstallEnv() string {
-	if os.Getenv("CLAUDE_CAGE_CONFIG") != "" {
+func edenInstallEnv() string {
+	if os.Getenv("EDEN_CONFIG") != "" {
 		progress := ""
-		if os.Getenv("CAGE_SETUP_PROGRESS") == "1" {
-			progress = "export CAGE_SETUP_PROGRESS=1\n"
+		if os.Getenv("EDEN_SETUP_PROGRESS") == "1" {
+			progress = "export WORKBENCH_SETUP_PROGRESS=1\n"
 		}
-		return "set -e\nexport CLAUDE_CAGE=1\n" + progress + cage.DebianPrepareScript + "\n" + cage.ToolInstallPrelude()
+		return "set -e\nexport WORKBENCH_SETUP=1\n" + progress + eden.DebianPrepareScript + "\n" + eden.ToolInstallPrelude()
 	}
 	return ""
 }

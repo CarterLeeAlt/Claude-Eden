@@ -34,8 +34,8 @@ try {
     await page.screenshot({ path: `${output}/empty-${width}.png` });
     await page.getByRole('button', { name: '返回正文' }).click();
     assert.equal(await page.locator('#guide-article').isVisible(), true);
-    await search.fill('手机 配对');
-    await page.locator('#search-list').getByRole('link', { name: '手机连接与远程会话', exact: true }).waitFor();
+    await search.fill('Debian 客机');
+    await page.locator('#search-list').getByRole('link', { name: 'Debian 13 客机', exact: true }).waitFor();
     await search.press('Escape');
     assert.equal(await search.inputValue(), '');
     if (width === 390) {
@@ -51,8 +51,8 @@ try {
       assert.equal(await menu.getAttribute('open'), null);
       assert.ok(Math.abs((await title.boundingBox()).y - before) < 2, 'menu must restore layout');
       await menu.locator('summary').press('Enter');
-      await menu.getByRole('link', { name: '手机连接与远程会话' }).click();
-      await page.getByRole('heading', { level: 1, name: '手机连接与远程会话' }).waitFor();
+      await menu.getByRole('link', { name: 'Debian 13 客机' }).click();
+      await page.getByRole('heading', { level: 1, name: 'Debian 13 客机' }).waitFor();
       assert.equal(await page.locator('body').evaluate(body => body.scrollWidth <= innerWidth + 1), true, 'mobile article overflows');
     } else {
       // At browser zoom 200%, a 1280px window exposes a 640px CSS viewport.

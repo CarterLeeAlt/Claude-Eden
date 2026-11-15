@@ -3,11 +3,11 @@ package agentvm
 
 import _ "embed"
 
-// CageVersion is the default version for source builds without linker flags.
+// EdenVersion is the default version for source builds without linker flags.
 // Release builds may override internal/version.Version explicitly.
 //
 //go:embed VERSION
-var CageVersion string
+var EdenVersion string
 
 // SetupScript provisions the base VM: `agent-vm setup` runs it in the guest,
 // after the choices as export lines.

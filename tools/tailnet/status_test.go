@@ -17,7 +17,7 @@ func TestStatusShowsAccountNetworkAndDevicesWithoutPublicKeys(t *testing.T) {
 		BackendState:   "Running",
 		TailscaleIPs:   []netip.Addr{netip.MustParseAddr("100.88.2.3")},
 		CurrentTailnet: &ipnstate.TailnetStatus{Name: "work.test"},
-		Self:           &ipnstate.PeerStatus{HostName: "cage-mac", DNSName: "cage-mac.test.ts.net.", OS: "macOS", UserID: 17},
+		Self:           &ipnstate.PeerStatus{HostName: "workbench-mac", DNSName: "workbench-mac.test.ts.net.", OS: "macOS", UserID: 17},
 		User:           map[tailcfg.UserID]tailcfg.UserProfile{17: {LoginName: "owner@test.invalid"}},
 		Health:         []string{"Control connection interrupted"},
 		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
@@ -25,7 +25,7 @@ func TestStatusShowsAccountNetworkAndDevicesWithoutPublicKeys(t *testing.T) {
 			key.NewNode().Public(): {ID: "online", HostName: "z-phone", DNSName: "z-phone.test.ts.net.", OS: "android", TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.88.2.4")}, Online: true},
 		},
 	})
-	if out.Tailnet != "work.test" || out.Account != "owner@test.invalid" || out.Hostname != "cage-mac" || out.OS != "macOS" || out.Name != "cage-mac.test.ts.net" {
+	if out.Tailnet != "work.test" || out.Account != "owner@test.invalid" || out.Hostname != "workbench-mac" || out.OS != "macOS" || out.Name != "workbench-mac.test.ts.net" {
 		t.Fatalf("missing network identity: %+v", out)
 	}
 	if len(out.Peers) != 2 || !out.Peers[0].Online || out.Peers[0].OS != "android" || out.Peers[1].LastSeen == nil || !out.Peers[1].LastSeen.Equal(seen) {

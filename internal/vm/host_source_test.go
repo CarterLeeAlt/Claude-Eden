@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/hostimage"
 )
 
@@ -16,12 +16,12 @@ func TestHostLinuxImageHasNoFallbackOrHostMounts(t *testing.T) {
 	l := newTestLima(t)
 	directory := t.TempDir()
 	config := filepath.Join(directory, "config.json")
-	data, _ := json.Marshal(cage.DefaultConfig())
+	data, _ := json.Marshal(eden.DefaultConfig())
 	if err := os.WriteFile(config, data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(cage.ConfigEnv, config)
-	plan := hostimage.Plan{Host: hostimage.Identity{System: "ubuntu-22.04", Version: "22.04", Arch: "amd64"}, Version: "22.04", Format: "qcow2", Path: filepath.Join(directory, "ubuntu.img"), Digest: "sha256:" + strings.Repeat("a", 64)}
+	t.Setenv(eden.ConfigEnv, config)
+	plan := hostimage.Plan{Host: hostimage.Identity{System: "debian-13", Version: "13", Arch: "amd64"}, Version: "13", Format: "qcow2", Path: filepath.Join(directory, "debian.img"), Digest: "sha256:" + strings.Repeat("a", 64)}
 	if err := hostimage.WriteLinuxTemplate(directory, plan); err != nil {
 		t.Fatal(err)
 	}
@@ -43,10 +43,13 @@ func TestHostLinuxImageHasNoFallbackOrHostMounts(t *testing.T) {
 	if len(instance.Config.Mounts) != 0 {
 		t.Fatal("host directories were mounted")
 	}
-	if err := hostimage.ClearLinuxTemplate(directory, plan); err != nil {
-		t.Fatal(err)
+	u := instance.Config.User
+	if *u.Name != "developer" || *u.Comment != "Development user" || *u.Home != "/home/developer" || *u.UID != 1000 || *u.Shell != "/bin/bash" || !*u.PasswordlessSudo {
+		t.Fatalf("incomplete development identity: %+v", u)
 	}
-	if path, err := hostimage.LinuxTemplate(directory); err != nil || path != "template:debian-13" {
-		t.Fatalf("selection was retained: %q %v", path, err)
+	changed := plan
+	changed.Path = filepath.Join(directory, "different.img")
+	if err := hostimage.WriteLinuxTemplate(directory, changed); err == nil {
+		t.Fatal("replaced the durable image binding")
 	}
 }

@@ -3,14 +3,14 @@ import http from 'node:http';
 import { createWorkbench } from './workbench-fixture.mjs';
 import { createPrivacyController } from '../../scripts/browser-privacy-fixture.mjs';
 export async function createSettingsWorkbench(options = {}) {
-  const clientContext = options.clientContext || { mode: 'local', connection_id: 'local', client_platform: 'darwin', server_platform: 'darwin', connection: { state: 'disconnected' } };
+  const clientContext = options.clientContext || { mode: 'local', connection_id: 'local', client_platform: 'windows', server_platform: 'windows', connection: { state: 'disconnected' } };
   const controller = await createPrivacyController();
   const fixtureState = { failSave: false, home: controller.origin + '/home' };
   const archive = execFileSync('uv', ['run', '--no-project', 'python', '-c', `import io,json,sys,zipfile
 b=io.BytesIO()
 with zipfile.ZipFile(b,'w') as z:
  z.writestr('manifest.json',json.dumps({'manifest_version':3,'name':'阅读助手','version':'1.0','description':'调整网页阅读体验。','permissions':['storage'],'content_scripts':[{'matches':['http://localhost/*'],'js':['content.js']}]}))
- z.writestr('content.js','document.documentElement.dataset.cageSettingsExtension="active";')
+ z.writestr('content.js','document.documentElement.dataset.workbenchSettingsExtension="active";')
 sys.stdout.buffer.write(b.getvalue())`], { stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1 << 20 });
   const profileID = 'a'.repeat(32), extensionID = 'b'.repeat(32);
   // WebKit's routing protocol omits Blob upload bodies. Keep those uploads on
@@ -25,7 +25,7 @@ sys.stdout.buffer.write(b.getvalue())`], { stdio: ['ignore', 'pipe', 'ignore'], 
       return;
     }
     if (request.url.startsWith('/api/')) { response.writeHead(404); response.end(); return; }
-    const target = new URL(request.url, process.env.CAGE_UI_URL || 'http://127.0.0.1:5198');
+    const target = new URL(request.url, process.env.EDEN_UI_URL || 'http://127.0.0.1:5198');
     const upstream = http.request(target, { headers: { ...request.headers, host: target.host } }, source => { response.writeHead(source.statusCode, source.headers); source.pipe(response); });
     upstream.on('error', error => { response.writeHead(502); response.end(error.message); }); request.pipe(upstream);
   });

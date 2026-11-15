@@ -6,63 +6,22 @@ import (
 	"errors"
 	"net/http"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/host"
 	"github.com/sylvinus/agent-vm/internal/managedproxy"
 )
 
 var errGuestUpdateRequired = errors.New("环境组件需要更新，请先保存浏览器和编辑器中的修改。工作台终端与磁盘保留，编辑器内终端可能结束。")
 
-const guestConnectionSnapshot = `sudo cat /etc/claude-cage/browser-control.json; printf '\n'; cat "$HOME/.config/claude-cage/browser-password"; printf '\n'; if sudo test -f /etc/claude-cage/components.json; then sudo cat /etc/claude-cage/components.json; else printf 'null'; fi`
+const guestConnectionSnapshot = `sudo cat /etc/workbench/browser-control.json; printf '\n'; cat "$HOME/.config/workbench/browser-password"; printf '\n'; if sudo test -f /etc/workbench/components.json; then sudo cat /etc/workbench/components.json; else printf 'null'; fi`
 
-func parseGuestConnection(data []byte) (guestCredentials, *cage.GuestManifest, error) {
-	lines := strings.SplitN(strings.TrimSpace(string(data)), "\n", 3)
-	var credentials guestCredentials
-	if len(lines) != 3 || json.Unmarshal([]byte(lines[0]), &credentials) != nil || credentials.Token == "" || strings.TrimSpace(lines[1]) == "" {
-		return credentials, nil, errors.New("浏览器控制服务尚未安装")
-	}
-	credentials.VNCPassword = strings.TrimSpace(lines[1])
-	var manifest *cage.GuestManifest
-	if json.Unmarshal([]byte(lines[2]), &manifest) != nil || manifest == nil || !manifest.Current() {
-		return credentials, manifest, errGuestUpdateRequired
-	}
-	return credentials, manifest, nil
-}
-
-type componentVersions struct {
-	Status         string              `json:"status"`
-	UpdateRequired bool                `json:"update_required"`
-	Required       cage.GuestManifest  `json:"required"`
-	Current        *cage.GuestManifest `json:"current"`
-}
-type toolVersion struct {
-	Current  string `json:"current"`
-	Required string `json:"required"`
-}
-
-// Version commands run only for this explicit request, never in status polling.
-func (s *Server) environmentVersions(w http.ResponseWriter, r *http.Request) {
-	if s.macosGuest != nil || s.windowsGuest != nil {
-		s.nativeEnvironmentVersions(w, r)
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
-	defer cancel()
-	running := s.vmRunning()
-	components := componentVersions{Status: "stopped", Required: cage.RequiredGuestManifest()}
-	tools := map[string]toolVersion{}
-	for name, required := range cage.RequiredToolVersions() {
-		tools[name] = toolVersion{Required: required}
-	}
-	var detail string
-	if running {
-		data, err := s.guest(ctx, `python3 - <<'CAGE_VERSIONS'
-import json,subprocess,os
+const guestToolVersionsScript = `import json,subprocess,os
 from pathlib import Path
-p=Path('/etc/claude-cage/components.json')
+p=Path('/etc/workbench/components.json')
 try: manifest=json.loads(p.read_text())
 except (OSError,ValueError): manifest=None
 versions={}
@@ -72,12 +31,62 @@ if not os.path.isfile(browser): browser='/usr/bin/chromium'
 for name,args in {'chromium':[browser,'--version'],'code_server':['code-server','--version'],'claude':['claude','--version'],'gh':['gh','--version'],'git':['git','--version'],'mise':[str(Path.home()/'.local/bin/mise'),'--version']}.items():
  try:
   result=subprocess.run(args,env=env,capture_output=True,text=True,timeout=4)
-  versions[name]=result.stdout.strip().splitlines()[0][:200] if result.returncode==0 and result.stdout.strip() else ''
+  versions[name]=result.stdout[:16384] if result.returncode==0 else ''
  except (OSError,subprocess.TimeoutExpired): versions[name]=''
-print(json.dumps({'manifest':manifest,'tools':versions}))
-CAGE_VERSIONS`)
+print(json.dumps({'manifest':manifest,'tools':versions}))`
+
+func parseGuestConnection(data []byte) (guestCredentials, *eden.GuestManifest, error) {
+	lines := strings.SplitN(strings.TrimSpace(string(data)), "\n", 3)
+	var credentials guestCredentials
+	if len(lines) != 3 || json.Unmarshal([]byte(lines[0]), &credentials) != nil || credentials.Token == "" || strings.TrimSpace(lines[1]) == "" {
+		return credentials, nil, errors.New("浏览器控制服务尚未安装")
+	}
+	credentials.VNCPassword = strings.TrimSpace(lines[1])
+	var manifest *eden.GuestManifest
+	if json.Unmarshal([]byte(lines[2]), &manifest) != nil || manifest == nil || !manifest.Current() {
+		return credentials, manifest, errGuestUpdateRequired
+	}
+	return credentials, manifest, nil
+}
+
+type componentVersions struct {
+	Status         string              `json:"status"`
+	UpdateRequired bool                `json:"update_required"`
+	Required       eden.GuestManifest  `json:"required"`
+	Current        *eden.GuestManifest `json:"current"`
+}
+type toolVersion struct {
+	Current  string `json:"current"`
+	Required string `json:"required"`
+}
+
+var codeServerVersionLine = regexp.MustCompile(`(?m)^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)? [0-9a-f]{40} with Code \d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?\r?$`)
+
+func toolVersionOutput(name, output string) string {
+	if name == "code_server" {
+		// A first invocation may print config creation messages before the
+		// version. Identify the CLI's version record, not a log's position.
+		return strings.TrimSpace(codeServerVersionLine.FindString(output))
+	}
+	line, _, _ := strings.Cut(strings.TrimSpace(output), "\n")
+	return strings.TrimSpace(line)
+}
+
+// Version commands run only for this explicit request, never in status polling.
+func (s *Server) environmentVersions(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
+	defer cancel()
+	running := s.vmRunning()
+	components := componentVersions{Status: "stopped", Required: eden.RequiredGuestManifest()}
+	tools := map[string]toolVersion{}
+	for name, required := range eden.RequiredToolVersions() {
+		tools[name] = toolVersion{Required: required}
+	}
+	var detail string
+	if running {
+		data, err := s.guest(ctx, "python3 - <<'WORKBENCH_VERSIONS'\n"+guestToolVersionsScript+"\nWORKBENCH_VERSIONS")
 		var snapshot struct {
-			Manifest *cage.GuestManifest `json:"manifest"`
+			Manifest *eden.GuestManifest `json:"manifest"`
 			Tools    map[string]string   `json:"tools"`
 		}
 		if err != nil || json.Unmarshal(data, &snapshot) != nil {
@@ -92,7 +101,7 @@ CAGE_VERSIONS`)
 			}
 			for name, current := range snapshot.Tools {
 				entry := tools[name]
-				entry.Current = current
+				entry.Current = toolVersionOutput(name, current)
 				tools[name] = entry
 			}
 		}
@@ -125,31 +134,20 @@ CAGE_VERSIONS`)
 }
 
 func (s *Server) updateEnvironment(w http.ResponseWriter, r *http.Request) {
-	if err := s.nativeMaintenancePreflight(); err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
 	s.launch(w, "environment-update", s.synchronizeEnvironment)
 }
 func (s *Server) updateEnvironmentTools(w http.ResponseWriter, r *http.Request) {
-	if err := s.nativeMaintenancePreflight(); err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
 	s.launch(w, "environment-tools", s.upgradeEnvironmentTools)
 }
 
 func (s *Server) synchronizeEnvironment() error {
-	if s.macosGuest != nil || s.windowsGuest != nil {
-		return s.maintainNativeComponents(false)
-	}
 	if !s.vmRunning() {
-		return errors.New("请先启动 Cage 环境。")
+		return errors.New("请先启动 Eden 环境。")
 	}
 	if err := s.closeProxyGate("正在更新环境组件，外网暂时关闭"); err != nil {
 		return err
 	}
-	// Publish the new guest-only binary before runCage restarts its controller;
+	// Publish the new guest-only binary before runEden restarts its controller;
 	// otherwise updated JavaScript would keep talking to the old protocol.
 	if err := s.refreshInstalledTailnet(); err != nil {
 		return err
@@ -160,7 +158,7 @@ func (s *Server) synchronizeEnvironment() error {
 	s.guestUpdateError = "环境组件更新尚未完成，请等待结果；失败时可以重试。"
 	s.mu.Unlock()
 	s.setMessage("正在重启浏览器与编辑器组件，工作台终端保持运行…")
-	if err := s.runCage("up"); err != nil {
+	if err := s.runEden("up"); err != nil {
 		return err
 	}
 	if err := s.attach(); err != nil {
@@ -179,11 +177,8 @@ func (s *Server) toolsNetworkAllowedLocked() bool {
 	return !s.closing
 }
 func (s *Server) upgradeEnvironmentTools() error {
-	if s.macosGuest != nil || s.windowsGuest != nil {
-		return s.maintainNativeComponents(true)
-	}
 	if !s.vmRunning() {
-		return errors.New("请先启动 Cage 环境。")
+		return errors.New("请先启动 Eden 环境。")
 	}
 	s.mu.Lock()
 	allowed := s.toolsNetworkAllowedLocked()
@@ -220,7 +215,7 @@ func (s *Server) upgradeEnvironmentTools() error {
 		<-monitorDone
 	}
 	s.setMessage("正在更新 Chromium、编辑器和开发工具，工作台终端与磁盘保持运行…")
-	err := s.runCage("update-tools")
+	err := s.runEden("update-tools")
 	finishMonitor()
 	if err != nil {
 		return err

@@ -1,20 +1,13 @@
 import assert from "node:assert/strict";
-import { fileURLToPath } from "node:url";
-import { createServer } from "vite";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
-const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ root, configFile: `${root}/vite.config.js`, server: { host: "127.0.0.1", port: 0 } });
-await vite.listen();
-const url = `http://127.0.0.1:${vite.httpServer.address().port}`;
-try {
+{
   for (const [host, accountSystem, statusSystem, label] of [
-    ["windows", "macos", undefined, "macOS"],
-    ["darwin", "windows-11", "windows-11", "Windows"],
-    ["darwin", undefined, undefined, "Linux"],
+    ["windows", "debian-13", undefined, "Debian 13"],
+    ["windows", undefined, "debian-13", "Debian 13"],
+    ["windows", undefined, undefined, "Debian 13"],
   ]) {
     const { browser, page, state, errors } = await createWorkbench({
-      url,
       clientContext: { mode: "local", connection_id: "local", client_platform: host, server_platform: host },
     });
     try {
@@ -29,7 +22,7 @@ try {
       const brandBox = await sidebar.locator(".sidebar-brand").boundingBox();
       const collapseBox = await sidebar.getByRole("button", { name: "收起侧栏" }).boundingBox();
       assert.ok(iconBox.x > brandBox.x && iconBox.x + iconBox.width < collapseBox.x);
-      if (process.env.CAGE_TEST_CAPTURE) await page.screenshot({ path: `${process.env.CAGE_TEST_CAPTURE}-${label}.png` });
+      if (process.env.EDEN_TEST_CAPTURE) await page.screenshot({ path: `${process.env.EDEN_TEST_CAPTURE}-${label}.png` });
       await page.reload();
       await icon.waitFor();
       assert.deepEqual(errors, []);
@@ -37,19 +30,15 @@ try {
     } finally { await browser.close(); }
   }
   const fixture = await createWorkbench({
-    url,
     beforeNavigate: async (page, state) => {
       state.status.local_vm_storage = true;
-      await page.route("**/api/environment/guest-systems", route => route.fulfill({ json: { fresh: true, system: "macos", available: true } }));
     },
   });
   try {
     const { page } = fixture;
-    await page.getByRole("img", { name: "客户机系统：Linux" }).waitFor();
-    await page.getByRole("combobox", { name: "客户机系统" }).click();
-    await page.getByRole("option", { name: "macOS", exact: true }).click();
-    await page.getByRole("img", { name: "客户机系统：macOS" }).waitFor();
+    await page.getByRole("img", { name: "客户机系统：Debian 13" }).waitFor();
+    assert.equal(await page.getByRole("combobox", { name: "客户机系统" }).count(),0);
     assert.deepEqual(fixture.errors, []);
-    console.log("PASS 首次安装选择时图标随客机系统变化");
+    console.log("PASS 首次安装固定 Debian 13 图标");
   } finally { await fixture.browser.close(); }
-} finally { await vite.close(); }
+}

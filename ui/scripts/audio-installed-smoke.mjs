@@ -3,16 +3,18 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { spawn, execFileSync } from "node:child_process";
+import path from "node:path";
 const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.CAGE_PLAYWRIGHT_MODULE || "playwright");
-const bundle = process.argv[2];
-for (const key of ["CAGE_CONFIG", "CAGE_SSH_CONFIG", "CAGE_SSH_TARGET"]) assert.ok(process.env[key], `set ${key}`);
-assert.ok(bundle?.startsWith("/") && bundle.endsWith(".app"));
-const ssh = ["-q", "-F", process.env.CAGE_SSH_CONFIG, "-o", "BatchMode=yes", "-o", "ClearAllForwardings=yes", "-o", "ControlPath=none", "-o", "ConnectTimeout=3", process.env.CAGE_SSH_TARGET, "--"];
-const capturePIDs = () => execFileSync("ssh", [...ssh, "pgrep -x parec || true"], { encoding: "utf8" }).trim().split(/\s+/).filter(Boolean);
+const { chromium } = require(process.env.EDEN_PLAYWRIGHT_MODULE || "playwright");
+const executable = process.argv[2];
+for (const key of ["EDEN_CONFIG", "EDEN_SSH_CONFIG", "EDEN_SSH_TARGET"]) assert.ok(process.env[key], `set ${key}`);
+assert.ok(path.isAbsolute(executable || "") && executable.toLowerCase().endsWith(".exe"), "Supply an absolute Eden Windows executable path");
+const sshBinary = "C:/Program Files/Git/usr/bin/ssh.exe";
+const ssh = ["-q", "-F", process.env.EDEN_SSH_CONFIG, "-o", "BatchMode=yes", "-o", "ClearAllForwardings=yes", "-o", "ControlPath=none", "-o", "ConnectTimeout=3", process.env.EDEN_SSH_TARGET, "--"];
+const capturePIDs = () => execFileSync(sshBinary, [...ssh, "pgrep -x parec || true"], { encoding: "utf8", windowsHide: true }).trim().split(/\s+/).filter(Boolean);
 const before = new Set(capturePIDs());
-const entry = JSON.parse(execFileSync(bundle + "/Contents/Resources/cage", ["desktop", "--json", "--existing"], { encoding: "utf8", env: { ...process.env, CLAUDE_CAGE_CONFIG: process.env.CAGE_CONFIG } }));
-const browser = await chromium.launch({ headless: true });
+const entry = JSON.parse(execFileSync(executable, ["desktop", "--json", "--existing"], { encoding: "utf8", env: process.env, windowsHide: true }));
+const browser = await chromium.launch({ headless: true, executablePath: process.env.EDEN_TEST_BROWSER_PATH });
 const page = await browser.newPage({ viewport: { width: 1280, height: 850 } });
 let play;
 const errors = [];
@@ -40,7 +42,7 @@ try {
     const value = Math.round(Math.sin(i * 2 * Math.PI * 880 / 48000) * 8000);
     packet.writeInt16LE(value, i * 4); packet.writeInt16LE(value, i * 4 + 2);
   }
-  play = spawn("ssh", [...ssh, "sudo -u cage-browser /usr/bin/pacat --server=unix:/run/cage-audio/native --playback --raw --format=s16le --rate=48000 --channels=2 --latency-msec=20"]);
+  play = spawn(sshBinary, [...ssh, "sudo -u browser /usr/bin/pacat --server=unix:/run/workbench-audio/native --playback --raw --format=s16le --rate=48000 --channels=2 --latency-msec=20"], { windowsHide: true });
   const completed = new Promise((resolve, reject) => { play.on("error", reject); play.on("close", code => code === 0 ? resolve() : reject(new Error(`guest playback exited ${code}`))); });
   play.stdin.end(packet);
   const measured = await page.waitForFunction(() => {

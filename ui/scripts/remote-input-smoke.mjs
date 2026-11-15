@@ -4,13 +4,13 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { chromium } = require(
-  process.env.CAGE_PLAYWRIGHT_MODULE || "playwright",
+  process.env.EDEN_PLAYWRIGHT_MODULE || "playwright",
 );
-const browser = await chromium.launch({ headless: true, executablePath: process.env.CAGE_TEST_BROWSER_PATH });
+const browser = await chromium.launch({ headless: true, executablePath: process.env.EDEN_TEST_BROWSER_PATH });
 const page = await browser.newPage();
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
-const origin = process.env.CAGE_UI_URL || "http://127.0.0.1:5173";
+const origin = process.env.EDEN_UI_URL || "http://127.0.0.1:5173";
 try {
   await page.route("**/remote-input-smoke", (route) =>
     route.fulfill({
@@ -32,11 +32,11 @@ try {
     // a guest connection or capturing any user clipboard content.
     for (const name of [
       "sendKey",
-      "_cageSendKey",
-      "_cageQueueInput",
+      "_workbenchSendKey",
+      "_workbenchQueueInput",
       "_handleKeyEvent",
       "_handleServerFenceMsg",
-      "cageSetKeyboardTarget",
+      "workbenchSetKeyboardTarget",
       "focus",
       "blur",
     ])
@@ -71,25 +71,25 @@ try {
       },
     };
     const texts = [];
-    rfb.cagePasteText = (text) =>
-      rfb._cageQueueInput(() => {
+    rfb.workbenchPasteText = (text) =>
+      rfb._workbenchQueueInput(() => {
         texts.push(text);
       });
     let active = true;
     const options = {
       mode: () => "mac",
       isActive: () => active,
-      insertText: (text) => rfb.cagePasteText(text),
+      insertText: (text) => rfb.workbenchPasteText(text),
       onStatus() {},
       onFallback() {},
     };
     const install = () => installRemoteInput({
       events: rfb,
-      setKeyboardTarget: target => rfb.cageSetKeyboardTarget(target),
+      setKeyboardTarget: target => rfb.workbenchSetKeyboardTarget(target),
       sendKey: (...key) => rfb.sendKey(...key),
       focus: () => rfb.focus(),
-      pasteText: text => rfb.cagePasteText(text),
-      runKeyAction: action => rfb._cageQueueInput(() => action((...key) => rfb._cageSendKey(...key))),
+      pasteText: text => rfb.workbenchPasteText(text),
+      runKeyAction: action => rfb._workbenchQueueInput(() => action((...key) => rfb._workbenchSendKey(...key))),
     }, container, options);
     window.probe = {
       rfb,
@@ -102,7 +102,7 @@ try {
         this.input.dispose();
         options.tabId = () => "tab-1";
         options.caretRect = async () => ({ available: true, context: "a".repeat(32), rect: [240, 120, 0, 24] });
-        options.insertComposition = (id, value) => rfb._cageQueueInput(async () => {
+        options.insertComposition = (id, value) => rfb._workbenchQueueInput(async () => {
           this.compositions.push({ id, ...value });
           if (value.mode === "commit") await new Promise(resolve => { this.finishComposition = resolve; });
         });
@@ -116,11 +116,11 @@ try {
         this.input.dispose();
         this.compositions.length = 0;
         this.nativeRequests = [];
-        window.cageNativeIMEAvailable = true;
-        window.webkit = { messageHandlers: { cage: { postMessage: async value => {
+        window.edenNativeIMEAvailable = true;
+        window.edenNativeBridge = { postMessage: async value => {
           this.nativeRequests.push(value); return true;
-        } } } };
-        options.insertComposition = (id, value) => rfb._cageQueueInput(() => { this.compositions.push({ id, ...value }); });
+        } };
+        options.insertComposition = (id, value) => rfb._workbenchQueueInput(() => { this.compositions.push({ id, ...value }); });
         this.input = install(); rfb.focus();
       },
       setActive: (value) => {
@@ -138,7 +138,7 @@ try {
     };
     rfb.focus();
   });
-  const target = page.getByLabel("Cage 网页输入");
+  const target = page.getByLabel("Eden 网页输入");
   const keys = () =>
     page.evaluate(() =>
       probe.packets.filter(p => p[0] !== 248).map((p) => {
@@ -191,7 +191,7 @@ try {
   await clear();
   await page.keyboard.down("Shift");
   await page.evaluate(() => {
-    probe.rfb._cagePasteJob = { id: "punctuation", phase: "fence", timer: setTimeout(() => {}, 1000), resolve() {} };
+    probe.rfb._workbenchPasteJob = { id: "punctuation", phase: "fence", timer: setTimeout(() => {}, 1000), resolve() {} };
     probe.fence("punctuation");
     probe.fence("punctuation-keys");
   });
@@ -201,7 +201,7 @@ try {
   ], "Desktop text commit releases held Shift for Ctrl+V and restores it before the host release");
   await clear();
   // Exercise Chromium's composition implementation as well as the explicit
-  // cross-engine event sequences below. This still does not use macOS Pinyin.
+  // cross-engine event sequences below. Native desktop IME needs separate acceptance.
   const cdp = await page.context().newCDPSession(page);
   for (const character of ["？", "？", "，", "。", "！"]) {
     await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: character, code: "Slash", text: character });
@@ -272,7 +272,7 @@ try {
   await clear();
   // A delayed commit must keep subsequent Enter behind text completion.
   await page.evaluate(() => {
-    probe.rfb._cageQueueInput(
+    probe.rfb._workbenchQueueInput(
       () =>
         new Promise((resolve) => {
           probe.finishText = resolve;
@@ -289,7 +289,7 @@ try {
   await clear();
   // On transfer failure, do not submit a form with the committed text missing.
   await page.evaluate(() => {
-    probe.rfb._cageQueueInput(
+    probe.rfb._workbenchQueueInput(
       () =>
         new Promise((resolve, reject) => {
           probe.failText = reject;
@@ -368,7 +368,7 @@ try {
   await page.evaluate(() => {
     const owner = probe.nativeRequests.find(value => value.operation === "activate").owner;
     for (const kind of ["keydown", "keyup"]) {
-      window.dispatchEvent(new CustomEvent("cage-native-input", {
+      window.dispatchEvent(new CustomEvent("eden-native-input", {
         detail: { owner, kind, key: "Enter", code: "Enter", shiftKey: true },
       }));
     }
@@ -379,14 +379,14 @@ try {
   await clear();
   await page.evaluate(() => {
     const owner = probe.nativeRequests.find(value => value.operation === "activate").owner;
-    const emit = value => window.dispatchEvent(new CustomEvent("cage-native-input", { detail: { owner, ...value } }));
+    const emit = value => window.dispatchEvent(new CustomEvent("eden-native-input", { detail: { owner, ...value } }));
     emit({kind:"compositionstart"});
     emit({kind:"compositionupdate",text:"ni'hao",selectionStart:3,selectionEnd:6});
     emit({kind:"compositionend",text:"你好"});
     emit({kind:"input",text:"？"});
     emit({kind:"keydown",key:"?",code:"Slash",textKey:true});
     emit({kind:"keyup",key:"?",code:"Slash"});
-    window.dispatchEvent(new CustomEvent("cage-native-input", {detail:{owner:"stale",kind:"input",text:"误写"}}));
+    window.dispatchEvent(new CustomEvent("eden-native-input", {detail:{owner:"stale",kind:"input",text:"误写"}}));
   });
   assert.deepEqual((await page.evaluate(() => probe.compositions)).map(({mode})=>mode), ["begin","update","commit"]);
   assert.deepEqual(await texts(), ["？"], "native direct punctuation is committed exactly once");
@@ -440,7 +440,7 @@ try {
           "reconnect and disposal",
         ],
         limitation:
-          "Covers the Chromium composition engine and simulated event sequences; native macOS IME and guest rendering require separate acceptance.",
+          "Covers the Chromium composition engine and simulated event sequences; native Windows IME and guest rendering require separate acceptance.",
       },
       null,
       2,

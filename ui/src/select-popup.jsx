@@ -1,6 +1,6 @@
 import { useLayoutEffect, useState } from "react";
 
-// Both desktop and mobile mount the list outside scroll/overflow containers.
+// Mount the list outside scroll/overflow containers.
 export function useSelectPopup(visible, control, list, count) {
   const [position, setPosition] = useState(null);
   useLayoutEffect(() => {

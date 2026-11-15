@@ -1,12 +1,12 @@
 """Guest-side Claude terminal discovery and authenticated local channel bridge."""
 import contextlib
+import fcntl
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import runpy
-import shlex
 import shutil
 import signal
 import socket
@@ -25,11 +25,10 @@ _runtime = None
 def client_runtime():
     global _runtime
     if _runtime is None:
-        helper = Path(shutil.which("cage-claude-account") or "/usr/local/bin/cage-claude-account").resolve()
+        helper = Path(shutil.which("workbench-claude-account") or "/usr/local/bin/workbench-claude-account").resolve()
         paths = (Path(__file__).with_name("client_runtime.py"),
                  helper.with_name("client_runtime.py"), helper.parent.parent / "client_runtime.py",
-                 Path("/usr/local/bin/client_runtime.py"),
-                 Path(__file__).parent.parent / "cage/client_runtime.py")
+                  Path("/usr/local/bin/client_runtime.py"))
         source = next((path for path in paths if path.is_file()), None)
         if source is None:
             raise ValueError("Client runtime component unavailable")
@@ -37,23 +36,13 @@ def client_runtime():
     return _runtime
 
 
-if os.name == "nt":
-    _platform = runpy.run_path(Path(__file__).with_name("windows_cli_platform.py"), init_globals={"_controller_context": _controller_context})
-    fcntl = _platform["FileLock"]
-else:
-    import fcntl
-
 def process_fingerprint(pid):
-    if os.name == "nt":
-        return _platform["process_fingerprint"](pid)
     return subprocess.run(["ps", "-o", "lstart=,comm=", "-p", str(pid)], capture_output=True, text=True, timeout=2).stdout
 
 def terminate_cli(pid, force=False):
-    if os.name == "nt":
-        return _platform["terminate_cli"](pid, force)
     return os.kill(int(pid), signal.SIGKILL if force else signal.SIGTERM)
 
-ROOT = Path(_controller_context["CAGE_CLI_STATE_ROOT"]) if os.name == "nt" else Path.home() / ".local/share/cage/cli-channels"
+ROOT = Path.home() / ".local/share/workbench/cli-channels"
 PROMPT_LIMIT = 32 << 10
 REPLY_LIMIT = 128 << 10
 HISTORY_LIMIT = 448 << 10
@@ -91,8 +80,6 @@ def state_file(connection):
 
 
 def live(pid):
-    if os.name == "nt":
-        return _platform["process_live"](pid)
     try:
         os.kill(int(pid), 0)
         return True
@@ -105,13 +92,11 @@ def config_directory(account):
         return Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude").resolve()
     if not re.fullmatch(r"[0-9a-f]{24}", account):
         raise ValueError("invalid account")
-    root = Path(_controller_context["CAGE_CLI_ACCOUNT_ROOT"]) if os.name == "nt" else Path.home() / ".local/share/cage/claude-accounts"
+    root = Path.home() / ".local/share/workbench/claude-accounts"
     return root / account / "config"
 
 
 def workspace_within(path, root):
-    if os.name == "nt":
-        path, root = path.replace("\\", "/").lower(), root.replace("\\", "/").lower()
     return path == root or path.startswith(root.rstrip("/") + "/")
 
 
@@ -127,8 +112,7 @@ def clip_text(text, limit):
 
 
 def channel_message(text):
-    # Read historical receipts without adding their old field to new messages.
-    match = re.match(r'^<channel\s+[^>]*\b(?:request_id|cage_request)="([0-9a-f-]{36})"[^>]*>\n?', text)
+    match = re.match(r'^<channel\s+[^>]*\brequest_id="([0-9a-f-]{36})"[^>]*>\n?', text)
     if not match or not text.endswith("</channel>"):
         return None
     # Only remove the framing newline. The user's text can itself contain XML
@@ -241,7 +225,7 @@ def view(config, session_id, path=None):
             latest["sent"] = [sent for sent in latest.get("sent", []) if sent["id"] not in received]
             state = dict(latest)
     running = live(state.get("pid")) and not state.get("closed")
-    channel = running and live(state.get("channel_pid")) and not state.get("blocked") and not state.get("policy_unavailable") and not state.get("native_ccs_unverified")
+    channel = running and live(state.get("channel_pid")) and not state.get("blocked")
     known = {turn["id"] for turn in turns}
     for sent in state.get("sent", []):
         if sent["id"] not in known:
@@ -269,12 +253,10 @@ def view(config, session_id, path=None):
         turns.pop(0)
         shortened = True
     modified = max(path.stat().st_mtime if path else 0, float(state.get("updated_at", 0)))
-    notice = state.get("native_ccs_notice", "")
+    notice = ""
     if state.get("blocked"):
         notice = "这台主机的 Claude Code 管理策略关闭了 Channels，请由主机管理员处理。"
-    elif state.get("policy_unavailable"):
-        notice = "Cage 默认环境的通道配置未能更新，请在电脑更新环境组件。"
-    return {"cli_id": session_id, "config": str(config), "connection": connection, "native_ccs_unverified": bool(state.get("native_ccs_unverified")),
+    return {"cli_id": session_id, "config": str(config), "connection": connection,
             "workspace": workspace or state.get("workspace", ""), "title": title or (turns[0]["prompt"][:40] if turns else "Claude Code"),
             "updated_at": modified, "turns": turns, "running": bool(running), "active": bool(running and (state.get("busy") or state.get("approvals"))), "channel_ready": bool(channel), "can_send": bool(channel and not state.get("resume_task")), "has_history": has_history, "history_truncated": shortened,
             "connection_notice": "" if channel else notice, "account_failure": state.get("account_failure", ""),
@@ -381,9 +363,9 @@ def hook(connection):
     with state_file(connection) as state:
         if state.get("account_switch"):
             if event == "UserPromptSubmit":
-                return {"decision": "block", "reason": "Cage 正在切换账号，请在目标会话中继续。"}
+                return {"decision": "block", "reason": "Workbench 正在切换账号，请在目标会话中继续。"}
             if event == "PreToolUse":
-                return {"hookSpecificOutput": {"hookEventName": event, "permissionDecision": "deny", "permissionDecisionReason": "Cage 正在切换账号。"}}
+                return {"hookSpecificOutput": {"hookEventName": event, "permissionDecision": "deny", "permissionDecisionReason": "Workbench 正在切换账号。"}}
         state["updated_at"] = time.time()
         state["cli_id"] = identifier(payload["session_id"])
         state["workspace"] = payload.get("cwd", state.get("workspace", ""))
@@ -416,45 +398,6 @@ def hook(connection):
     return {}
 
 
-def migrate_cage_policy():
-    if os.name == "nt":
-        # Organizational Windows policy is never rewritten by a GUI user.
-        return None
-    path = Path("/etc/claude-code/managed-settings.json")
-    original = {"permissions": {"defaultMode": "bypassPermissions"}, "tui": "fullscreen"}
-    if sys.platform != "linux":
-        return
-    try:
-        if read_json(path) != original:
-            return
-    except (OSError, ValueError):
-        return False
-    # Upgrade only the exact policy shipped by Cage. An administrator's
-    # explicit settings, including channelsEnabled=false, take precedence.
-    migration = '''import json, pathlib, tempfile, os
-p = pathlib.Path('/etc/claude-code/managed-settings.json')
-old = p.read_bytes()
-value = json.loads(old)
-if value == {"permissions": {"defaultMode": "bypassPermissions"}, "tui": "fullscreen"}:
-    backup = p.with_name('managed-settings.json.cage-before-channels')
-    if not backup.exists():
-        backup.write_bytes(old)
-        backup.chmod(0o600)
-    value['channelsEnabled'] = True
-    with tempfile.NamedTemporaryFile(dir=p.parent, mode='w', delete=False) as f:
-        json.dump(value, f)
-        name = f.name
-    os.chmod(name, 0o644)
-    os.replace(name, p)
-'''
-    try:
-        subprocess.run(["/usr/bin/sudo", "-n", "python3", "-I", "-c", migration], timeout=10,
-                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return True
-
-
 def active_session(session_id, config=""):
     return bool(active_sessions(session_id, config))
 
@@ -467,7 +410,7 @@ def running_sessions(config=""):
     env = dict(os.environ)
     if config:
         env["CLAUDE_CONFIG_DIR"] = config
-    listing = subprocess.run(["claude", "agents", "--json"], env=env, capture_output=True, text=True, timeout=10)
+    listing = subprocess.run(["claude", "agents", "--json"], env=client_runtime()["environment"](env), capture_output=True, text=True, timeout=10)
     if listing.returncode != 0:
         raise ValueError("无法检查原会话是否仍在运行")
     return [row for row in json.loads(listing.stdout) if live(row.get("pid"))]
@@ -505,7 +448,7 @@ def handoff_session(request):
         if row.get("cwd") != workspace:
             raise ValueError("原会话的项目已变化，请重新读取会话列表")
         # A waiting CLI has no executing tool. Resume its task on the shared
-        # channel so any permission decision is requested again on the phone.
+        # channel so the resumed session requests a fresh permission decision.
         if row.get("status") not in ("idle", "waiting") or row.get("kind") != "interactive":
             return {"running": True}
     for row in rows:
@@ -562,7 +505,7 @@ def prepare_account_switch(request):
     rows = active_sessions(sid, str(config))
     # Any other live worker in this account can represent a background
     # child of the source. The registry does not expose a complete ancestry.
-    listing = subprocess.run(["claude", "agents", "--json"], env={**os.environ, "CLAUDE_CONFIG_DIR": str(config)}, capture_output=True, text=True, timeout=10)
+    listing = subprocess.run(["claude", "agents", "--json"], env=client_runtime()["environment"]({**os.environ, "CLAUDE_CONFIG_DIR": str(config)}), capture_output=True, text=True, timeout=10)
     if listing.returncode != 0:
         raise ValueError("无法确认后台任务，未切换账号")
     if any(row.get("sessionId") != sid and live(row.get("pid")) for row in json.loads(listing.stdout)):
@@ -575,8 +518,6 @@ def prepare_account_switch(request):
     def executing():
         if not live(pid):
             return False
-        if os.name == "nt":
-            return True
         status = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True, timeout=2)
         return bool(status.stdout.strip()) and not status.stdout.lstrip().startswith("Z")
     if executing() and not any(row.get("pid") == pid for row in rows):
@@ -682,8 +623,6 @@ def purge_session(request):
             if live(state.get("pid")) and not state.get("closed"):
                 raise ValueError("会话通道尚未退出，请稍后重试")
             shutil.rmtree(path.parent)
-    identity = ROOT.parent / "mobile-cli-identities" / session_id
-    identity.unlink(missing_ok=True)
     handoff_receipt(config, session_id).unlink(missing_ok=True)
     save(receipt, {"cli_id": session_id, "config": str(config), "complete": True})
     for saved in (ROOT.parent / "cli-account-switches").glob("*/receipt.json"):
@@ -695,23 +634,13 @@ def purge_session(request):
 
 def launch(request):
     _runtime = client_runtime()
-    if os.name == "nt" and request.get("ccs_profile"):
-        return _platform["launch_ccs_parent"](request, globals())
-    policy_available = migrate_cage_policy()
     connection = identifier(request["id"])
     folder = ROOT / connection
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     prefix = request["prefix"]
-    if os.name == "nt":
-        account_id = request.get("account") or "default"
-        os.environ["CLAUDE_CONFIG_DIR"] = str(config_directory(account_id))
-        if request.get("subject"):
-            _controller_context["CAGE_CLAUDE_SUBJECT"] = request["subject"]
-        prefix = [_controller_context["CAGE_CLI_BINARY"]]
-        request["prefix"] = prefix
-    elif len(prefix) == 5 and Path(prefix[2]).name == "cage-claude-account" and prefix[3] == "run":
+    if len(prefix) == 5 and Path(prefix[2]).name == "workbench-claude-account" and prefix[3] == "run":
         os.environ["CLAUDE_CONFIG_DIR"] = str(config_directory(prefix[4]))
-        _controller_context["CAGE_CLAUDE_SUBJECT"] = prefix[1].split("=", 1)[1]
+        _controller_context["WORKBENCH_CLAUDE_SUBJECT"] = prefix[1].split("=", 1)[1]
     elif request.get("config"):
         os.environ["CLAUDE_CONFIG_DIR"] = request["config"]
     session_id = identifier(request.get("resume") or request.get("session_id") or connection)
@@ -722,17 +651,8 @@ def launch(request):
     command = _runtime["command_text"](__file__, ["hook", connection])
     events = ("SessionStart", "UserPromptSubmit", "MessageDisplay", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "StopFailure", "SessionEnd")
     handler = {"type": "command", "command": command, "timeout": 5}
-    if os.name == "nt":
-        argv = _runtime["command"](__file__, ["hook", connection])
-        handler = {"type": "command", "command": argv[0], "args": argv[1:], "timeout": 5}
     settings = {"hooks": {event: [{"hooks": [handler.copy()]}] for event in events}}
-    prefix = request["prefix"]
-    if os.name == "nt":
-        account = runpy.run_path(_controller_context["CAGE_CLI_ACCOUNT_HELPER"])
-        if not account["has_status_line"](account["profile"](account_id)):
-            status_command = _runtime["command_text"](_controller_context["CAGE_CLI_ACCOUNT_HELPER"], ["statusline", account_id])
-            settings["statusLine"] = {"type": "command", "command": status_command}
-    elif len(prefix) == 5 and Path(prefix[2]).name == "cage-claude-account" and prefix[3] == "run":
+    if len(prefix) == 5 and Path(prefix[2]).name == "workbench-claude-account" and prefix[3] == "run":
         account = runpy.run_path(prefix[2])
         if not account["has_status_line"](account["profile"](prefix[4])):
             settings["statusLine"] = {"type": "command", "command": _runtime["command_text"](prefix[2], ["statusline", prefix[4]])}
@@ -762,13 +682,12 @@ def launch(request):
         for sent in state.get("sent", []):
             sent["interrupted"] = True
         try:
-            policy = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "ClaudeCode/managed-settings.json" if os.name == "nt" else Path("/Library/Application Support/ClaudeCode/managed-settings.json") if sys.platform == "darwin" else Path("/etc/claude-code/managed-settings.json")
+            policy = Path("/etc/claude-code/managed-settings.json")
             managed = read_json(policy, {})
             state["blocked"] = isinstance(managed, dict) and managed.get("channelsEnabled") is False
         except (OSError, ValueError):
             state["blocked"] = False
-        state["policy_unavailable"] = policy_available is False
-    args = [*request["prefix"], "--settings", _runtime["path"](folder / "settings.json"), "--mcp-config", _runtime["path"](folder / "mcp.json"),
+    args = [*request["prefix"], "--settings", str(folder / "settings.json"), "--mcp-config", str(folder / "mcp.json"),
             "--dangerously-load-development-channels", "server:" + connection]
     for directory in request.get("additional_directories", []):
         if not isinstance(directory, str) or not Path(directory).is_absolute() or not Path(directory).is_dir():
@@ -778,13 +697,11 @@ def launch(request):
         expected = ROOT.parent / "cli-account-switches" / identifier(request["switch_id"]) / "history.jsonl"
         if Path(request["resume_transcript"]) != expected or not expected.is_file():
             raise ValueError("账号交接历史无效")
-        args += ["--resume", _runtime["path"](expected), "--fork-session", "--session-id", session_id]
+        args += ["--resume", str(expected), "--fork-session", "--session-id", session_id]
     else:
         args += ["--resume", session_id] if request.get("resume") else ["--session-id", session_id]
     if state.get("handoff_permission_mode") == "manual":
         args += ["--permission-mode", "manual"]
-    if os.name == "nt":
-        return _platform["launch_cli"](args, request, connection, state_file)
     # Managed account wrappers need their private launch state until they reach
     # the official executable; the ordinary direct launch crosses that boundary here.
     managed = len(request["prefix"]) == 5 and request["prefix"][3] == "run"
@@ -802,6 +719,25 @@ def rpc(request):
             return json.loads(stream.readline(1 << 20))
 
 
+@contextlib.contextmanager
+def local_rpc_server(handler):
+    address = "rpc"
+    if Path(address).is_socket():
+        with socket.socket(socket.AF_UNIX) as probe:
+            try:
+                probe.connect(address)
+            except ConnectionRefusedError:
+                Path(address).unlink()
+            else:
+                raise ValueError("会话通道已在运行")
+    with socketserver.ThreadingUnixStreamServer(address, handler) as server:
+        os.chmod(address, 0o600)
+        try:
+            yield server
+        finally:
+            Path(address).unlink(missing_ok=True)
+
+
 def serve(connection):
     connection = identifier(connection)
     output_lock = threading.Lock()
@@ -816,6 +752,8 @@ def serve(connection):
             self.connection.settimeout(5)
             try:
                 request = json.loads(self.rfile.readline(72 << 10))
+                if not isinstance(request, dict):
+                    raise ValueError("invalid channel request")
                 with state_file(connection) as state:
                     if request["cli_id"] != state.get("cli_id") or state.get("closed"):
                         raise ValueError("终端已切换会话，请重新读取列表")
@@ -874,20 +812,8 @@ def serve(connection):
             self.wfile.write(json.dumps(response).encode() + b"\n")
 
     os.chdir(ROOT / connection)
-    address = "rpc"
-    # A connection UUID is created once by the host. A second live server must
-    # fail to bind instead of stealing the first server's socket.
-    if Path(address).is_socket():
-        with socket.socket(socket.AF_UNIX) as probe:
-            try:
-                probe.connect(address)
-            except ConnectionRefusedError:
-                Path(address).unlink()
-            else:
-                raise ValueError("会话通道已在运行")
-    with socketserver.ThreadingUnixStreamServer(address, Handler) as server:
+    with local_rpc_server(Handler) as server:
         server.daemon_threads = True
-        os.chmod(address, 0o600)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         try:
             for line in sys.stdin:
@@ -918,7 +844,6 @@ def serve(connection):
                         emit({"id": message["id"], "error": {"code": -32601, "message": "Method not supported"}})
         finally:
             server.shutdown()
-            Path(address).unlink(missing_ok=True)
             with state_file(connection) as state:
                 state["channel_pid"] = None
                 state["approvals"] = []
@@ -927,8 +852,6 @@ def serve(connection):
 def main():
     os.umask(0o077)
     mode, argument = sys.argv[1:3]
-    if mode == "ccs-live" and os.name == "nt":
-        return _platform["launch_ccs_live"](argument, globals())
     if mode == "serve":
         return serve(argument)
     if mode == "hook":

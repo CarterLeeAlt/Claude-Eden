@@ -2,8 +2,9 @@ package workbench
 
 import (
 	"context"
-	"github.com/gorilla/websocket"
 	"net/http"
+
+	"github.com/gorilla/websocket"
 )
 
 func (s *Server) upgrade(w http.ResponseWriter, r *http.Request) (*websocket.Conn, error) {

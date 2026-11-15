@@ -14,7 +14,7 @@ const output = path.join(
   "docs/test-reports/2026-11-01-browser-tabs-favorites",
 );
 await fs.mkdir(output, { recursive: true });
-const profile = await fs.mkdtemp(path.join(os.tmpdir(), "cage-favorites-qa-"));
+const profile = await fs.mkdtemp(path.join(os.tmpdir(), "eden-favorites-qa-"));
 await fs.writeFile(path.join(profile, "config.json"), "{}", { mode: 0o600 });
 await fs.writeFile(
   path.join(profile, "workbench.json"),
@@ -32,10 +32,10 @@ async function stop() {
 }
 async function start() {
   await fs.rm(path.join(profile, "control.json"), { force: true });
-  service = spawn(path.join(root, "_output/bin/cage"), ["serve"], {
+  service = spawn(path.join(root, "_output/bin/eden.exe"), ["serve"], {
     env: {
       ...process.env,
-      CLAUDE_CAGE_CONFIG: path.join(profile, "config.json"),
+      EDEN_CONFIG: path.join(profile, "config.json"),
     },
     stdio: "ignore",
   });
@@ -101,10 +101,10 @@ try {
     });
   const tabs = page.getByRole("tablist", { name: "浏览器标签页" });
   await page
-    .getByRole("button", { name: "启动 Cage 环境", exact: true })
+    .getByRole("button", { name: "启动 Eden 环境", exact: true })
     .click();
   await page
-    .getByRole("heading", { name: "Cage 环境已就绪", exact: true })
+    .getByRole("heading", { name: "Eden 环境已就绪", exact: true })
     .waitFor();
   await page.getByRole("button", { name: "打开浏览器", exact: true }).click();
   await tabs.getByRole("tab").waitFor();
@@ -197,7 +197,7 @@ try {
 
   await tabs.getByRole("tab", { name: "设计文档 3", exact: true }).click();
   await page.getByRole("button", { name: "收藏此页", exact: true }).click();
-  await page.getByLabel("收藏名称", { exact: true }).fill("Cage 设计资料");
+  await page.getByLabel("收藏名称", { exact: true }).fill("Eden 设计资料");
   await page.getByLabel("新收藏夹名称", { exact: true }).fill("工作资料");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await page
@@ -209,7 +209,7 @@ try {
   let saved = JSON.parse(
     await fs.readFile(path.join(profile, "favorites.json"), "utf8"),
   );
-  assert.equal(saved.items[0].title, "Cage 设计资料");
+  assert.equal(saved.items[0].title, "Eden 设计资料");
   assert.equal(saved.folders[0].title, "工作资料");
   await page.keyboard.press("Meta+d");
   await page.getByLabel("收藏名称", { exact: true }).fill("待重试的收藏");

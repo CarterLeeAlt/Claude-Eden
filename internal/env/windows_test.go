@@ -2,27 +2,36 @@ package env
 
 import (
 	"os"
+	"runtime"
 	"testing"
 
 	"github.com/sylvinus/agent-vm/internal/paths"
 )
 
-// A project file reached through a link, on Windows, on any host:
-// paths.Windows on and, from a temporary folder, C:/... a relative path.
-// The walk starts at the drive.
+// Exercise Windows drive syntax with every filesystem write inside the fixture.
 func TestProjectRelWindows(t *testing.T) {
 	old := paths.Windows
 	paths.Windows = func() bool { return true }
 	t.Cleanup(func() { paths.Windows = old })
-	t.Chdir(t.TempDir())
-	os.MkdirAll("C:/p", 0o755)
-	os.Symlink("p", "C:/link")
-	for target, want := range map[string]string{"C:/p/.env": ".env", "C:/link/.env": ".env", "C:/link/sub/x": "sub/x"} {
-		if rel, ok := ProjectRel("C:/p", target); !ok || rel != want {
-			t.Errorf("ProjectRel(C:/p, %q) = %q, %v", target, rel, ok)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	root := "C:"
+	if runtime.GOOS == "windows" {
+		root = paths.Host(dir)
+	}
+	project := root + "/p"
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("p", root+"/link"); err != nil {
+		t.Fatal(err)
+	}
+	for target, want := range map[string]string{project + "/.env": ".env", root + "/link/.env": ".env", root + "/link/sub/x": "sub/x"} {
+		if rel, ok := ProjectRel(project, target); !ok || rel != want {
+			t.Errorf("ProjectRel(%q, %q) = %q, %v", project, target, rel, ok)
 		}
 	}
-	if _, ok := ProjectRel("C:/p", "C:/other/.env"); ok {
-		t.Error("C:/other is not in the project")
+	if _, ok := ProjectRel(project, root+"/other/.env"); ok {
+		t.Error("the sibling directory is not in the project")
 	}
 }

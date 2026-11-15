@@ -26,13 +26,13 @@ export async function verifyBuild(directory = defaultDirectory) {
     }
   }
   await inspect();
-  for (const entry of ["index.html", "mobile.html"]) {
+  for (const entry of ["index.html"]) {
     const html = await readFile(join(directory, entry), "utf8");
     const scripts = [...html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/gi)];
     if (!scripts.length) throw new Error(`Missing entry script: ${entry}`);
     for (const match of html.matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)=["']([^"']+)["']/gi)) {
-      const url = new URL(match[1], "http://cage.local/" + entry);
-      if (url.origin !== "http://cage.local") throw new Error(`External build resource: ${match[1]}`);
+      const url = new URL(match[1], "http://eden.local/" + entry);
+      if (url.origin !== "http://eden.local") throw new Error(`External build resource: ${match[1]}`);
       const resource = decodeURIComponent(url.pathname).slice(1);
       if (!files[resource] || !(await stat(join(directory, resource))).isFile()) throw new Error(`Missing build resource: ${resource}`);
     }

@@ -1,6 +1,6 @@
 module github.com/lima-vm/sshocker
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/pkg/sftp v1.13.11

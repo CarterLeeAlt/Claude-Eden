@@ -15,7 +15,7 @@ import re
 import xml.etree.ElementTree as ET
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-PACKAGE = REPOSITORY / "third_party/lima/pkg/guestidentity"
+PACKAGE = REPOSITORY / "shared/guestidentity"
 SOURCES = {
     "Lenovo": "https://download.lenovo.com/cdrt/td/catalogv2.xml",
     "Dell": "https://downloads.dell.com/catalog/DriverPackCatalog.cab",

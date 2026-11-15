@@ -22,7 +22,7 @@ type NodeIssue struct {
 	Reason string `json:"reason"`
 }
 
-// Parse enforces Cage's import boundaries. Call Validate before committing a
+// Parse enforces Claude Eden's import boundaries. Call Validate before committing a
 // candidate source; protocol parameters are interpreted by the bundled core.
 // Store.Import also retains skipped-node details.
 func Parse(data []byte, sourceID string) ([]Node, error) {
@@ -56,7 +56,7 @@ func parseNodes(data []byte, sourceID string) ([]Node, []NodeIssue, error) {
 	counts := map[string]int{}
 	keyErrors := make([]error, len(proxies))
 	for i, p := range proxies {
-		// Canonicalize only fields Cage reads or rewrites. Protocol parameters
+		// Canonicalize only fields Claude Eden reads or rewrites. Protocol parameters
 		// and opaque maps such as HTTP headers belong to the bundled core.
 		keyErrors[i] = normalizeImportKeys(p, "name", "type", "server", "udp", "dialer-proxy")
 		name, _ := p["name"].(string)

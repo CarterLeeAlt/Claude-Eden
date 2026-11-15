@@ -33,7 +33,7 @@ func cacheFixture(t *testing.T) (CacheStore, CachedSelection) {
 
 func TestCacheReleaseUsesItsCreationRecord(t *testing.T) {
 	store, selection := cacheFixture(t)
-	unrelated := filepath.Join(t.TempDir(), "cage-clipboard-unrelated")
+	unrelated := filepath.Join(t.TempDir(), "workbench-clipboard-unrelated")
 	if err := os.Mkdir(unrelated, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func (producerInput) Read(buffer []byte) (int, error) {
 }
 
 func TestCacheProducerFixture(t *testing.T) {
-	directory := os.Getenv("CAGE_CLIPBOARD_PRODUCER_TEST")
+	directory := os.Getenv("WORKBENCH_CLIPBOARD_PRODUCER_TEST")
 	if directory == "" {
 		t.Skip("subprocess fixture")
 	}
@@ -167,7 +167,7 @@ func TestCacheRecoversAProducerKilledDuringItsFirstRead(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	child := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestCacheProducerFixture$")
-	child.Env = append(os.Environ(), "CAGE_CLIPBOARD_PRODUCER_TEST="+store.Directory, "TMPDIR="+root, "TEMP="+root, "TMP="+root)
+	child.Env = append(os.Environ(), "WORKBENCH_CLIPBOARD_PRODUCER_TEST="+store.Directory, "TMPDIR="+root, "TEMP="+root, "TMP="+root)
 	input, err := child.StdinPipe()
 	if err != nil {
 		t.Fatal(err)

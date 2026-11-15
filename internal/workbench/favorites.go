@@ -63,23 +63,7 @@ func (s *Server) serveFavorites(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var f Favorites
-	var err error
-	if r.URL.Path == "/api/mobile/browser/favorites" {
-		s.account.mu.Lock()
-		s.phones.mu.Lock()
-		if !s.mobileAuthorized(r.Context()) || !s.phones.pairedRequestLocked(r) {
-			s.phones.mu.Unlock()
-			s.account.mu.Unlock()
-			http.Error(w, "请用电脑的配对码或二维码连接后打开收藏夹。", http.StatusForbidden)
-			return
-		}
-		f, err = s.changeFavorites(change)
-		s.phones.mu.Unlock()
-		s.account.mu.Unlock()
-	} else {
-		f, err = s.changeFavorites(change)
-	}
+	f, err := s.changeFavorites(change)
 	if err != nil {
 		requestError(w, err)
 		return
@@ -87,7 +71,7 @@ func (s *Server) serveFavorites(w http.ResponseWriter, r *http.Request) {
 	jsonReply(w, f)
 }
 
-// Read and modify the latest host collection under the same lock on both clients.
+// Read and modify the latest host collection under the same lock across views.
 func (s *Server) changeFavorites(input *favoriteChange) (Favorites, error) {
 	s.favoritesMu.Lock()
 	defer s.favoritesMu.Unlock()

@@ -1,12 +1,13 @@
 package workbench
 
 import (
-	"github.com/sylvinus/agent-vm/internal/cage"
 	"testing"
+
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func TestAutomaticRegionSettingsPreserveManualOverrides(t *testing.T) {
-	cfg := cage.DefaultConfig()
+	cfg := eden.DefaultConfig()
 	loc := Location{CountryCode: "JP", Timezone: "Asia/Tokyo"}
 	manual := autoRegionSettings(cfg, Preferences{}, loc)
 	if manual != cfg {
@@ -28,10 +29,10 @@ func TestAutomaticRegionSettingsPreserveManualOverrides(t *testing.T) {
 
 func TestMissingExitPolicyDoesNotRelaxSavedStaticRule(t *testing.T) {
 	s := testServer(t)
-	old := cage.DefaultConfig()
-	old.ExitPolicy = cage.ExitPolicy{Mode: "static", Scope: "country", IP: "8.8.8.8"}
+	old := eden.DefaultConfig()
+	old.ExitPolicy = eden.ExitPolicy{Mode: "static", Scope: "country", IP: "8.8.8.8"}
 	input := settingsView(old, Preferences{Keyboard: "mac"})
-	input.ExitPolicy = cage.ExitPolicy{}
+	input.ExitPolicy = eden.ExitPolicy{}
 	got, _, err := proposedSettings(input, old, s.profile)
 	if err != nil {
 		t.Fatal(err)

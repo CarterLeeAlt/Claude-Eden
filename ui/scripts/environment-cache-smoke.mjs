@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
-for (const system of ["macos", "windows-11", "debian"]) {
+for (const system of ["debian-13"]) {
   const calls = [];
   let moved = false;
   let failInventory = false;
@@ -48,8 +48,10 @@ for (const system of ["macos", "windows-11", "debian"]) {
     await cli.waitFor();
     assert.equal(await cli.isChecked(), false);
     assert.equal(await panel.getByRole("checkbox", { name: "浏览器 · Cache", exact: true }).isDisabled(), true);
-    await mkdir("output/cache-maintenance", { recursive: true });
-    await panel.screenshot({ path: `output/cache-maintenance/${system}.png` });
+    if (process.env.EDEN_CACHE_EVIDENCE) {
+      await mkdir(process.env.EDEN_CACHE_EVIDENCE, { recursive: true });
+      await panel.screenshot({ path: `${process.env.EDEN_CACHE_EVIDENCE}/${system}.png` });
+    }
     await cli.check();
     await panel.getByRole("button", { name: "清理所选缓存（1）", exact: true }).click();
     let dialog = page.getByRole("dialog", { name: "清理所选缓存？", exact: true });

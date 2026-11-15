@@ -30,7 +30,7 @@ func TestControllerStartsAfterProbeReleasesLock(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, exe, "-test.run=^TestServeShutdownHandoff$", "-test.timeout=12s")
-	cmd.Env = append(os.Environ(), "CAGE_TEST_SHUTDOWN_CONFIG="+filepath.Join(profile, "config.json"))
+	cmd.Env = append(os.Environ(), "EDEN_TEST_SHUTDOWN_CONFIG="+filepath.Join(profile, "config.json"))
 	var output bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &output, &output
 	if err := cmd.Start(); err != nil {

@@ -10,8 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
-	"github.com/sylvinus/agent-vm/internal/guestos"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func initializationRequest(s *Server, action string, trusted bool) *httptest.ResponseRecorder {
@@ -72,15 +71,6 @@ func TestInitializationPersistsBeforeDiskCreationAndDoesNotResetExisting(t *test
 	if read().Required {
 		t.Fatal("existing Linux installation forced to reinstall")
 	}
-	s.windowsGuest = &guestos.WindowsProfile{}
-	if next, err := s.initializationState(); err != nil || next.Required {
-		t.Fatalf("existing Windows installation: %+v %v", next, err)
-	}
-	s.windowsGuest = nil
-	s.macosGuest = &guestos.MacOSProfile{}
-	if next, err := s.initializationState(); err != nil || next.Required {
-		t.Fatalf("existing Mac installation: %+v %v", next, err)
-	}
 }
 
 func TestInitializationCompletionRequiresReadyGuestAndCurrentNetworkEvidence(t *testing.T) {
@@ -94,21 +84,23 @@ func TestInitializationCompletionRequiresReadyGuestAndCurrentNetworkEvidence(t *
 	if w := initializationRequest(s, "complete", true); w.Code == 200 {
 		t.Fatal("unready guest accepted")
 	}
-	s.windowsGuest = &guestos.WindowsProfile{}
-	s.windowsState.Running = true
+	marker := filepath.Join(s.instanceDir(), "eden-running.json")
+	if err := writePrivate(marker, map[string]int{"pid": os.Getpid()}); err != nil {
+		t.Fatal(err)
+	}
 	s.ready = true
 	if w := initializationRequest(s, "complete", true); w.Code == 200 {
 		t.Fatal("missing network report accepted")
 	}
-	cfg, err := cage.Load(s.configPath)
+	cfg, err := eden.Load(s.configPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	report := cage.SafetyReport{Policy: cage.SafetyPolicyVersion, ID: "initialization", RunID: "test-vm", CheckID: "test-check", Configuration: cfg.Fingerprint(), CreatedAt: time.Now()}
+	report := eden.SafetyReport{Policy: eden.SafetyPolicyVersion, ID: "initialization", RunID: "test-vm", CheckID: "test-check", Configuration: cfg.Fingerprint(), CreatedAt: time.Now()}
 	for _, id := range []string{"egress_policy", "proxy_transport", "dns_transport", "guest_settings", "browser_settings", "filesystem_boundary", "management_boundary", "fail_closed", "udp_policy", "ipv6_policy", "exit_consistency"} {
-		report.Checks = append(report.Checks, cage.SafetyCheck{ID: id, Critical: true, State: cage.CheckPassed, Evidence: "isolated test", CheckedAt: report.CreatedAt})
+		report.Checks = append(report.Checks, eden.SafetyCheck{ID: id, Critical: true, State: eden.CheckPassed, Evidence: "isolated test", CheckedAt: report.CreatedAt})
 	}
-	s.safety.Gate = &cage.GateStatus{Mode: cage.GateOpen, PolicyVerified: true, RunID: report.RunID, Configuration: cfg.Fingerprint(), Until: time.Now().Add(time.Minute), Report: &report}
+	s.safety.Gate = &eden.GateStatus{Mode: eden.GateOpen, PolicyVerified: true, RunID: report.RunID, Configuration: cfg.Fingerprint(), Until: time.Now().Add(time.Minute), Report: &report}
 	s.setJobForTest(Job{Running: true, Kind: "start"})
 	if w := initializationRequest(s, "complete", true); w.Code == 200 {
 		t.Fatal("unfinished job accepted")
@@ -123,7 +115,9 @@ func TestInitializationCompletionRequiresReadyGuestAndCurrentNetworkEvidence(t *
 		t.Fatal(w.Code, w.Body.String())
 	}
 	s.ready = false
-	s.windowsState.Running = false
+	if err := os.Remove(marker); err != nil {
+		t.Fatal(err)
+	}
 	if view, err := s.initializationState(); err != nil || view.Required {
 		t.Fatalf("completed stopped environment lost initialization: %+v %v", view, err)
 	}

@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { smokeCaptureDirectory } from './smoke-captures.mjs';
 import { createSettingsWorkbench } from './browser-settings-fixture.mjs';
-const engine = process.env.CAGE_TEST_BROWSER || 'chromium';
+const engine = process.env.EDEN_TEST_BROWSER || 'chromium';
 const output = await smokeCaptureDirectory('browser-settings-' + engine);
 const f = await createSettingsWorkbench();
 const { page, controller, fixtureState, errors } = f;
@@ -77,7 +77,7 @@ try {
   await settings.evaluate(element => { element.scrollTop = 0; });
   await shot('extensions-imported');
   const web = await controller.api('/new', { url: controller.origin + '/import-test' });
-  await controller.waitFor(() => controller.evaluate(web.id, 'document.documentElement.dataset.cageSettingsExtension === "active"'), 'imported extension runs');
+  await controller.waitFor(() => controller.evaluate(web.id, 'document.documentElement.dataset.workbenchSettingsExtension === "active"'), 'imported extension runs');
   await page.getByRole('tab', { name: '设置', exact: true }).click();
   await settings.getByRole('button', { name: '刷新扩展', exact: true }).click();
   await settings.getByRole('button', { name: '移除', exact: true }).click();

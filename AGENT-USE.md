@@ -6,6 +6,6 @@ Run `<installed Eden CLI> agent capabilities` to discover the protocol and suppo
 
 The Agent uses the same configuration, account checks, native operations and client preferences as the user interface. Use `agent routes` for the live HTTP route list, `agent request METHOD /api/PATH` for JSON or file operations, and `agent socket /api/PATH` for WebSocket NDJSON. Desktop configuration and selected workloads require an explicit scope and connection generation as described in the guide. Native credential operations stay inside the existing OS bridge.
 
-Entry points: [Agent guide](docs/guide/agent.md), [llms.txt](www/public/llms.txt), [download helper](www/public/agent-bootstrap.mjs), [current repository](https://github.com/CarterLeeAlt/Claude-Eden). The desktop host is Windows 10; local Linux guests and Linux cloud deployment are supported according to the documented host requirements. Detect the actual architecture, runtime and virtualization capabilities before installation.
+Entry points: [Agent guide](docs/guide/agent.md), [llms.txt](www/public/llms.txt), [download helper](www/public/agent-bootstrap.mjs), [current repository](https://github.com/CarterLeeAlt/Claude-Eden). The application runs a local Debian 13 guest on a Windows 10 host. Guest Tailscale and proxy configuration are available. Detect the actual architecture, runtime and virtualization capabilities before installation.
 
 `AGENTS.md` contains repository contributor instructions. Product users and their agents should follow the usage guide above.

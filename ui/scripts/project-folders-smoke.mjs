@@ -11,7 +11,7 @@ const url = `http://127.0.0.1:${vite.httpServer.address().port}`;
 const screenshots = fileURLToPath(new URL("../../output/project-folders/", import.meta.url));
 await mkdir(screenshots, {recursive:true});
 try {
-  for (const platform of ["darwin","windows","linux"]) {
+  for (const platform of ["windows"]) {
     const a = platform === "windows" ? "C:/Projects/frontend" : "/projects/frontend";
     const b = platform === "windows" ? "C:/Projects/backend" : "/projects/backend";
     const fixture = await createWorkbench({url,

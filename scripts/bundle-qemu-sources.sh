@@ -4,8 +4,8 @@ set -euo pipefail
 repository=$(cygpath -u "$1")
 runtime=$(cygpath -u "$2")
 archive=$(cygpath -u "$3")
-node_command=${CAGE_NODE:-node}
-if [[ -n ${CAGE_NODE:-} ]]; then node_command=$(cygpath -u "$CAGE_NODE"); fi
+node_command=${EDEN_NODE:-node}
+if [[ -n ${EDEN_NODE:-} ]]; then node_command=$(cygpath -u "$EDEN_NODE"); fi
 for tool in "$node_command" git curl tar sha256sum find sort xargs pacman-key pacman-conf mkdir mktemp cp mv rm grep; do
     command -v "$tool" >/dev/null 2>&1 || { echo "Missing source-collection tool: $tool" >&2; exit 1; }
 done
@@ -14,7 +14,7 @@ source_repository=$("$node_command" -p "JSON.parse(require('fs').readFileSync(pr
 [[ $commit =~ ^[a-f0-9]{40}$ && -s "$runtime/build-source-packages.txt" ]] || { echo 'QEMU source/package identity is missing.' >&2; exit 1; }
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
-mkdir -p "$stage/source/packages" "$stage/source/cage"
+mkdir -p "$stage/source/packages" "$stage/source/eden"
 # pacman-key requires lock-never for verification. Keep the installed public
 # keys and trust database intact; only the private verification copy gets it.
 installed_keyring=$(pacman-conf gpgdir)
@@ -39,9 +39,9 @@ git_options+=(-c url.https://github.com/tianocore/edk2-cmocka.git.insteadOf=http
 git "${git_options[@]}" -C "$stage/source/qemu" submodule update --init --recursive --depth=1 -- roms
 git -C "$stage/source/qemu" submodule status --recursive -- roms > "$stage/source/firmware-revisions.txt"
 if grep -Eq '^[-+U]' "$stage/source/firmware-revisions.txt"; then echo 'Firmware source revisions are incomplete.' >&2; exit 1; fi
-cp "$runtime/build-source-packages.txt" "$runtime/build-packages.txt" "$runtime/cage-build.json" "$stage/source/cage/"
-cp "$repository/scripts/build-qemu-windows.sh" "$repository/scripts/build-qemu-windows.ps1" "$repository/scripts/bundle-qemu-sources.sh" "$stage/source/cage/"
-cp -R "$repository/patches/qemu" "$stage/source/cage/patches"
+cp "$runtime/build-source-packages.txt" "$runtime/build-packages.txt" "$runtime/eden-build.json" "$stage/source/eden/"
+cp "$repository/scripts/build-qemu-windows.sh" "$repository/scripts/build-qemu-windows.ps1" "$repository/scripts/bundle-qemu-sources.sh" "$stage/source/eden/"
+cp -R "$repository/patches/qemu" "$stage/source/eden/patches"
 keymap_url=$("$node_command" -p "JSON.parse(require('fs').readFileSync(process.argv[1])).qemuKeycodemap.url" "$repository/packaging/windows/dependencies.json")
 keymap_hash=$("$node_command" -p "JSON.parse(require('fs').readFileSync(process.argv[1])).qemuKeycodemap.hash" "$repository/packaging/windows/dependencies.json")
 curl --fail --location --retry 3 -o "$stage/source/keycodemapdb.tar.gz" "$keymap_url"
@@ -61,7 +61,7 @@ while read -r base version; do
     done
     $found || { echo "No verified corresponding source for $base $version" >&2; exit 1; }
 done < "$runtime/build-source-packages.txt"
-# Firmware sources remain unmodified; the Cage patch and reproducible build
+# Firmware sources remain unmodified; the Eden patch and reproducible build
 # commands travel beside them. The manifest covers every distributed source.
 find "$stage/source" -name .git -type d -prune -exec rm -rf {} +
 find "$stage/source" -name .git -type f -delete

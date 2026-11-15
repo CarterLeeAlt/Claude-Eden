@@ -8,8 +8,8 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { createRequire } from "node:module";
 
-const cage = process.argv[2];
-assert.ok(path.isAbsolute(cage || ""), "Supply an absolute Cage helper path");
+const eden = process.argv[2];
+assert.ok(path.isAbsolute(eden || ""), "Supply an absolute Eden helper path");
 const run = promisify(execFile);
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "account-recovery-live-"));
 const profile = path.join(root, "profile");
@@ -17,20 +17,20 @@ await fs.mkdir(profile, { mode: 0o700 });
 // This scenario exercises account settings without provisioning a VM. Seed only
 // the completed-onboarding marker; account, vault and recovery use real APIs.
 await fs.writeFile(path.join(profile, "initialization.json"), JSON.stringify({ version: 1, completed: true }), { mode: 0o600 });
-const env = { ...process.env, CLAUDE_CAGE_CONFIG: path.join(profile, "config.json") };
+const env = { ...process.env, EDEN_CONFIG: path.join(profile, "config.json") };
 const require = createRequire(import.meta.url);
-const engines = require(process.env.CAGE_PLAYWRIGHT_MODULE || "playwright");
-const engine = engines[process.env.CAGE_TEST_BROWSER || "chromium"];
+const engines = require(process.env.EDEN_PLAYWRIGHT_MODULE || "playwright");
+const engine = engines[process.env.EDEN_TEST_BROWSER || "chromium"];
 const browser = await engine.launch({ headless: true });
 let context, page, service;
 const errors = [];
-const output = process.env.CAGE_RECOVERY_OUTPUT;
+const output = process.env.EDEN_RECOVERY_OUTPUT;
 if (output) await fs.mkdir(output, { recursive: true });
-const command = async (...args) => JSON.parse((await run(cage, args, { env, timeout: 60000 })).stdout);
+const command = async (...args) => JSON.parse((await run(eden, args, { env, timeout: 60000 })).stdout);
 const restart = async () => {
   await context?.close();
   await command("prepare-update", "--json");
-  service = spawn(cage, ["serve"], { env, stdio: "ignore" });
+  service = spawn(eden, ["serve"], { env, stdio: "ignore", windowsHide: true });
   let entry;
   for (let attempt = 0; attempt < 100; attempt++) {
     try { entry = await command("server-entry", "--json"); break; }
@@ -54,13 +54,13 @@ const saveKey = async (reset = false) => {
   if (output) await page.screenshot({ path: path.join(output, reset ? "reset-key.png" : "save-key.png"), mask: [page.locator("input,textarea")] });
   const code = await region.getByLabel("恢复密钥", { exact: true }).inputValue();
   assert.match(code, /^(?:[A-F0-9]{8}-){7}[A-F0-9]{8}$/);
-  const proceed = region.getByRole("button", { name: reset ? "返回登录" : "继续使用 Cage", exact: true });
+  const proceed = region.getByRole("button", { name: reset ? "返回登录" : "继续使用 Eden", exact: true });
   assert.equal(await proceed.isDisabled(), true);
   // Exercise the UI/native contract separately from the browser download.
   // The real native implementations are built/checked by platform checks.
   await page.evaluate(() => {
     window.recoverySaveMode = "cancel";
-    window.cageNativeBridge = { async postMessage(request) {
+    window.edenNativeBridge = { async postMessage(request) {
       const key = document.querySelector('textarea[aria-label="恢复密钥"]').value;
       if (request.action === "saveRecoveryKey") {
         if (request.key !== key) throw new Error("保存内容不完整");
@@ -85,7 +85,7 @@ const saveKey = async (reset = false) => {
   await region.getByRole("status").filter({ hasText: "恢复密钥文件已保存" }).waitFor();
   await region.getByRole("button", { name: "复制恢复密钥", exact: true }).click();
   await region.getByRole("status").filter({ hasText: "恢复密钥已复制" }).waitFor();
-  await page.evaluate(() => { delete window.cageNativeBridge; delete window.recoverySaveMode; });
+  await page.evaluate(() => { delete window.edenNativeBridge; delete window.recoverySaveMode; });
   const downloadEvent = page.waitForEvent("download");
   await region.getByRole("button", { name: "下载密钥文件", exact: true }).click();
   const download = await downloadEvent;
@@ -102,13 +102,13 @@ const saveKey = async (reset = false) => {
 };
 const unlock = async (password) => {
   await page.getByLabel("账户密码", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "解锁 Cage", exact: true }).click();
+  await page.getByRole("button", { name: "解锁 Eden", exact: true }).click();
   await menu().waitFor();
 };
 const lock = async () => {
   await menu().click();
-  await page.getByRole("menuitem", { name: /锁定 Cage/ }).click();
-  await page.getByRole("region", { name: "解锁 Cage", exact: true }).waitFor();
+  await page.getByRole("menuitem", { name: /锁定 Eden/ }).click();
+  await page.getByRole("region", { name: "解锁 Eden", exact: true }).waitFor();
 };
 try {
   await restart();

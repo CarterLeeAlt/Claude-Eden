@@ -108,7 +108,7 @@ export function shareClipboard({ connect, native, onStatus, setActive, interval 
   const receive = (value) => {
     if (value.hello) {
       const hello = value.hello;
-      const supported = hello.version === 1 && ["linux", "windows", "darwin"].includes(hello.os) &&
+      const supported = hello.version === 1 && hello.os === "linux" &&
         typeof hello.session === "string" && hello.session.length > 0 &&
         ["text", "png", "files"].every(format => hello.formats?.includes(format));
       const previouslyReady = guestReady;

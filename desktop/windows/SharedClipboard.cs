@@ -2,7 +2,7 @@ using System.Collections.Specialized;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 
-namespace Cage.Windows;
+namespace Eden.Windows;
 
 internal static class SharedClipboard
 {

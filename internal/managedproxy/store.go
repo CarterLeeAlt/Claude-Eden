@@ -1,4 +1,4 @@
-// Package managedproxy owns Cage's private proxy sources and generated core configuration.
+// Package managedproxy owns Claude Eden's private proxy sources and generated core configuration.
 package managedproxy
 
 import (
@@ -20,7 +20,7 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-const Group = "CAGE"
+const Group = "EDEN"
 const MaxImport = 8 << 20
 const maxStoreSize = 32 << 20
 
@@ -64,9 +64,9 @@ func Dir(profile string) string { return filepath.Join(profile, "proxy") }
 func Socket(profile string) string {
 	h := sha256.Sum256([]byte(filepath.Clean(profile)))
 	if runtime.GOOS == "windows" {
-		return filepath.Join(os.TempDir(), fmt.Sprintf("cage-proxy-%x", h[:8]), "control.sock")
+		return filepath.Join(os.TempDir(), fmt.Sprintf("eden-proxy-%x", h[:8]), "control.sock")
 	}
-	return filepath.Join("/tmp", fmt.Sprintf("cage-proxy-%d-%x", os.Getuid(), h[:8]), "control.sock")
+	return filepath.Join(os.TempDir(), fmt.Sprintf("eden-proxy-%d-%x", os.Getuid(), h[:8]), "control.sock")
 }
 func Load(profile string) (Store, error) {
 	var s Store
@@ -83,7 +83,7 @@ func Load(profile string) (Store, error) {
 		return s, err
 	}
 	if len(b) > maxStoreSize || json.Unmarshal(b, &s) != nil || s.Version != 1 || s.Port < 1024 || s.Port > 65535 || len(s.Auth) != 48 {
-		return s, errors.New("Cage 代理配置无效，请恢复私有配置备份")
+		return s, errors.New("Claude Eden 代理配置无效，请恢复私有配置备份")
 	}
 	return s, nil
 }
@@ -120,7 +120,7 @@ func (s Store) Save(profile string) error {
 	}
 	return Write(filepath.Join(Dir(profile), "sources.json"), b)
 }
-func (s Store) Endpoint() string { return fmt.Sprintf("socks5://cage:%s@127.0.0.1:%d", s.Auth, s.Port) }
+func (s Store) Endpoint() string { return fmt.Sprintf("socks5://eden:%s@127.0.0.1:%d", s.Auth, s.Port) }
 func (s Store) Find(id string) (Node, bool) {
 	for _, src := range s.Sources {
 		for _, n := range src.Nodes {
@@ -156,7 +156,7 @@ func (s *Store) Import(name, rawURL string, data []byte, id string, interval int
 	src := Source{ID: id, Name: name, URL: rawURL, Interval: interval, Updated: time.Now(), Attempted: time.Now(), Nodes: nodes, Usage: usage, Skipped: skipped}
 	for i := range s.Sources {
 		if s.Sources[i].ID == id {
-			// Refresh must retain every hop of the saved route, including legacy
+			// Refresh must retain every hop of the saved route, including imported
 			// node-level dialers. A partial import cannot shorten a working chain.
 			route, routeErr := s.Route()
 			if s.Selected != "" && routeErr != nil {
@@ -285,10 +285,6 @@ func (s Store) Runtime(profile string) ([]byte, error) {
 			for key, value := range n.Config {
 				config[key] = value
 			}
-			// Older stores may contain legacy headers accepted before normalization.
-			if err := normalizeWebSocket(config); err != nil {
-				return nil, fmt.Errorf("节点 %q：%w", n.Name, err)
-			}
 			if via, overridden := dialers[n.ID]; overridden {
 				delete(config, "dialer-proxy")
 				if via != "" {
@@ -299,9 +295,9 @@ func (s Store) Runtime(profile string) ([]byte, error) {
 		}
 	}
 	// Infrastructure DNS bootstraps only the core's server domains. Guest DNS
-	// remains behind Cage Egress, and there is no host-system resolver fallback.
+	// remains behind Eden Egress, and there is no host-system resolver fallback.
 	dns := map[string]any{"enable": true, "ipv6": false, "use-hosts": false, "use-system-hosts": false, "default-nameserver": BootstrapDNSURLs(), "proxy-server-nameserver": BootstrapDNSURLs(), "nameserver": []string{"https://1.1.1.1/dns-query#" + Group}}
-	config := map[string]any{"mixed-port": s.Port, "bind-address": "127.0.0.1", "allow-lan": false, "authentication": []string{"cage:" + s.Auth}, "skip-auth-prefixes": []string{}, "mode": "rule", "ipv6": false, "log-level": "warning", "find-process-mode": "off", "external-controller-unix": Socket(profile), "tun": map[string]any{"enable": false}, "dns": dns, "geo-auto-update": false, "profile": map[string]any{"store-selected": false}, "proxies": proxies, "proxy-groups": []any{map[string]any{"name": Group, "type": "select", "proxies": []string{s.Selected}}}, "rules": []string{"MATCH," + Group}}
+	config := map[string]any{"mixed-port": s.Port, "bind-address": "127.0.0.1", "allow-lan": false, "authentication": []string{"eden:" + s.Auth}, "skip-auth-prefixes": []string{}, "mode": "rule", "ipv6": false, "log-level": "warning", "find-process-mode": "off", "external-controller-unix": Socket(profile), "tun": map[string]any{"enable": false}, "dns": dns, "geo-auto-update": false, "profile": map[string]any{"store-selected": false}, "proxies": proxies, "proxy-groups": []any{map[string]any{"name": Group, "type": "select", "proxies": []string{s.Selected}}}, "rules": []string{"MATCH," + Group}}
 	// Measure a request on the established connection rather than folding
 	// protocol and TLS setup into the node's displayed HTTP latency.
 	config["unified-delay"] = true

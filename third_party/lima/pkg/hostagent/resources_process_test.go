@@ -15,7 +15,7 @@ import (
 )
 
 func TestResourceProbeProcess(t *testing.T) {
-	if mode := os.Getenv("CAGE_RESOURCE_PROBE_TEST"); mode != "" {
+	if mode := os.Getenv("EDEN_RESOURCE_PROBE_TEST"); mode != "" {
 		switch mode {
 		case "failure":
 			fmt.Fprint(os.Stdout, "private-stdout")
@@ -43,7 +43,7 @@ func TestResourceProbeProcess(t *testing.T) {
 				defer cancel()
 			}
 			cmd := exec.CommandContext(ctx, exe, "-test.run=^TestResourceProbeProcess$")
-			cmd.Env = append(os.Environ(), "CAGE_RESOURCE_PROBE_TEST="+mode)
+			cmd.Env = append(os.Environ(), "EDEN_RESOURCE_PROBE_TEST="+mode)
 			cmd.WaitDelay = time.Second
 			hideResourceProbe(cmd)
 			if mode == "start" {

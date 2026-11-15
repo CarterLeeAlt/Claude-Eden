@@ -1,9 +1,8 @@
-module cage.local/tailnet
+module workbench.local/tailnet
 
 go 1.27.3
 
 require (
-	github.com/UserExistsError/conpty v0.1.4
 	github.com/creack/pty v1.1.24
 	github.com/gliderlabs/ssh v0.3.8
 	github.com/pkg/sftp v1.13.11

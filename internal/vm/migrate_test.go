@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sylvinus/agent-vm/internal/paths"
 )
 
 func TestMoveOld(t *testing.T) {
@@ -14,8 +16,8 @@ func TestMoveOld(t *testing.T) {
 	l := newTestLima(t)
 	old := os.Getenv("LIMA_HOME")
 	off := false
-	proj := t.TempDir()
-	mounts := []Mount{{Location: proj, MountPoint: proj, Writable: true, SSHFS: &SSHFS{SFTPDriver: "builtin", Cache: &off, ReadonlyNames: []string{".git", ".hg"}}}}
+	proj := paths.Host(t.TempDir())
+	mounts := []Mount{{Location: proj, MountPoint: paths.Guest(proj), Writable: true, SSHFS: &SSHFS{SFTPDriver: "builtin", Cache: &off, ReadonlyNames: []string{".git", ".hg"}}}}
 	rev := ReverseSSHFS
 	if err := l.Create(ctx, "agent-vm-p-12345678", "template:debian-13", Settings{CPUs: 1, Mounts: &mounts, MountType: &rev}, io.Discard); err != nil {
 		t.Fatal(err)
@@ -26,7 +28,9 @@ func TestMoveOld(t *testing.T) {
 	}
 	dir := filepath.Join(old, "agent-vm-p-12345678")
 	for _, f := range []string{"ha.sock", "stale.pid", "x.tmp", "protected", "vz-identifier"} {
-		os.WriteFile(filepath.Join(dir, f), []byte("x"), 0o644)
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// A hostagent's pid that is not running: not running.
 	found, err := FindOld(old, "agent-vm-")

@@ -4,8 +4,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
-const engine = process.env.CAGE_TEST_BROWSER || "chromium";
-const output = path.resolve(process.env.CAGE_YAML_QA_OUTPUT || "/tmp/cage-yaml-drop-qa", engine);
+const engine = process.env.EDEN_TEST_BROWSER || "chromium";
+const output = path.resolve(process.env.EDEN_YAML_QA_OUTPUT || "../.tmp/guest-neutralization/ui-eden/yaml-drop", engine);
 await fs.mkdir(output, { recursive: true });
 const { browser, page, state, errors } = await createWorkbench({ viewport: { width: 1280, height: 1000 } });
 const yaml = "proxies:\n  - {name: 本地测试, type: socks5, server: 127.0.0.1, port: 1080}\n";

@@ -1,6 +1,6 @@
 # Windows 安装、更新与发布
 
-Claude Eden 的桌面使用环境为 **Windows 10 主机 + Linux 客机**。在 Windows 安装并打开应用，选择 Debian 13 或 Ubuntu 22.04，导入自己的代理后进入工作台；也可直接连接 Linux 云端工作台。
+Claude Eden 的使用环境为 **Windows 10 主机 + 本地 Debian 13 客机**。在 Windows 安装并打开应用，选择存储位置、导入自己的代理后进入工作台。
 
 ## Windows 版本与功能范围
 
@@ -8,12 +8,10 @@ Claude Eden 的桌面使用环境为 **Windows 10 主机 + Linux 客机**。在 
 
 | 功能 | 宿主与运行条件 |
 | --- | --- |
-| 完整版／轻客户端的安装、启动、更新和卸载 | Windows 10，使用与 CPU 架构匹配的安装包及 WebView2 运行时。当前 Windows 构建为 x64。 |
-| 连接远程 Linux 工作台 | 上述 Windows 桌面系统；本机虚拟机可以关闭。 |
-| 创建和运行 Debian／Ubuntu 客机 | 上述 Windows 桌面系统，以及 Windows 虚拟机监控程序平台（WHPX）。 |
-| Android 手机连接 | 配对运行中的 Claude Eden 主机，远程查看和操作 Linux 环境。 |
+| 应用的安装、启动、更新和卸载 | Windows 10，使用与 CPU 架构匹配的安装包及 WebView2 运行时。当前 Windows 构建为 x64。 |
+| 创建和运行本地 Debian 13 客机 | 上述 Windows 桌面系统，以及 Windows 虚拟机监控程序平台（WHPX）。 |
 
-完整版携带本机 Linux 虚拟机运行时，轻客户端只负责远程连接与显示。终端、浏览器、编辑器和 Claude Desktop 都在 Linux 环境内运行。客机使用方式见[选择客机系统](guide/guest-systems.md)。
+应用携带本机 Linux 虚拟机运行时。终端、浏览器、编辑器和 Claude Desktop 都在 Debian 13 环境内运行。客机使用方式见[Debian 13 客机](guide/guest-systems.md)。
 
 系统版本与能力按以下依据判断：
 
@@ -23,7 +21,7 @@ Claude Eden 的桌面使用环境为 **Windows 10 主机 + Linux 客机**。在 
 
 ## 安装前准备
 
-下表适用于运行本机 Linux 客机的完整版。只连接远端的轻客户端按上表准备 Windows 主机和 Linux 服务器。
+下表适用于本地 Debian 13 环境。
 
 | 项目 | 要求 |
 |---|---|
@@ -45,7 +43,7 @@ DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All /NoRestart
 1. 查看 [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases) 中实际发布的 Windows 安装包，核对对应发行条目的 `SHA256SUMS`。签名安装包名为 `Eden-<版本>-windows-amd64-setup.exe`；未签名开发包名为 `Eden-<版本>-windows-amd64-setup-unsigned.exe`，需手动安装和更新。尚无安装包时按下文从源码构建。
 2. 运行安装程序，选择安装位置。首次安装默认选择本地 D 盘的 `D:\Eden`；没有本地 D 盘时使用 `%LOCALAPPDATA%\Programs\Eden`。安装器随附 .NET 桌面运行组件、WebView2 安装程序、QEMU、OpenSSH 客户端和代理核心，无需另装 Go、Node.js 或 Clash。
 3. 在“快捷方式”页选择“添加桌面快捷方式”和“添加到开始菜单”。首次安装默认勾选两项，后续 Claude Eden 更新沿用上次选择。卸载会清理 Claude Eden 创建的快捷方式。
-4. 从选中的快捷方式启动 Claude Eden，选择客机系统。如果 C 盘空间有限，选择其他磁盘的专用空文件夹，再导入代理并启动环境。镜像、工具和虚拟磁盘按所选系统准备；已有环境可从设置迁移。见[选盘与迁移步骤](getting-started.md#选择环境存储位置)和[客机系统指南](guide/guest-systems.md)。
+4. 从选中的快捷方式启动 Claude Eden，确认 Debian 13。如果 C 盘空间有限，选择其他磁盘的专用空文件夹，再导入代理并启动环境。程序准备官方镜像、工具和虚拟磁盘；已有环境可从设置迁移。见[选盘与迁移步骤](getting-started.md#选择环境存储位置)和[客机系统指南](guide/guest-systems.md)。
 
 安装器不设置系统代理，不安装 SSH 服务，不把随附工具加入系统 PATH。WebView2 是 Microsoft 提供的系统浏览器运行时，其安装与维护由 Microsoft 安装程序负责。
 
@@ -59,7 +57,7 @@ Windows 快捷键以 `Ctrl` 为主：`Ctrl+O` 打开项目、`Ctrl+T` 新建网�
 
 窗口仅保留系统标题栏，工作台直接占据下方区域。文件、项目和设置操作使用工作台入口与快捷键；检查应用更新和版本信息可从托盘图标的右键菜单打开。窗口首次打开时按当前屏幕的可用区域居中，并适配 Windows 显示缩放。手动调整后的窗口尺寸和最大化状态会保存；换屏或降低分辨率时，窗口保持在当前屏幕内。后台启动与版本检测不显示命令行窗口。
 
-从开始菜单打开 Claude Eden 时，完整版和轻量客户端的后台服务都会静默启动。关闭工作台窗口会保留环境与后台任务，可从托盘图标重新打开。要退出桌面程序，在托盘菜单选择“退出 Claude Eden”。本机环境仍在运行时，可以选择保留任务或停止环境；停止环境会结束其中的终端。
+从开始菜单打开 Claude Eden 时，后台服务静默启动。关闭工作台窗口会保留环境与后台任务，可从托盘图标重新打开。要退出桌面程序，在托盘菜单选择“退出 Claude Eden”。本机环境仍在运行时，可以选择保留任务或停止环境；停止环境会结束其中的终端。
 
 浏览器上传通过本机文件选择窗口选取文件；下载完成可用 Windows“另存为”选择位置。侧栏“下载”提供打开文件、在资源管理器中显示与再次另存为，取消保存窗口时保留默认 Downloads 中的文件。操作与限制见[浏览器上传与下载](getting-started.md#浏览器上传与下载)。
 
@@ -96,7 +94,7 @@ Claude Eden 支持含中文的安装目录。启动时优先读取随附 QEMU �
 
 构建入口为 [`scripts/build-windows.ps1`](../scripts/build-windows.ps1)，安装包入口为 [`scripts/package-windows.ps1`](../scripts/package-windows.ps1)。版本与依赖以 `VERSION`、`go.mod`、`packaging/windows/dependencies.json` 和锁文件为准。构建需要 PowerShell 7、Go、Node.js/npm、.NET SDK 和 7-Zip，生成安装器还需要 NSIS；签名构建需要相应签名工具及授权。完整构建会执行真实桌面验收，宜在独立测试账户中运行。构建产物与本机已安装应用使用不同目录。
 
-编译 `cmd/eden` 前，Windows 构建会生成 Linux amd64／arm64 的 `workbench-tailnet` 和 `workbench-network` 压缩资源；后者写入 `internal/containerenv/assets/workbench-network-linux-<架构>.gz`，供后端嵌入及云端部署包使用。
+编译 `cmd/eden` 前，Windows 构建会生成 Linux amd64／arm64 的 `workbench-tailnet` 客机资源，并准备 Linux guest-agent。Lima 模板由 `scripts/prepare-lima-templates.mjs` 复制 Debian 13 的入口、镜像定义和共享挂载定义，保留上游镜像版本与摘要。
 
 构建与普通回归统一从仓库根目录运行，先将工作区工具链放入当前进程的 `PATH`：
 

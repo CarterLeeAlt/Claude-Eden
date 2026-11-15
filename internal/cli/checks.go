@@ -64,7 +64,7 @@ func (s *start) checks() bool {
 	s.protect, s.names, s.notes = false, nil, ""
 	if !s.opts.Scratch {
 		if writableGitOptOut(s.opts.UnsafeWritableGit) {
-			if !cageWritableGit() {
+			if !edenWritableGit() {
 				s.writableGitWarning()
 			}
 		} else {
@@ -103,7 +103,7 @@ func (s *start) checks() bool {
 					s.warnf("Warning: git's core.hooksPath is '%s', which the VM can write, and its name cannot be made read-only: git on this machine runs the hooks the agent puts there.", rel)
 				}
 				if !s.vmUp && !s.confirmUnsafe() {
-					s.warnf("Aborted. Point core.hooksPath to a folder of the project (agent-vm keeps it read-only), or outside it.")
+					s.warnf("Aborted. Point core.hooksPath to a folder of the project (%s keeps it read-only), or outside it.", Command)
 					return false
 				}
 				continue

@@ -10,16 +10,16 @@ import (
 // ErrNetworkOpen is returned by Start for a VM with a network besides its own
 // isolated one: the network policy (netguard) applies to the connections of
 // the VM's own netstack only.
-var ErrNetworkOpen = errors.New("agent-vm starts no VM with a network besides its own")
+var ErrNetworkOpen = errors.New("the VM requires its own isolated network")
 
 // NetworkConfined fails when cfg gives the guest a network of Lima's `networks`
 // (a shared usernet, a socket, vzNAT, a vmnet one): its traffic does not go
 // through the netstack that the policy is applied to.
 func NetworkConfined(cfg *limatype.LimaYAML) error {
-	// Only these drivers attach the VM's NIC to our host-side netstack.
+	// The QEMU driver attaches the VM's NIC to our host-side netstack.
 	// WSL2 and HCS have separate host-managed networking, even with no
-	// explicit networks entry, so they cannot enforce the Cage egress gate.
-	if cfg.VMType != nil && *cfg.VMType != limatype.QEMU && *cfg.VMType != limatype.VZ {
+	// explicit networks entry, so they cannot enforce the Claude Eden egress gate.
+	if cfg.VMType != nil && *cfg.VMType != limatype.QEMU {
 		return fmt.Errorf("%w: VM driver %q does not use the confined network", ErrNetworkOpen, *cfg.VMType)
 	}
 	for i, n := range cfg.Networks {

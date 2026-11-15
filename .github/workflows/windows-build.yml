@@ -39,19 +39,23 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
+      - name: Read the package version
+        id: version
+        run: '"version=$((Get-Content VERSION -Raw).Trim())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8'
       - uses: ./.github/actions/windows-toolchain
         with:
           # Rehearse the release-only source collection on every change, so
           # it cannot first fail while a release is waiting.
           corresponding-sources: ${{ matrix.os == 'windows-2025' }}
-      - name: Build, test and install the unsigned development package
+      - name: Disposable system integration — build, test, install and uninstall
         env:
-          CAGE_BUILD_REF: ${{ inputs.ref }}
-        run: ./scripts/ci-windows-build.ps1
+          EDEN_BUILD_REF: ${{ inputs.ref }}
+          EDEN_TEST_STORAGE_VOLUME: C:\Eden-CI-Storage\${{ github.run_id }}-${{ github.run_attempt }}
+        run: node scripts/run-in-workspace.mjs -- pwsh -NoProfile -File scripts/ci-windows-build.ps1 -SystemIntegration
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.artifact_name }}-${{ matrix.os }}
-          path: _output/releases/*/windows/*
+          path: _output/releases/${{ steps.version.outputs.version }}/windows/*
           if-no-files-found: error
           overwrite: true
           retention-days: 14
@@ -62,7 +66,7 @@ jobs:
           name: ${{ inputs.artifact_name }}-${{ matrix.os }}-failed-candidate
           path: |
             _output/windows-amd64/app/**
-            _output/releases/*/windows/Cage-*-windows-amd64-setup-unsigned.exe
+            _output/releases/*/windows/Eden-*-windows-amd64-setup-unsigned.exe
             _output/releases/*/windows/SHA256SUMS
           if-no-files-found: ignore
           compression-level: 0
@@ -74,16 +78,16 @@ jobs:
         with:
           name: ${{ inputs.artifact_name }}-${{ matrix.os }}-reports
           path: |
-            ${{ runner.temp }}/cage-smoke-*.json
-            ${{ runner.temp }}/cage-build-ui-*/smoke.json
-            ${{ runner.temp }}/cage-build-ui-*/*.png
+            .tmp/eden-smoke-*.json
+            .tmp/eden-build-ui-*/smoke.json
+            .tmp/eden-build-ui-*/*.png
           if-no-files-found: ignore
           overwrite: true
           retention-days: 14
   release:
     if: ${{ inputs.release }}
     runs-on: windows-2025
-    environment: cage-release
+    environment: eden-release
     timeout-minutes: 60
     defaults:
       run:
@@ -93,6 +97,9 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
+      - name: Read the package version
+        id: version
+        run: '"version=$((Get-Content VERSION -Raw).Trim())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8'
       - uses: ./.github/actions/windows-toolchain
         with:
           corresponding-sources: true
@@ -100,28 +107,29 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Build, sign, test and install the release candidate
+      - name: Disposable system integration — sign, install, update and uninstall
         env:
-          CAGE_BUILD_REF: ${{ inputs.ref }}
-          CAGE_WINDOWS_SIGNING_PROVIDER: ${{ vars.CAGE_WINDOWS_SIGNING_PROVIDER }}
-          CAGE_ESIGNER_USERNAME: ${{ secrets.CAGE_ESIGNER_USERNAME }}
-          CAGE_ESIGNER_PASSWORD: ${{ secrets.CAGE_ESIGNER_PASSWORD }}
-          CAGE_ESIGNER_CREDENTIAL_ID: ${{ secrets.CAGE_ESIGNER_CREDENTIAL_ID }}
-          CAGE_ESIGNER_CERTIFICATE_SERIAL: ${{ vars.CAGE_ESIGNER_CERTIFICATE_SERIAL }}
-          CAGE_ESIGNER_TOTP_SECRET: ${{ secrets.CAGE_ESIGNER_TOTP_SECRET }}
-          CAGE_WINDOWS_PFX_BASE64: ${{ secrets.CAGE_WINDOWS_PFX_BASE64 }}
-          CAGE_WINDOWS_PFX_PASSWORD: ${{ secrets.CAGE_WINDOWS_PFX_PASSWORD }}
-        run: ./scripts/ci-windows-build.ps1 -Release
+          EDEN_BUILD_REF: ${{ inputs.ref }}
+          EDEN_TEST_STORAGE_VOLUME: C:\Eden-CI-Storage\${{ github.run_id }}-${{ github.run_attempt }}
+          EDEN_WINDOWS_SIGNING_PROVIDER: ${{ vars.EDEN_WINDOWS_SIGNING_PROVIDER }}
+          EDEN_ESIGNER_USERNAME: ${{ secrets.EDEN_ESIGNER_USERNAME }}
+          EDEN_ESIGNER_PASSWORD: ${{ secrets.EDEN_ESIGNER_PASSWORD }}
+          EDEN_ESIGNER_CREDENTIAL_ID: ${{ secrets.EDEN_ESIGNER_CREDENTIAL_ID }}
+          EDEN_ESIGNER_CERTIFICATE_SERIAL: ${{ vars.EDEN_ESIGNER_CERTIFICATE_SERIAL }}
+          EDEN_ESIGNER_TOTP_SECRET: ${{ secrets.EDEN_ESIGNER_TOTP_SECRET }}
+          EDEN_WINDOWS_PFX_BASE64: ${{ secrets.EDEN_WINDOWS_PFX_BASE64 }}
+          EDEN_WINDOWS_PFX_PASSWORD: ${{ secrets.EDEN_WINDOWS_PFX_PASSWORD }}
+        run: node scripts/run-in-workspace.mjs -- pwsh -NoProfile -File scripts/ci-windows-build.ps1 -Release -SystemIntegration
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.artifact_name }}
           path: |
-            _output/releases/*/windows/Cage-*-windows-amd64-setup.exe
-            _output/releases/*/windows/SHA256SUMS
-            _output/releases/*/windows/mihomo-*-source.tar.gz
-            _output/releases/*/windows/qemu-*-source.tar.gz
-            _output/releases/*/windows/qemu-*-windows-full-source.*
-            _output/releases/*/windows/build-metadata.json
+            _output/releases/${{ steps.version.outputs.version }}/windows/Eden-*-windows-amd64-setup.exe
+            _output/releases/${{ steps.version.outputs.version }}/windows/SHA256SUMS
+            _output/releases/${{ steps.version.outputs.version }}/windows/mihomo-*-source.tar.gz
+            _output/releases/${{ steps.version.outputs.version }}/windows/qemu-*-source.tar.gz
+            _output/releases/${{ steps.version.outputs.version }}/windows/qemu-*-windows-full-source.*
+            _output/releases/${{ steps.version.outputs.version }}/windows/build-metadata.json
           if-no-files-found: error
           overwrite: true
           retention-days: 14
@@ -131,9 +139,9 @@ jobs:
         with:
           name: ${{ inputs.artifact_name }}-reports
           path: |
-            ${{ runner.temp }}/cage-smoke-*.json
-            ${{ runner.temp }}/cage-build-ui-*/smoke.json
-            ${{ runner.temp }}/cage-build-ui-*/*.png
+            .tmp/eden-smoke-*.json
+            .tmp/eden-build-ui-*/smoke.json
+            .tmp/eden-build-ui-*/*.png
           if-no-files-found: ignore
           retention-days: 14
       # The caller owns publication. This workflow has no repository write access.

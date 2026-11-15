@@ -208,7 +208,10 @@ func TestCloudHostileClient(t *testing.T) {
 }
 
 func TestCloudReadOnlyAndRootReplacement(t *testing.T) {
-	original := t.TempDir()
+	original := filepath.Join(t.TempDir(), "root")
+	if err := os.Mkdir(original, 0700); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(original, "allowed"), []byte("ok"), 0600); err != nil {
 		t.Fatal(err)
 	}

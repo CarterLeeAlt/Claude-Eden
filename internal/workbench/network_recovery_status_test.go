@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func TestFailedNetworkRecoveryShowsLatestCheckReason(t *testing.T) {
@@ -66,7 +66,7 @@ func TestNetworkRecoveryStatusExplainsWaitWithoutChangingPermission(t *testing.T
 	if message := s.networkRecoveryMessageLocked(now); message != "" {
 		t.Fatal("paused environment promised automatic recovery", message)
 	}
-	if after := gate.Status(); after.Mode != cage.GateClosed || after.Until.After(before.Until) {
+	if after := gate.Status(); after.Mode != eden.GateClosed || after.Until.After(before.Until) {
 		t.Fatal("status text changed permission")
 	}
 }

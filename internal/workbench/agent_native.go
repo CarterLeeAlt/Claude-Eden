@@ -58,7 +58,7 @@ func (s *Server) agentNative(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Native action required", 400)
 			return
 		}
-		if s.remote != nil && s.remote.context().ConnectionID != in.Connection {
+		if s.gateway != nil && s.gateway.context().ConnectionID != in.Connection {
 			http.Error(w, "Connection changed", 409)
 			return
 		}
@@ -98,7 +98,7 @@ func (s *Server) agentNative(w http.ResponseWriter, r *http.Request) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if (r.Method == "GET" && id == "") || r.Method == "POST" {
-		until, ok := q.windows[r.Header.Get("X-Cage-Agent-Window")]
+		until, ok := q.windows[r.Header.Get("X-Eden-Agent-Window")]
 		if !ok || time.Now().After(until) {
 			http.Error(w, "Native window proof required", 403)
 			return

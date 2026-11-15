@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
 	"github.com/sylvinus/agent-vm/internal/diagnostics"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/usererror"
 )
 
@@ -27,21 +27,21 @@ type claudeDesktopState struct {
 	FailureReason     string  `json:"failure_reason,omitempty"`
 }
 
-const claudeDesktopSnapshot = `python3 - <<'CAGE_DESKTOP_STATE'
+const claudeDesktopSnapshot = `python3 - <<'WORKBENCH_DESKTOP_STATE'
 import json, subprocess
 from pathlib import Path
 def run(*args):
     return subprocess.run(args, capture_output=True, text=True).stdout.strip()
 package=run('dpkg-query','-W','-f=${Status}\n${Version}','claude-desktop').splitlines()
 installed=bool(package and package[0]=='install ok installed')
-state=run('systemctl','is-active','cage-claude-desktop.service')
-result=run('systemctl','show','--property=Result','--value','cage-claude-desktop.service') if state=='failed' else ''
-print(json.dumps({'installed':installed,'version':package[1] if installed else '', 'running':state=='active','failed':state=='failed','managed':Path('/run/cage-desktop/keyring-ready').exists(),'failure_reason':'oom-kill' if result=='oom-kill' else ''}))
-CAGE_DESKTOP_STATE`
+state=run('systemctl','is-active','workbench-claude-desktop.service')
+result=run('systemctl','show','--property=Result','--value','workbench-claude-desktop.service') if state=='failed' else ''
+print(json.dumps({'installed':installed,'version':package[1] if installed else '', 'running':state=='active','failed':state=='failed','managed':Path('/run/workbench-desktop/keyring-ready').exists(),'failure_reason':'oom-kill' if result=='oom-kill' else ''}))
+WORKBENCH_DESKTOP_STATE`
 
 func (s *Server) claudeDesktopStatus(w http.ResponseWriter, r *http.Request) {
 	if !s.vmRunning() {
-		http.Error(w, "请先启动 Cage 环境", 409)
+		http.Error(w, "请先启动 Eden 环境", 409)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
@@ -49,13 +49,6 @@ func (s *Server) claudeDesktopStatus(w http.ResponseWriter, r *http.Request) {
 	b, err := s.desktopStatus.read(ctx, s.lifetimeContext(), func(ctx context.Context) ([]byte, error) {
 		ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 		defer cancel()
-		if s.windowsGuest != nil {
-			var result claudeDesktopState
-			if err := s.windowsDesktopRequest(ctx, "status", nil, &result); err != nil {
-				return nil, err
-			}
-			return json.Marshal(result)
-		}
 		return s.guestQuick(ctx, claudeDesktopSnapshot)
 	})
 	var state claudeDesktopState
@@ -82,21 +75,12 @@ func (s *Server) claudeDesktopAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.vmRunning() {
-		http.Error(w, "请先启动 Cage 环境", 409)
+		http.Error(w, "请先启动 Eden 环境", 409)
 		return
 	}
 	s.launch(w, "claude-desktop-"+action, func() error {
 		s.desktopStatus.invalidate()
 		defer s.desktopStatus.invalidate()
-		if s.windowsGuest != nil {
-			if action == "update" {
-				return errors.New("请使用 Claude Desktop 应用内的更新入口")
-			}
-			if action == "install" {
-				return errors.New("Windows 客机的自动安装尚未接通，请保留已有官方应用")
-			}
-			return s.windowsDesktopRequest(s.operationContext(), action, nil, nil)
-		}
 		switch action {
 		case "install", "update":
 			s.mu.Lock()
@@ -130,16 +114,16 @@ func (s *Server) claudeDesktopAction(w http.ResponseWriter, r *http.Request) {
 				<-done
 			}()
 			s.setMessage("正在下载并安装 Claude Desktop，可在操作详情查看进度…")
-			script := cage.ClaudeDesktopInstallScript()
+			script := eden.ClaudeDesktopInstallScript()
 			if action == "update" {
-				script = "set -e\nsudo systemctl stop cage-claude-desktop.service\n" + script
+				script = "set -e\nsudo systemctl stop workbench-claude-desktop.service\n" + script
 			}
 			return RunMaintenanceScript(s.operationContext(), s.configPath, script, s.jobs.execution(), s.jobs.execution())
 		case "start":
 			return s.startClaudeDesktop()
 		default:
 			s.setMessage("正在关闭 Claude Desktop…")
-			return s.runDesktopScript("sudo systemctl stop cage-claude-desktop.service", 30*time.Second)
+			return s.runDesktopScript("sudo systemctl stop workbench-claude-desktop.service", 30*time.Second)
 		}
 	})
 }
@@ -155,13 +139,13 @@ func (s *Server) startClaudeDesktop() error {
 	}
 	defer clear(key)
 	script := `test "$(dpkg-query -W -f='${Status}' claude-desktop 2>/dev/null)" = 'install ok installed' || { echo '请先安装 Claude Desktop。'; exit 1; }
-` + cage.ClaudeDesktopProvisionScript()
+` + eden.ClaudeDesktopProvisionScript()
 	if err = s.runDesktopScript(script, 20*time.Second); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(s.operationContext(), 55*time.Second)
 	defer cancel()
-	cmd := s.sshCommand(ctx, "-T", s.sshTarget(), "--", "/usr/local/bin/cage-claude-start")
+	cmd := s.sshCommand(ctx, "-T", s.sshTarget(), "--", "/usr/local/bin/workbench-claude-start")
 	cmd.Stdin = bytes.NewReader(key)
 	cmd.Stdout, cmd.Stderr = s.jobs.execution(), s.jobs.execution()
 	if err = cmd.Run(); err != nil {
@@ -175,7 +159,7 @@ func (s *Server) runDesktopScript(script string, timeout time.Duration) error {
 	defer cancel()
 	// A guest cgroup owns apt and all descendants, including across SSH loss.
 	// The application's persistent service is separate from this operation.
-	command := fmt.Sprintf("sudo systemd-run --quiet --pipe --wait --collect --unit=cage-desktop-operation --property=User=cage --property=RuntimeMaxSec=%d --property=KillMode=control-group --setenv=HOME=/home/cage --working-directory=/home/cage /bin/bash -se", int(timeout.Seconds()))
+	command := fmt.Sprintf("sudo systemd-run --quiet --pipe --wait --collect --unit=workbench-desktop-operation --property=User=developer --property=RuntimeMaxSec=%d --property=KillMode=control-group --setenv=HOME=/home/developer --working-directory=/home/developer /bin/bash -se", int(timeout.Seconds()))
 	cmd := s.sshCommand(ctx, "-T", s.sshTarget(), "--", command)
 	cmd.Stdin = strings.NewReader(script)
 	cmd.Stdout, cmd.Stderr = s.jobs.execution(), s.jobs.execution()
@@ -183,7 +167,7 @@ func (s *Server) runDesktopScript(script string, timeout time.Duration) error {
 		if ctx.Err() != nil {
 			cleanup, finish := context.WithTimeout(context.Background(), 5*time.Second)
 			defer finish()
-			_, _ = s.guest(cleanup, "sudo systemctl stop cage-desktop-operation.service")
+			_, _ = s.guest(cleanup, "sudo systemctl stop workbench-desktop-operation.service")
 			return ctx.Err()
 		}
 		return executionFailure("准备或关闭 Claude Desktop", err, s.jobs.snapshot().Log)
@@ -192,20 +176,16 @@ func (s *Server) runDesktopScript(script string, timeout time.Duration) error {
 }
 
 func (s *Server) claudeDesktopCredentials(w http.ResponseWriter, r *http.Request) {
-	if s.windowsGuest != nil {
-		s.windowsDesktopCredentials(w, r)
-		return
-	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 	b, err := s.guestQuick(ctx, `set -eu
-systemctl is-active --quiet cage-claude-desktop.service
-password=$(cat /home/cage/.config/claude-cage/desktop-password)
+systemctl is-active --quiet workbench-claude-desktop.service
+password=$(cat /home/developer/.config/workbench/desktop-password)
 printf '%s\n' "$password"
-if test -f /run/cage-desktop/base-display-scale; then cat /run/cage-desktop/base-display-scale
-elif test -f /run/cage-desktop/display-scale; then cat /run/cage-desktop/display-scale
+if test -f /run/workbench-desktop/base-display-scale; then cat /run/workbench-desktop/base-display-scale
+elif test -f /run/workbench-desktop/display-scale; then cat /run/workbench-desktop/display-scale
 else echo; fi
-if test -f /run/cage-desktop/xsettings.pid; then echo dynamic; fi`)
+if test -f /run/workbench-desktop/xsettings.pid; then echo dynamic; fi`)
 	password, scale, _ := strings.Cut(strings.TrimSpace(string(b)), "\n")
 	if err != nil || len(password) != 8 {
 		http.Error(w, "Claude Desktop 尚未启动", 409)
@@ -238,16 +218,6 @@ func (s *Server) claudeDesktopResize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "画面尺寸无效", 400)
 		return
 	}
-	if s.windowsGuest != nil {
-		ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
-		defer cancel()
-		if err := s.windowsDesktopRequest(ctx, "resize", map[string]any{"width": input.Width, "height": input.Height}, nil); err != nil {
-			http.Error(w, err.Error(), 502)
-			return
-		}
-		jsonReply(w, map[string]bool{"ok": true})
-		return
-	}
 	scale := ""
 	if input.Scale != 0 {
 		scale = strconv.FormatFloat(input.Scale, 'f', -1, 64)
@@ -271,50 +241,44 @@ func (s *Server) claudeDesktopResize(w http.ResponseWriter, r *http.Request) {
 // scale is empty for a viewer that leaves the display's density alone.
 func desktopResizeScript(wid, hei int, scale string) string {
 	return fmt.Sprintf(`set -eu
-export DISPLAY=:78 XAUTHORITY=/run/cage-desktop/Xauthority
-exec 9>/run/cage-desktop/resize.lock
+export DISPLAY=:78 XAUTHORITY=/run/workbench-desktop/Xauthority
+exec 9>/run/workbench-desktop/resize.lock
 flock 9
 requested=%s
 manager=
-if test -r /run/cage-desktop/xsettings.pid; then
-  manager=$(cat /run/cage-desktop/xsettings.pid)
+if test -r /run/workbench-desktop/xsettings.pid; then
+  manager=$(cat /run/workbench-desktop/xsettings.pid)
   if test "$(cat "/proc/$manager/comm" 2>/dev/null)" != xsettingsd; then manager=; fi
 fi
 # A fixed-density session ignores the request, and its viewer sizes for that
 # density. A viewer that names none sized its display for the configured one.
 scale=
 if test -n "$manager"; then
-  scale=${requested:-$(cat /run/cage-desktop/base-display-scale 2>/dev/null || echo 2)}
+  scale=${requested:-$(cat /run/workbench-desktop/base-display-scale 2>/dev/null || echo 2)}
   if test -n "$requested"; then echo "scale $scale"; fi
 fi
-printf '%%s %%s %%s\n' %d %d "$scale" > /run/cage-desktop/desktop-size
-# A phone holds the display. Its release applies this size and density.
-if test -f /run/cage-phone-desktop/layout.json; then exit 0; fi
-if test -n "$manager" && test "$(cat /run/cage-desktop/display-scale 2>/dev/null)" != "$scale"; then
+printf '%%s %%s %%s\n' %d %d "$scale" > /run/workbench-desktop/desktop-size
+if test -n "$manager" && test "$(cat /run/workbench-desktop/display-scale 2>/dev/null)" != "$scale"; then
   dpi=$(awk -v scale="$scale" 'BEGIN {printf "%%.0f", scale * 96 * 1024}')
   # A session started by an earlier version has no list of its other settings.
   { printf 'Xft/DPI %%s\nGdk/WindowScalingFactor 1\nGdk/UnscaledDPI %%s\n' "$dpi" "$dpi"
-    cat /run/cage-desktop/xsettings.fixed 2>/dev/null || printf 'Gtk/DecorationLayout ":"\n'; } > /run/cage-desktop/xsettings.conf.new
-  mv /run/cage-desktop/xsettings.conf.new /run/cage-desktop/xsettings.conf
+    cat /run/workbench-desktop/xsettings.fixed 2>/dev/null || printf 'Gtk/DecorationLayout ":"\n'; } > /run/workbench-desktop/xsettings.conf.new
+  mv /run/workbench-desktop/xsettings.conf.new /run/workbench-desktop/xsettings.conf
   kill -HUP "$manager"
-  printf '%%s\n' "$scale" > /run/cage-desktop/display-scale
+  printf '%%s\n' "$scale" > /run/workbench-desktop/display-scale
 fi
-name=cage-%dx%d
+name=workbench-%dx%d
 if ! xrandr --query | grep -q " $name "; then
   xrandr --newmode "$name" %.3f %d %d %d %d %d %d %d %d +HSync -VSync
   xrandr --addmode VNC-0 "$name"
 fi
 xrandr --output VNC-0 --mode "$name"
-for old in $(xrandr --query | awk '/^ +cage-/ {print $1}'); do
+for old in $(xrandr --query | awk '/^ +workbench-/ {print $1}'); do
   if [ "$old" != "$name" ]; then xrandr --delmode VNC-0 "$old"; xrandr --rmmode "$old"; fi
 done`, scale, wid, hei, wid, hei, float64((wid+32)*(hei+8)*60)/1000000, wid, wid+8, wid+16, wid+32, hei, hei+1, hei+2, hei+8)
 }
 
 func (s *Server) claudeDesktopVNC(w http.ResponseWriter, r *http.Request) {
-	if s.windowsGuest != nil {
-		s.windowsDesktopVNC(w, r)
-		return
-	}
 	if !s.vmRunning() {
 		http.Error(w, "环境尚未启动", 409)
 		return
@@ -329,7 +293,7 @@ func (s *Server) claudeDesktopVNC(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	// No extra localhost port or public VNC listener on the host. SSH is bound
 	// to this profile's single guest and carries the authenticated RFB session.
-	cmd := s.sshCommand(ctx, "-T", s.sshTarget(), "--", "exec socat STDIO UNIX-CONNECT:/run/cage-desktop/vnc.sock")
+	cmd := s.sshCommand(ctx, "-T", s.sshTarget(), "--", "exec socat STDIO UNIX-CONNECT:/run/workbench-desktop/vnc.sock")
 	reader, err := cmd.StdoutPipe()
 	if err != nil {
 		http.Error(w, "无法连接应用画面", 502)

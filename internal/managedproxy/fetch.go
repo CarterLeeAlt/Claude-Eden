@@ -180,7 +180,7 @@ func Fetch(ctx context.Context, client *http.Client, rawURL string) ([]byte, str
 	if err != nil {
 		return nil, "", errors.New("订阅网址无效")
 	}
-	req.Header.Set("User-Agent", "clash.meta/Cage")
+	req.Header.Set("User-Agent", "clash.meta/Eden")
 	res, err := client.Do(req)
 	if err != nil {
 		return nil, "", errors.New("订阅下载失败，请检查下载路径和服务地址")

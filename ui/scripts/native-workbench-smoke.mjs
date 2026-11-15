@@ -1,26 +1,21 @@
-// Verify that switching the guest keeps the Linux workbench's actual entry points.
+// Verify the Debian workbench's actual entry points.
 import assert from "node:assert/strict";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
-let baseline;
-for (const system of ["debian-13", "windows-11", "macos"]) {
+for (const system of ["debian-13"]) {
   const fixture = await createWorkbench({
     beforeNavigate: async (page, state) => {
       state.account.guest_system = system;
       state.status.guest_system = system;
       state.status.vm_running = state.status.ready = true;
-      const status = { installed: true, running: true, native_user_session: true, version: "4.0", screen: false, input: false };
+      const status = { installed: true, running: true, managed: true, version: "4.0", screen: false, input: false };
       await page.route("**/api/claude-desktop", route => route.fulfill({json:status}));
-      await page.route("**/api/macos/claude/window", route => route.fulfill({json:status}));
     },
   });
   const { page, state, errors, browser } = fixture;
   try {
     const nav = page.getByRole("navigation", { name: "主导航" });
     await nav.getByRole("button", { name: "工作台", exact: true }).waitFor();
-    const labels = await nav.getByRole("button").allTextContents();
-    if (system === "debian-13") baseline = labels;
-    else assert.deepEqual(labels, baseline, system);
 
     await nav.getByRole("button", { name: "Claude Desktop", exact: true }).click();
     await page.locator(".claude-desktop-toolbar").getByText("Claude Desktop", { exact:true }).waitFor();

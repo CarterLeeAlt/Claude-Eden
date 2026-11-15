@@ -16,13 +16,13 @@ import (
 
 	continuityfs "github.com/containerd/continuity/fs"
 
-	"github.com/lima-vm/lima/v2/pkg/guestidentity"
 	"github.com/lima-vm/lima/v2/pkg/limatype"
 	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
 	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
 	"github.com/lima-vm/lima/v2/pkg/osutil"
 	"github.com/lima-vm/lima/v2/pkg/store"
 	"github.com/lima-vm/lima/v2/pkg/yqutil"
+	"workbench.local/guestidentity"
 )
 
 func CloneOrRename(ctx context.Context, oldInst *limatype.Instance, newInstName string, rename bool) (*limatype.Instance, error) {

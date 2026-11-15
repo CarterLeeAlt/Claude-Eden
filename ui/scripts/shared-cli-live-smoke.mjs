@@ -6,8 +6,8 @@ import path from "node:path";
 const parts = [];
 for await (const chunk of process.stdin) parts.push(chunk);
 const entry = Buffer.concat(parts).toString("utf8").trim();
-const engine = process.env.CAGE_TEST_CHANNEL_BROWSER;
-const playwright = await import(process.env.CAGE_PLAYWRIGHT_MODULE || "playwright");
+const engine = process.env.EDEN_TEST_CHANNEL_BROWSER;
+const playwright = await import(process.env.EDEN_PLAYWRIGHT_MODULE || "playwright");
 const browser = await playwright[engine].launch({headless:true});
 let page;
 const snapshots = [];
@@ -29,7 +29,7 @@ try {
   page.setDefaultTimeout(25000);
   let sentRequests = 0, interruptedReads = 0;
   let persistentReadFailure = false, persistentReadAttempts = 0;
-  const recovering = process.env.CAGE_TEST_SESSION_RECOVERY === "1";
+  const recovering = process.env.EDEN_TEST_SESSION_RECOVERY === "1";
   if (recovering) {
     await page.route("**/api/mobile/cli/sessions/*/messages", async route => {
       sentRequests++;
@@ -65,10 +65,10 @@ try {
   assert.equal(await page.getByRole("button",{name:"在电脑打开会话",exact:true}).count(),0);
   assert.equal(await page.getByRole("alert").count(),0,"normal startup displayed an extra notice");
   assert.match(await page.getByLabel("工具参数预览").innerText(), /mobile-approved\.txt/);
-  await assert.rejects(readFile(process.env.CAGE_TEST_MOBILE_MARKER),{code:"ENOENT"});
+  await assert.rejects(readFile(process.env.EDEN_TEST_MOBILE_MARKER),{code:"ENOENT"});
   await page.reload();
   await approve.waitFor();
-  const capture = process.env.CAGE_TEST_MOBILE_CAPTURE;
+  const capture = process.env.EDEN_TEST_MOBILE_CAPTURE;
   if (capture) {
     await mkdir(capture,{recursive:true});
     await page.screenshot({path:path.join(capture,engine+"-shared-approval.png")});
@@ -77,7 +77,7 @@ try {
   await page.getByText("isolated tool completed",{exact:true}).waitFor();
   await page.getByText("follow-up",{exact:true}).waitFor();
   await page.getByText("isolated continuation",{exact:true}).waitFor();
-  assert.equal(await readFile(process.env.CAGE_TEST_MOBILE_MARKER,"utf8"),"approved");
+  assert.equal(await readFile(process.env.EDEN_TEST_MOBILE_MARKER,"utf8"),"approved");
   await page.reload();
   await page.getByText("isolated continuation",{exact:true}).waitFor();
   assert.equal(await page.getByLabel("会话消息").getByText("initial mobile prompt",{exact:true}).count(),1);
@@ -86,13 +86,13 @@ try {
   // Prepare an ended history through the real archive/restore API. The user
   // then opens it from the actual phone list, with no desktop helper.
   await page.evaluate(async () => {
-    const selected = history.state.cageCLI;
+    const selected = history.state.edenCLI;
     const root = "/api/mobile/cli/sessions/" + selected.session;
     for (const operation of ["archive", "restore"]) {
       const result = await fetch(root+"/"+operation,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
       if (!result.ok) throw Error("history setup failed: "+result.status);
     }
-    history.replaceState({...history.state,cageCLI:{tool:"code",project:selected.project,session:""}},"");
+    history.replaceState({...history.state,edenCLI:{tool:"code",project:selected.project,session:""}},"");
   });
   await page.reload();
   await page.getByRole("button",{name:"展开侧栏",exact:true}).click();

@@ -3,16 +3,15 @@ import fs from "node:fs/promises";
 import { chooseInline, createWorkbench } from "./workbench-fixture.mjs";
 import { startDisplay } from "./rfb-wire-fixture.mjs";
 
-const display = await startDisplay(process.env.CAGE_UI_URL || "http://127.0.0.1:5198", { frameInterval: 1000 });
+const display = await startDisplay(process.env.EDEN_UI_URL || "http://127.0.0.1:5198", { frameInterval: 1000 });
 const { browser, page, state, errors } = await createWorkbench({
   mockWebSockets: false, url: display.url, viewport: { width: 1100, height: 800 },
 });
 page.setDefaultTimeout(10000);
-const output = process.env.CAGE_DISPLAY_REPORT || "/tmp/cage-display-resolution";
+const output = process.env.EDEN_DISPLAY_REPORT || "../.tmp/guest-neutralization/ui-eden/display-resolution";
 const requests = [], actions = [];
 let failResize = false;
 let runningDensity; // Existing guests/servers omit the density field.
-state.settings.balanced_display = false;
 const desktop = { installed: true, running: true, managed: true, version: "fixture" };
 await page.route("**/api/claude-desktop**", async (route) => {
   const path = new URL(route.request().url()).pathname;
@@ -39,6 +38,7 @@ async function matched(zoom = 1, density = runningDensity ?? 2) {
   }, { zoom, density }, { timeout: 10000 });
 }
 try {
+  state.status.guest_system = "debian-13";
   state.status.vm_running = state.status.ready = true;
   await page.reload();
   await page.getByRole("button", { name: "Claude Desktop", exact: true }).click();
@@ -91,7 +91,21 @@ try {
   await page.setViewportSize({ width: 820, height: 558 });
   await matched();
   await page.getByRole("button", { name: "设置", exact: true }).click();
-  await page.getByRole("switch", { name: /流畅画质/ }).check();
+  await page.getByRole("button", { name: "通用", exact: true }).click();
+  const balanced = page.getByRole("switch", { name: /优先流畅/ });
+  assert.equal(await balanced.isChecked(), false, "fresh settings must prefer clarity");
+  await page.screenshot({ path: `${output}/default-sharp.png` });
+  // Discarding a draft must not save it or change the active framebuffer.
+  await balanced.check();
+  await page.locator("#settings-back").click();
+  await page.getByRole("button", { name: "放弃修改", exact: true }).click();
+  assert.equal(state.settings.balanced_display, false);
+  assert.equal(state.saves.length, 0);
+  await matched(1, 2);
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "通用", exact: true }).click();
+  assert.equal(await balanced.isChecked(), false);
+  await balanced.check();
   await page.getByRole("button", { name: "保存设置", exact: true }).click();
   await page.getByRole("region", { name: "设置", exact: true }).waitFor({ state: "hidden" });
   assert.equal(state.settings.balanced_display, true);
@@ -104,11 +118,40 @@ try {
   await matched(1.25);
   await chooseInline(selector, "1");
   await matched();
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "通用", exact: true }).click();
+  assert.equal(await balanced.isChecked(), true, "saved balanced setting must survive reload");
+  await page.screenshot({ path: `${output}/saved-balanced.png` });
+  await balanced.uncheck();
+  await page.locator("#settings-back").click();
+  await page.getByRole("button", { name: "放弃修改", exact: true }).click();
+  assert.equal(state.settings.balanced_display, true);
+  assert.equal(state.saves.length, 1);
+  await matched(1, 1.5);
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "通用", exact: true }).click();
+  assert.equal(await balanced.isChecked(), true);
+  await balanced.uncheck();
+  await page.getByRole("button", { name: "保存设置", exact: true }).click();
+  await page.getByRole("region", { name: "设置", exact: true }).waitFor({ state: "hidden" });
+  assert.equal(state.settings.balanced_display, false);
+  await matched(1, 1.5);
+  runningDensity = 2; // Simulate the next Linux environment launch.
+  await page.reload();
+  await page.getByRole("button", { name: "Claude Desktop", exact: true }).click();
+  await matched();
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "通用", exact: true }).click();
+  assert.equal(await balanced.isChecked(), false, "saved clarity must survive reload");
+  await page.screenshot({ path: `${output}/restored-sharp.png` });
+  await page.locator("#settings-back").click();
+  await matched();
+  assert.deepEqual(state.saves.map(saved => saved.balanced_display), [true, false]);
   assert.deepEqual(actions, [], "display changes must not restart the application");
   assert.deepEqual(errors, []);
   await page.screenshot({ path: `${output}/small-window.png` });
-  await fs.writeFile(`${output}/result.json`, JSON.stringify({ requests, rfb: display.stats, actions, errors }, null, 2));
-  console.log("PASS: real RFB framebuffer follows viewport, sidebar and zoom; failure recovery, persistence, small window, no application restart");
+  await fs.writeFile(`${output}/result.json`, JSON.stringify({ requests, rfb: display.stats, actions, savedBalancedDisplay: state.saves.map(saved => saved.balanced_display), errors }, null, 2));
+  console.log("PASS: sharp default, save and discard in both directions, reload, next-launch density, real RFB resize/zoom/recovery, no application restart");
 } catch (error) {
   console.error(JSON.stringify({ requests, rfb: display.stats, errors, body: await page.locator("body").innerText(), canvas: await page.locator(".remote-canvas").evaluateAll((boxes) => boxes.map((box) => {
     const canvas = box.querySelector("canvas");

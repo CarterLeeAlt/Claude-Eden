@@ -1,10 +1,11 @@
 #requires -Version 7.0
-# CI orchestration only. Builds the checked-out version and never publishes it.
+# Disposable CI system integration: real installation, signing stores and optional cross-volume storage.
 [CmdletBinding()]
-param([switch]$Release)
+param([switch]$Release, [switch]$SystemIntegration)
 . (Join-Path $PSScriptRoot 'windows-common.ps1')
 if (-not $IsWindows) { throw 'This CI entry point requires a disposable Windows runner.' }
-if ($env:CAGE_BUILD_REF -notmatch '^[0-9A-Fa-f]{40}$') { throw 'CAGE_BUILD_REF must be a complete commit SHA.' }
+if (-not $SystemIntegration) { throw 'This entry performs real installation/certificate integration. Use -SystemIntegration only in an explicitly authorized disposable environment.' }
+if ($env:EDEN_BUILD_REF -notmatch '^[0-9A-Fa-f]{40}$') { throw 'EDEN_BUILD_REF must be a complete commit SHA.' }
 $repository = Split-Path $PSScriptRoot -Parent
 Push-Location $repository
 $pfx = $null
@@ -12,8 +13,8 @@ $certificate = $null
 $certificates = @()
 $qemuSource = $null
 $savedPath = $env:PATH
-$savedCertificate = $env:CAGE_WINDOWS_CERT_SHA1
-$savedStorageVolume = $env:CAGE_TEST_STORAGE_VOLUME
+$savedCertificate = $env:EDEN_WINDOWS_CERT_SHA1
+$savedStorageVolume = $env:EDEN_TEST_STORAGE_VOLUME
 $storageTestRoot = $null
 # One step runs every phase, because signing state must not outlive this
 # process. Name each phase so a failure shows where it happened and how long
@@ -46,37 +47,27 @@ function Write-CiPhaseSummary {
 try {
     Enter-CiPhase 'Checkout identity and script tests'
     $actual = (& git rev-parse HEAD).Trim()
-    if ($LASTEXITCODE -ne 0 -or $actual -ne $env:CAGE_BUILD_REF) { throw 'Checkout differs from the requested commit.' }
-    $windowsPowerShell = Join-Path ([Environment]::SystemDirectory) 'WindowsPowerShell/v1.0/powershell.exe'
-    # These tests read only the checkout. Run them before the long build so
-    # a broken script fails in the first minute instead of after packaging.
-    $scriptTests = @('windows-workbench-packages.tests.ps1', 'claude-desktop-windows.tests.ps1', 'windows-claude-cli.tests.ps1',
-        'windows-host-enrollment.tests.ps1', 'windows-iso-setup.tests.ps1', 'windows-host-image.tests.ps1', 'new-windows-test-vm.tests.ps1')
-    if (-not $Release) { $scriptTests += @('install-guest-powershell.tests.ps1', 'windows-evaluation.tests.ps1') }
-    foreach ($test in $scriptTests) {
-        Invoke-BuildTool $windowsPowerShell @('-NoProfile', '-NonInteractive', '-File', "scripts/guest-os/$test")
-    }
+    if ($LASTEXITCODE -ne 0 -or $actual -ne $env:EDEN_BUILD_REF) { throw 'Checkout differs from the requested commit.' }
     Invoke-BuildTool 'node' @('scripts/check-version.mjs')
-    Invoke-BuildTool 'uv' @('run', '--no-project', '--python', '3.13', 'internal/workbench/cache_maintenance_test.py')
-    Invoke-BuildTool 'node' @('--test', 'internal/cage/browser-clipboard.test.mjs', 'scripts/windows-native-bridge.test.mjs')
+    Invoke-BuildTool 'node' @('--test', 'internal/eden/browser-clipboard.test.mjs', 'scripts/windows-native-bridge.test.mjs')
     if ($Release) {
         Enter-CiPhase 'Release signing configuration'
         if ($env:GITHUB_EVENT_NAME -ne 'workflow_dispatch') { throw 'Release candidates require an explicitly dispatched release workflow.' }
-        if ($env:CAGE_WINDOWS_SIGNING_PROVIDER -eq 'esigner') {
-            foreach ($name in @('CAGE_ESIGNER_USERNAME', 'CAGE_ESIGNER_PASSWORD', 'CAGE_ESIGNER_CREDENTIAL_ID', 'CAGE_ESIGNER_CERTIFICATE_SERIAL', 'CAGE_ESIGNER_TOTP_SECRET')) {
-                if (-not [Environment]::GetEnvironmentVariable($name)) { throw "Missing cage-release setting: $name" }
+        if ($env:EDEN_WINDOWS_SIGNING_PROVIDER -eq 'esigner') {
+            foreach ($name in @('EDEN_ESIGNER_USERNAME', 'EDEN_ESIGNER_PASSWORD', 'EDEN_ESIGNER_CREDENTIAL_ID', 'EDEN_ESIGNER_CERTIFICATE_SERIAL', 'EDEN_ESIGNER_TOTP_SECRET')) {
+                if (-not [Environment]::GetEnvironmentVariable($name)) { throw "Missing eden-release setting: $name" }
             }
             Assert-WindowsSigningConfiguration
             Invoke-BuildTool 'node' @('scripts/esigner.mjs', 'install')
-        } elseif ($env:CAGE_WINDOWS_SIGNING_PROVIDER -and $env:CAGE_WINDOWS_SIGNING_PROVIDER -ne 'certificate-store') {
+        } elseif ($env:EDEN_WINDOWS_SIGNING_PROVIDER -and $env:EDEN_WINDOWS_SIGNING_PROVIDER -ne 'certificate-store') {
             throw 'Unknown Windows signing provider.'
-        } elseif (-not $env:CAGE_WINDOWS_PFX_BASE64 -or -not $env:CAGE_WINDOWS_PFX_PASSWORD) {
-            throw 'Configure CAGE_WINDOWS_PFX_BASE64 and CAGE_WINDOWS_PFX_PASSWORD in the cage-release environment.'
+        } elseif (-not $env:EDEN_WINDOWS_PFX_BASE64 -or -not $env:EDEN_WINDOWS_PFX_PASSWORD) {
+            throw 'Configure EDEN_WINDOWS_PFX_BASE64 and EDEN_WINDOWS_PFX_PASSWORD in the eden-release environment.'
         }
-        if ($env:CAGE_WINDOWS_SIGNING_PROVIDER -ne 'esigner') {
-            $pfx = Join-Path $env:RUNNER_TEMP ('cage-signing-' + [guid]::NewGuid().ToString('N') + '.pfx')
-            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CAGE_WINDOWS_PFX_BASE64))
-            $password = ConvertTo-SecureString $env:CAGE_WINDOWS_PFX_PASSWORD -AsPlainText -Force
+        if ($env:EDEN_WINDOWS_SIGNING_PROVIDER -ne 'esigner') {
+            $pfx = Join-Path $env:RUNNER_TEMP ('eden-signing-' + [guid]::NewGuid().ToString('N') + '.pfx')
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:EDEN_WINDOWS_PFX_BASE64))
+            $password = ConvertTo-SecureString $env:EDEN_WINDOWS_PFX_PASSWORD -AsPlainText -Force
             $certificates = @(Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password)
             Remove-Item -LiteralPath $pfx -Force
             $signers = @($certificates | Where-Object {
@@ -84,8 +75,8 @@ try {
             })
             if ($signers.Count -ne 1) { throw 'PFX must contain exactly one code-signing certificate with its private key.' }
             $certificate = $signers[0]
-            $env:CAGE_WINDOWS_CERT_SHA1 = $certificate.Thumbprint
-            Remove-Item Env:CAGE_WINDOWS_PFX_BASE64, Env:CAGE_WINDOWS_PFX_PASSWORD
+            $env:EDEN_WINDOWS_CERT_SHA1 = $certificate.Thumbprint
+            Remove-Item Env:EDEN_WINDOWS_PFX_BASE64, Env:EDEN_WINDOWS_PFX_PASSWORD
         }
     }
 
@@ -103,44 +94,46 @@ try {
     }
     Enter-CiPhase $(if ($Release) { 'Build and sign the application' } else { 'Build the application' })
     & (Join-Path $PSScriptRoot 'build-windows.ps1') -Release:$Release
-    Enter-CiPhase 'Go, PowerShell media and desktop shell tests'
-    Invoke-BuildTool 'go' @('test', './internal/guestos', '-run', '^TestWindows(HostEnrollment|UserToolACL)', '-count=1')
-    Invoke-BuildTool 'go' @('test', './internal/hostproxy', './internal/guestos', './cmd/cage', '-run', '^Test(ParallelPackage|DownloadLockCancellationAndReuse|WindowsPackageDownloadUsesBundledHostDownloader|HostDownloadParentExitCancels)', '-count=1')
-    if (-not $Release) {
-        Invoke-BuildTool $windowsPowerShell @('-NoProfile', '-NonInteractive', '-File', 'scripts/guest-os/windows-powershell-media.smoke.ps1',
-            '-GuestToolsDirectory', "$repository/_output/windows-amd64/app/resources/guest-os")
-    }
-    Invoke-BuildTool 'dotnet' @('run', '--project', 'desktop/windows.tests/Cage.Windows.Tests.csproj')
-    # RUNNER_TEMP and the checkout share D: on hosted runners. Use a
-    # unique system-drive directory, outside user data, for the other side.
-    if (-not $env:CAGE_TEST_STORAGE_VOLUME) {
-        $systemDrive = [IO.Path]::GetPathRoot($env:SystemRoot)
-        $testDrive = [IO.Path]::GetPathRoot((Get-WindowsWorkbenchTestBase))
-        if ($systemDrive -ne $testDrive) {
-            $storageTestRoot = (New-Item -ItemType Directory -Path (Join-Path $systemDrive ('cage-storage-volume-' + [guid]::NewGuid().ToString('N')))).FullName
-            $env:CAGE_TEST_STORAGE_VOLUME = $storageTestRoot
-            Write-Host "Storage migration tests use separate drives: $testDrive -> $systemDrive"
-        } else {
-            Write-Warning 'No second test volume is configured; the cross-volume storage test will be skipped.'
+    Enter-CiPhase 'Go download and desktop shell tests'
+    Invoke-BuildTool 'go' @('test', './internal/hostproxy', './cmd/eden', '-run', '^Test(ParallelPackage|DownloadLockCancellationAndReuse)', '-count=1')
+    $nativeTestArtifacts = Join-Path $repository '_output/windows-native-tests'
+    Invoke-BuildTool 'dotnet' @('build', 'desktop/windows.tests/Eden.Windows.Tests.csproj', '-c', 'Release', '--artifacts-path', $nativeTestArtifacts)
+    Invoke-BuildTool (Join-Path $nativeTestArtifacts 'bin/Eden.Windows.Tests/release/Eden.Windows.Tests.exe') @()
+    # Only an explicitly configured integration location may use another volume.
+    if ($env:EDEN_TEST_STORAGE_VOLUME) {
+        $target = [IO.Path]::GetFullPath($env:EDEN_TEST_STORAGE_VOLUME)
+        if (-not [IO.Path]::IsPathFullyQualified($env:EDEN_TEST_STORAGE_VOLUME) -or $target -eq [IO.Path]::GetPathRoot($target)) { throw 'EDEN_TEST_STORAGE_VOLUME must be an absolute dedicated directory, not a volume root.' }
+        if ([IO.Path]::GetPathRoot($target) -eq [IO.Path]::GetPathRoot($env:TEMP)) { throw 'EDEN_TEST_STORAGE_VOLUME must be on a different volume from workspace temp.' }
+        $ancestor = $target
+        while ($ancestor) {
+            if (Test-Path -LiteralPath $ancestor) {
+                $item = Get-Item -LiteralPath $ancestor -Force
+                if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Cross-volume location has a non-directory or reparse ancestor: $ancestor" }
+            }
+            $ancestor = Split-Path $ancestor -Parent
         }
+        if (Test-Path -LiteralPath $target) { throw 'Use a new dedicated EDEN_TEST_STORAGE_VOLUME directory; existing data is not a test fixture.' }
+        $storageTestRoot = (New-Item -ItemType Directory -Path $target).FullName
+        $env:EDEN_TEST_STORAGE_VOLUME = $storageTestRoot
+        Write-Host "Explicit cross-volume integration directory: $storageTestRoot"
     }
-    Invoke-InIsolatedTestTemp {
+    & {
         Invoke-BuildTool 'go' @('test', './internal/workbench', './internal/appupdate', './internal/host', './internal/managedproxy', './internal/env', './internal/paths', './internal/mounts')
-        Invoke-BuildTool 'go' @('test', './internal/cage', '-run', 'Test(Storage|Gate|ProxyRevision|ConfigChange|JobStop|CONNECT|SOCKS|DNS|RejectHostLAN|Credentials|ProxyHostname|SafetyReport|Renew)')
+        Invoke-BuildTool 'go' @('test', './internal/eden', '-run', 'Test(Storage|Gate|ProxyRevision|ConfigChange|JobStop|CONNECT|SOCKS|DNS|RejectHostLAN|Credentials|ProxyHostname|SafetyReport|Renew)')
         Invoke-BuildTool 'go' @('test', './internal/vm', '-run', 'Test(NetworkConfined|WindowsQEMUIdentity)')
         Invoke-BuildTool 'go' @('test', 'github.com/lima-vm/lima/v2/pkg/driver/qemu', '-run', 'Test(WindowsFirmwareArgument|WindowsPackagedFirmwareBeatsOldUserCopy|WHPXQEMU64Features|WindowsCPUResolution)$')
         Invoke-BuildTool 'go' @('test', 'github.com/lima-vm/lima/v2/pkg/hostagent', '-run', '^TestResourceProbeCommand$')
         Invoke-BuildTool 'go' @('test', 'github.com/lima-vm/lima/v2/pkg/networks/usernet', '-run', 'TestNetstackWindowsNativeSocketPaths')
-        Invoke-BuildTool 'go' @('vet', './cmd/cage', './internal/cage', './internal/workbench', './internal/appupdate', './internal/host')
+        Invoke-BuildTool 'go' @('vet', './cmd/eden', './internal/eden', './internal/workbench', './internal/appupdate', './internal/host')
     }
     Enter-CiPhase 'Package the installer'
     $packageArguments = @{ Release = $Release; SkipBuild = $true }
     if ($Release) { $packageArguments.QemuSourceArchive = $qemuSource }
     & (Join-Path $PSScriptRoot 'package-windows.ps1') @packageArguments
-    $version = Get-CageVersion $repository
+    $version = Get-EdenVersion $repository
     $suffix = if ($Release) { '' } else { '-unsigned' }
     Enter-CiPhase 'Install, update and uninstall with isolated data'
-    & (Join-Path $PSScriptRoot 'test-windows-install.ps1') -Installer "$repository/_output/releases/$version/windows/Cage-$version-windows-amd64-setup$suffix.exe"
+    & (Join-Path $PSScriptRoot 'test-windows-install.ps1') -Installer "$repository/_output/releases/$version/windows/Eden-$version-windows-amd64-setup$suffix.exe"
     if ($Release) {
         Enter-CiPhase 'Signed automatic update and rollback transactions'
         & (Join-Path $PSScriptRoot 'test-windows-update-flow.ps1')
@@ -168,9 +161,9 @@ try {
     }
     # Verified QEMU sources remain in the build cache; packaging copies them separately.
     $env:PATH = $savedPath
-    $env:CAGE_WINDOWS_CERT_SHA1 = $savedCertificate
-    $env:CAGE_TEST_STORAGE_VOLUME = $savedStorageVolume
+    $env:EDEN_WINDOWS_CERT_SHA1 = $savedCertificate
+    $env:EDEN_TEST_STORAGE_VOLUME = $savedStorageVolume
     if ($storageTestRoot) { Remove-Item -LiteralPath $storageTestRoot -Recurse -Force -ErrorAction SilentlyContinue }
-    Remove-Item Env:CAGE_ESIGNER_PASSWORD, Env:CAGE_ESIGNER_TOTP_SECRET -ErrorAction SilentlyContinue
+    Remove-Item Env:EDEN_ESIGNER_PASSWORD, Env:EDEN_ESIGNER_TOTP_SECRET -ErrorAction SilentlyContinue
     Pop-Location
 }

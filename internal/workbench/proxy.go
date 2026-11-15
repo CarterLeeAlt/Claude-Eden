@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/managedproxy"
 )
 
@@ -71,9 +71,9 @@ func (s *Server) proxyStatus(w http.ResponseWriter, r *http.Request) {
 				state, label = "paused", "外网未放行"
 				if client, e := s.gateClient(); e == nil {
 					if gate, e := client.Status(ctx); e == nil {
-						if gate.Mode == cage.GateChecking {
+						if gate.Mode == eden.GateChecking {
 							state, label = "checking", "正在检查"
-						} else if gate.Mode == cage.GateOpen && gate.Report != nil && gate.Report.Authorizes(gate.RunID, cfg.Fingerprint(), time.Now()) == nil && time.Now().Before(gate.Until) {
+						} else if gate.Mode == eden.GateOpen && gate.Report != nil && gate.Report.Authorizes(gate.RunID, cfg.Fingerprint(), time.Now()) == nil && time.Now().Before(gate.Until) {
 							state, label = "ready", "已联网"
 						}
 					}
@@ -125,7 +125,7 @@ func (s *Server) subscriptionClient(host bool) (*http.Client, error) {
 	if err = cfg.RequireManagedProxy(s.profile); err != nil {
 		return nil, err
 	}
-	e, err := cage.NewEgress(cfg)
+	e, err := eden.NewEgress(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -311,13 +311,13 @@ func (s *Server) closeProxyGate(reason string) error {
 	return s.revokeNetworkNow(reason, false)
 }
 
-func (s *Server) activateProxy(p managedproxy.Store, old cage.Config) (returned error) {
+func (s *Server) activateProxy(p managedproxy.Store, old eden.Config) (returned error) {
 	// The explicit start operation already requested networking. A pause made
 	// after that request must survive any core recovery within the start.
 	return s.applyProxy(p, old, nil, false)
 }
 
-func (s *Server) applyProxy(p managedproxy.Store, old cage.Config, resumeVersion *uint64, selectExit bool) (returned error) {
+func (s *Server) applyProxy(p managedproxy.Store, old eden.Config, resumeVersion *uint64, selectExit bool) (returned error) {
 	ctx := s.operationContext()
 	previous, err := managedproxy.Load(s.profile)
 	if err != nil {
@@ -397,7 +397,7 @@ func (s *Server) applyProxy(p managedproxy.Store, old cage.Config, resumeVersion
 	if restartVM {
 		return s.startEnvironment(false)
 	}
-	s.setMessage("节点已应用；启动 Cage 环境后完成联网检查")
+	s.setMessage("节点已应用；启动 Eden 环境后完成联网检查")
 	return nil
 }
 
@@ -500,21 +500,33 @@ func (s *Server) refreshProxySubscriptions() {
 }
 
 func (s *Server) checkProxyHealth() {
-	if s.busy() {
+	job := s.jobs.snapshot()
+	if job.Running {
 		return
 	}
-	cfg, err := loadConfig(s.configPath)
+	cfg, configErr := loadConfig(s.configPath)
 	if !s.vmRunning() {
-		return
-	}
-	if err != nil {
-		_ = s.closeProxyGate("代理配置无法读取，外网保持关闭")
 		return
 	}
 	p, err := managedproxy.Load(s.profile)
 	ctx, cancel := context.WithTimeout(s.lifetimeContext(), 2*time.Second)
 	defer cancel()
-	if err == nil && cfg.RequireManagedProxy(s.profile) == nil && managedproxy.Running(ctx, s.profile, p) {
+	if configErr == nil && err == nil && cfg.RequireManagedProxy(s.profile) == nil && managedproxy.Running(ctx, s.profile, p) {
+		return
+	}
+	// The health request can overlap a new start, stop or proxy selection. A
+	// stale observation must not revoke that operation's network state.
+	if !s.op.TryLock() {
+		return
+	}
+	defer s.op.Unlock()
+	current, currentErr := loadConfig(s.configPath)
+	nextJob := s.jobs.snapshot()
+	if nextJob.Running || nextJob.ID != job.ID || s.lifetimeContext().Err() != nil || (configErr == nil) != (currentErr == nil) || (currentErr == nil && current != cfg) {
+		return
+	}
+	if currentErr != nil {
+		_ = s.closeProxyGate("代理配置无法读取，外网保持关闭")
 		return
 	}
 	_ = s.closeProxyGate("内置代理已中断或节点状态变化，请重试应用节点")

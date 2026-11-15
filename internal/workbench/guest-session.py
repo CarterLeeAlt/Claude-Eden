@@ -58,7 +58,7 @@ def run(ident, script):
         replies.flush()
 
 
-replies.write(b'CAGE-GUEST-SESSION 1\n')
+replies.write(b'WORKBENCH-GUEST-SESSION 1\n')
 replies.flush()
 while True:
     fields = requests.readline(64).split()

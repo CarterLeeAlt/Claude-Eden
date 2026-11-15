@@ -16,21 +16,21 @@ func TestClaudeAutomaticSwitchRequiresQuotaAndConsent(t *testing.T) {
 	if err := s.saveClaudeAccounts(list); err != nil {
 		t.Fatal(err)
 	}
-	record, _ := s.mobileCLI.record(s.profile, id)
+	record, _ := s.cliSessions.record(s.profile, id)
 	record.Launcher = "claude"
 	record.Account = claudeSelection{a, a, claudeIdentityHash("a@example.test", "")}
 	epoch, _ := s.account.access()
-	ctx := context.WithValue(context.Background(), mobileEpochKey{}, epoch)
+	ctx := context.WithValue(context.Background(), cliEpochKey{}, epoch)
 	for _, scenario := range []struct{ policy, failure, reason string }{{"ask", "rate_limit", "手动确认"}, {"allow", "overloaded", "手动确认"}, {"allow", "rate_limit", "尚未确认"}} {
 		record.SwitchPolicy, record.AccountFailure = scenario.policy, scenario.failure
-		if err := writePrivate(mobileRecordPath(s.profile, id), record); err != nil {
+		if err := writePrivate(cliSessionRecordPath(s.profile, id), record); err != nil {
 			t.Fatal(err)
 		}
 		err := s.switchClaudeAccount(ctx, id, claudeSwitchInput{SourceID: record.CLIID, Target: b}, true)
 		if err == nil || !strings.Contains(err.Error(), scenario.reason) {
 			t.Fatal(scenario, err)
 		}
-		stored, _ := s.mobileCLI.record(s.profile, id)
+		stored, _ := s.cliSessions.record(s.profile, id)
 		if stored.Switch != nil || stored.Account.ID != a {
 			t.Fatal("preflight changed ownership")
 		}
@@ -75,7 +75,7 @@ func TestClaudeSchedulingModesAndPersistence(t *testing.T) {
 func TestClaudeSwitchGroupAndDurableBinding(t *testing.T) {
 	a, b := strings.Repeat("a", 24), strings.Repeat("b", 24)
 	list := claudeAccountList{Accounts: []claudeAccount{{ID: a, Label: "A", Email: "a@example.test", Enabled: true, Status: "ready"}, {ID: b, Label: "B", Email: "b@example.test", Enabled: true, Status: "ready"}}}
-	record := &mobileRecord{Account: claudeSelection{ID: a, GuestID: a, Subject: claudeIdentityHash("a@example.test", "")}}
+	record := &cliSessionRecord{Account: claudeSelection{ID: a, GuestID: a, Subject: claudeIdentityHash("a@example.test", "")}}
 	if len(switchCandidates(list, record)) != 0 {
 		t.Fatal("ungrouped history escaped")
 	}

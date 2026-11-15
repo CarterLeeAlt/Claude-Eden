@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func intp(v int) *int { return &v }
@@ -17,7 +17,7 @@ func intp(v int) *int { return &v }
 // A correct TZ variable must not hide a stale /etc/localtime or missing tzdata:
 // the offset programs observe is part of the guest settings evidence.
 func TestLinuxGuestSettingsRequireEffectiveTimezone(t *testing.T) {
-	cfg := cage.DefaultConfig()
+	cfg := eden.DefaultConfig()
 	cfg.Timezone = "Asia/Shanghai"
 	good := guestObservation{TZ: cfg.Timezone, SystemTimezone: cfg.Timezone, Lang: cfg.Locale, LCAll: cfg.Locale, LocaleValid: true,
 		LocaltimeTarget: "/usr/share/zoneinfo/" + cfg.Timezone, UTCOffsetExpected: intp(28800), UTCOffsetActual: intp(28800), UTCOffsetSystem: intp(28800)}

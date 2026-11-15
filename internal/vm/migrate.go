@@ -17,8 +17,8 @@ import (
 	"github.com/lima-vm/lima/v2/pkg/instance"
 	"github.com/lima-vm/lima/v2/pkg/limatype"
 	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
 	"github.com/lima-vm/lima/v2/pkg/store"
+	"github.com/sylvinus/agent-vm/internal/paths"
 )
 
 // OldVM is a VM agent-vm 0.2 left in another Lima home.
@@ -77,8 +77,8 @@ func withLimaHome(home string, fn func() error) error {
 // config go with it. Lima's own config in old (_config) does not.
 func MoveOld(ctx context.Context, old, now, name, to string) error {
 	src, dst := filepath.Join(old, name), filepath.Join(now, to)
-	if sock := filepath.Join(dst, filenames.LongestSock); len(sock) >= osutil.UnixPathMax {
-		return fmt.Errorf("its name is too long for %s: Lima's sockets there would need %d characters, more than %d", now, len(sock), osutil.UnixPathMax-1)
+	if sock := filepath.Join(dst, paths.SSHControlSocketMaxName); len(sock) >= paths.UnixSocketPathMax {
+		return fmt.Errorf("its name is too long for %s: Lima's sockets there would need %d characters, more than %d", now, len(sock), paths.UnixSocketPathMax-1)
 	}
 	if _, err := os.Lstat(dst); err == nil {
 		return fmt.Errorf("%s already exists", dst)
@@ -113,7 +113,7 @@ func MoveOld(ctx context.Context, old, now, name, to string) error {
 		}
 		if err := os.RemoveAll(src); err != nil {
 			// The copy is whole: what is left of src is the leftover.
-			return fmt.Errorf("copied to %s, but %s could not be removed (%w): remove it, then run agent-vm again", dst, src, err)
+			return fmt.Errorf("copied to %s, but %s could not be removed (%w): remove it, then retry the command", dst, src, err)
 		}
 	}
 	return tidyMoved(dst)

@@ -6,6 +6,7 @@ select opaque item IDs, never paths, commands, credentials or account contents.
 """
 import hashlib
 import ctypes
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -44,7 +45,7 @@ def digest(value):
 
 
 def safe(path):
-    """lstat every existing component; never accept links or Windows junctions."""
+    """lstat every existing component; never accept links."""
     if not path.is_absolute() or ".." in path.parts:
         raise Refused("unsafe_path")
     for part in (path, *path.parents):
@@ -52,7 +53,7 @@ def safe(path):
             info = part.lstat()
         except FileNotFoundError:
             continue
-        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+        if stat.S_ISLNK(info.st_mode):
             raise Refused("unsafe_path")
 
 
@@ -68,14 +69,14 @@ def snapshot(path):
         if relative != "." and (current.name.lower() in PROTECTED_NAMES or current.suffix.lower() in {".img", ".vhdx", ".vmdk", ".qcow2"}):
             raise Refused("protected_data")
         info = current.lstat()
-        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+        if stat.S_ISLNK(info.st_mode):
             raise Refused("unsafe_path")
         directory = stat.S_ISDIR(info.st_mode)
         if not directory and (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1):
             raise Refused("unsafe_path")
         if info.st_dev != device or directory and os.path.ismount(current):
             raise Refused("unsafe_path")
-        if hasattr(os, "geteuid") and os.geteuid() != 0 and info.st_uid != os.geteuid():
+        if os.geteuid() != 0 and info.st_uid != os.geteuid():
             raise Refused("unavailable")
         # A rename changes root ctime, but does not change its content metadata.
         rows.append([relative, info.st_dev, info.st_ino, info.st_mode,
@@ -108,28 +109,17 @@ def running_roles():
     """Inspect command lines privately; return only affected categories."""
     roles = set()
     try:
-        if os.name == "nt":
-            executable = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe"
-            result = subprocess.run([str(executable), "-NoProfile", "-NonInteractive", "-Command",
-                                     "$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); ConvertTo-Json -InputObject @(Get-CimInstance Win32_Process | Select-Object ProcessId,Name,CommandLine) -Compress"],
-                                    env={**os.environ, "PSModulePath": str(executable.parent / "Modules")},
-                                    capture_output=True, text=True, encoding="utf-8", timeout=15, check=True)
-            rows = json.loads(result.stdout.lstrip("\ufeff"))
-            if not isinstance(rows, list) or not rows:
-                return None
-            processes = [(row["ProcessId"], row["Name"], row.get("CommandLine")) for row in rows]
-        else:
-            output = subprocess.check_output(["/bin/ps", "-axo", "pid=,comm=,args="], text=True, timeout=10)
-            processes = []
-            # comm can contain spaces on macOS; use a separate PID/comm query.
-            commands = subprocess.check_output(["/bin/ps", "-axo", "pid=,comm="], text=True, timeout=10)
-            names = {int(row.split(None, 1)[0]): row.split(None, 1)[1] for row in commands.splitlines() if len(row.split(None, 1)) == 2}
-            for row in output.splitlines():
-                fields = row.strip().split(None, 1)
-                if len(fields) == 2:
-                    processes.append((int(fields[0]), names.get(int(fields[0]), ""), fields[1]))
-            if not processes:
-                return None
+        output = subprocess.check_output(["/bin/ps", "-axo", "pid=,comm=,args="], text=True, timeout=10)
+        processes = []
+        # Keep process names separate from argument parsing.
+        commands = subprocess.check_output(["/bin/ps", "-axo", "pid=,comm="], text=True, timeout=10)
+        names = {int(row.split(None, 1)[0]): row.split(None, 1)[1] for row in commands.splitlines() if len(row.split(None, 1)) == 2}
+        for row in output.splitlines():
+            fields = row.strip().split(None, 1)
+            if len(fields) == 2:
+                processes.append((int(fields[0]), names.get(int(fields[0]), ""), fields[1]))
+        if not processes:
+            return None
         for pid, command, args in processes:
             if pid == os.getpid():
                 continue
@@ -155,19 +145,10 @@ def private_directory(path):
     safe(path)
     if path.exists():
         info = path.stat()
-        if not path.is_dir() or os.name != "nt" and (info.st_uid != os.geteuid() or info.st_mode & 0o077):
+        if not path.is_dir() or info.st_uid != os.geteuid() or info.st_mode & 0o077:
             raise Refused("unavailable")
         return
     path.mkdir(mode=0o700)
-    if os.name == "nt":
-        executable = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe"
-        script = "$ErrorActionPreference='Stop'; $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User; $acl=New-Object Security.AccessControl.DirectorySecurity; $acl.SetAccessRuleProtection($true,$false); $acl.SetOwner($sid); foreach($id in @($sid,[Security.Principal.SecurityIdentifier]::new('S-1-5-18'))){$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($id,'FullControl','ContainerInherit,ObjectInherit','None','Allow'))}; Set-Acl -LiteralPath $env:MAINTENANCE_DIRECTORY -AclObject $acl"
-        try:
-            subprocess.run([str(executable), "-NoProfile", "-NonInteractive", "-Command", script], env={**os.environ, "MAINTENANCE_DIRECTORY": str(path), "PSModulePath": str(executable.parent / "Modules")},
-                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=15, check=True)
-        except subprocess.CalledProcessError as error:
-            error.add_note(error.stderr.decode(errors="replace"))
-            raise
 
 
 def write_manifest(path, value):
@@ -188,11 +169,6 @@ def move_cache(source, destination):
     """Same-filesystem rename without replacement; pin POSIX parent directories."""
     safe(source)
     safe(destination)
-    if os.name == "nt":
-        # Windows rename refuses an existing destination, including directories.
-        os.rename(source, destination)
-        return
-
     def directory_fd(path):
         descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
         try:
@@ -210,12 +186,10 @@ def move_cache(source, destination):
         destination_fd = directory_fd(destination.parent)
         try:
             native = ctypes.CDLL(None, use_errno=True)
-            name = "renameatx_np" if sys.platform == "darwin" else "renameat2"
-            rename = getattr(native, name)
+            rename = native.renameat2
             rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
             rename.restype = ctypes.c_int
-            flag = 4 if sys.platform == "darwin" else 1  # RENAME_EXCL / RENAME_NOREPLACE
-            if rename(source_fd, os.fsencode(source.name), destination_fd, os.fsencode(destination.name), flag) != 0:
+            if rename(source_fd, os.fsencode(source.name), destination_fd, os.fsencode(destination.name), 1) != 0:  # RENAME_NOREPLACE
                 raise OSError(ctypes.get_errno(), "Cache move refused")
         finally:
             os.close(destination_fd)
@@ -400,29 +374,14 @@ class Maintenance:
         return {"version": 1, "status": "partial" if any(row["state"] == "failed" for row in outcomes) else "complete", "outcomes": outcomes}
 
 
-def production(request):
-    system = {"darwin": "macos", "win32": "windows"}.get(sys.platform, "linux")
-    if system == "linux":
-        if os.geteuid() != 0:
-            raise Refused("requires_local_service")
-        home = Path("/home/cage")
-        browser = Path("/home/cage-browser/profile/Default")
-        desktop = home / ".config/Claude"
-        accounts = home / ".local/share/cage/claude-accounts"
-    else:
-        home = Path.home()
-        if system == "macos":
-            browser = home / "Library/Application Support/Cage/Browser/Default"
-            desktop = home / "Library/Application Support/Claude"
-            accounts = home / ".local/share/cage/claude-accounts"
-        else:
-            profile = request.get("profile", "")
-            if not re.fullmatch(r"[0-9a-f]{16}", profile):
-                raise Refused("invalid_profile")
-            browser = Path(os.environ.get("LOCALAPPDATA", str(home / "AppData/Local"))) / "Cage/Browser/Profile/Default"
-            desktop = Path(os.environ.get("APPDATA", str(home / "AppData/Roaming"))) / "Claude"
-            accounts = home / "Cage/CLI" / profile / "accounts"
-    return Maintenance(home, system, browser, desktop, accounts)
+def production():
+    if os.geteuid() != 0:
+        raise Refused("requires_local_service")
+    home = Path("/home/developer")
+    browser = Path("/home/browser/profile/Default")
+    desktop = home / ".config/Claude"
+    accounts = home / ".local/share/workbench/claude-accounts"
+    return Maintenance(home, "linux", browser, desktop, accounts)
 
 
 def main():
@@ -431,9 +390,9 @@ def main():
         if len(raw) > 32768:
             raise Refused("invalid_request")
         request = json.loads(raw)
-        if not isinstance(request, dict) or set(request) - {"action", "profile", "scope", "items", "batch"}:
+        if not isinstance(request, dict) or set(request) - {"action", "scope", "items", "batch"}:
             raise Refused("invalid_request")
-        service = production(request)
+        service = production()
         action = request.get("action")
         if action == "inspect":
             result = service.inspect()
@@ -442,15 +401,9 @@ def main():
             lock = service.recovery / ".operation-lock"
             safe(lock)
             # Kernel locks survive cancellation without leaving a stale busy flag.
-            descriptor = os.open(lock, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            descriptor = os.open(lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
             with os.fdopen(descriptor, "r+b") as stream:
-                if os.name == "nt":
-                    import msvcrt
-                    stream.seek(0)
-                    msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
-                else:
-                    import fcntl
-                    fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 result = service.clean(request) if action == "clean" else service.restore(request.get("batch"))
         else:
             raise Refused("invalid_request")

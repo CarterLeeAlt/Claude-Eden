@@ -9,5 +9,5 @@ import (
 var payload embed.FS
 
 func Linux(arch string) (fs.File, error) {
-	return payload.Open("assets/cage-tailnet-linux-" + arch + ".gz")
+	return payload.Open("assets/workbench-tailnet-linux-" + arch + ".gz")
 }

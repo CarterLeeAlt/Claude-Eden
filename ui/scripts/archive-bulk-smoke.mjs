@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
-const base = process.env.CAGE_UI_URL || "http://127.0.0.1:5209";
-const engine = process.env.CAGE_TEST_BROWSER || "chromium";
-const output = process.env.CAGE_TEST_CAPTURE || "../output/archive-bulk-20261108";
+const base = process.env.EDEN_UI_URL || "http://127.0.0.1:5209";
+const engine = process.env.EDEN_TEST_BROWSER || "chromium";
+const output = process.env.EDEN_TEST_CAPTURE || "../.tmp/guest-neutralization/ui-eden/archive-bulk";
 const alpha = "/fixture/alpha", beta = "/fixture/beta";
 const seed = [
   {id:"a1",workspace:alpha,title:"项目方案",pinned:true},
@@ -111,44 +111,11 @@ try {
   await confirm.getByRole("button",{name:"永久删除所选会话",exact:true}).click();
   await panel.getByText("暂无已归档会话。",{exact:true}).waitFor();
   assert.deepEqual(operations.filter(o => o.operation === "purge").map(o => o.id),["b1","b2","b2"]);
-  // Phone uses the same component and host API, including offline restore and deletion restrictions.
-  sessions = structuredClone(seed);
-  const context = await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,userAgent:"CageMobile/1"});
-  const phone = await context.newPage();
-  const phoneErrors = []; phone.on("pageerror",e => phoneErrors.push(e.message));
-  let ready = false;
-  await phone.route("**/api/**", async route => {
-    const path = new URL(route.request().url()).pathname.replace("/api/mobile/cli","/cli");
-    if (path.endsWith("/projects")) return route.fulfill({json:{host:"隔离测试主机",ready,shared_sessions:true,projects:[{path:alpha,name:"alpha"},{path:beta,name:"beta"}]}});
-    return handle(route,path,route.request().postDataJSON());
-  });
-  await phone.goto(base+"/mobile.html");
-  await phone.getByRole("dialog",{name:"工作区侧栏"}).getByRole("button",{name:"设置",exact:true}).click();
-  await phone.getByRole("button",{name:"已归档会话",exact:true}).click();
-  await checkbox(phone,projectName(alpha)).check();
-  assert.equal(await phone.getByRole("button",{name:"批量删除",exact:true}).isDisabled(),true);
-  assert.equal(await phone.getByRole("button",{name:"批量取消归档",exact:true}).isEnabled(),true);
-  await phone.getByRole("button",{name:"批量取消归档",exact:true}).click();
-  await phone.getByRole("heading",{name:"接口检查",exact:true}).waitFor({state:"hidden"});
-  ready = true;
-  await phone.getByRole("button",{name:"返回设置",exact:true}).click();
-  await phone.getByRole("button",{name:"已归档会话",exact:true}).click();
-  await checkbox(phone,allName).check();
-  await phone.getByRole("button",{name:"批量删除",exact:true}).click();
-  await phone.getByRole("group",{name:"确认批量永久删除会话"}).waitFor();
-  await mkdir(output,{recursive:true});
-  await phone.screenshot({path:`${output}/${engine}-mobile.png`,fullPage:true});
-  assert.equal(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth),true,"mobile layout overflowed");
-  await phone.getByRole("button",{name:"永久删除所选会话",exact:true}).click();
-  await phone.getByText("暂无已归档会话。",{exact:true}).waitFor();
-  await phone.reload();
-  await phone.getByRole("heading",{name:"已归档会话",exact:true}).waitFor();
-  await phone.getByText("暂无已归档会话。",{exact:true}).waitFor();
-  assert.equal(sessions.filter(s => s.archived).length,0);
   // Capture the desktop controls with selections for visual review.
   sessions = structuredClone(seed);
   await checkbox(panel,projectName(alpha)).check();
+  await mkdir(output,{recursive:true});
   await page.screenshot({path:`${output}/${engine}-desktop.png`});
-  assert.deepEqual(errors,[]); assert.deepEqual(phoneErrors,[]);
-  console.log(`${engine}: item/project/all selection, mixed state, keyboard, filter scope, progress/locking, restore/purge partial failure and retry, delete cancellation, mobile/offline/reload passed`);
+  assert.deepEqual(errors,[]);
+  console.log(`${engine}: item/project/all selection, mixed state, keyboard, filter scope, progress/locking, restore/purge partial failure and retry, delete cancellation passed`);
 } finally { await browser.close(); }

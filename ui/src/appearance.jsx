@@ -18,7 +18,7 @@ export function AppearanceProvider({ children }) {
   const [appearance, setAppearance] = useState(() => {
     try {
       return normalizeAppearance(
-        JSON.parse(localStorage.getItem("cage-appearance")) ||
+        JSON.parse(localStorage.getItem("eden-appearance")) ||
           defaultAppearance,
       );
     } catch {
@@ -52,7 +52,7 @@ export function AppearanceProvider({ children }) {
         .then((value) => {
           if (live) {
             setAppearance(normalizeAppearance(value));
-            localStorage.setItem("cage-appearance", JSON.stringify(value));
+            localStorage.setItem("eden-appearance", JSON.stringify(value));
           }
         })
         .catch((e) => {
@@ -62,7 +62,7 @@ export function AppearanceProvider({ children }) {
           if (live) setLoading(false);
         });
     if (location.hash)
-      window.addEventListener("cage-session-ready", load, { once: true });
+      window.addEventListener("eden-session-ready", load, { once: true });
     else load();
     const dark = matchMedia("(prefers-color-scheme: dark)"),
       reduced = matchMedia("(prefers-reduced-motion: reduce)");
@@ -72,7 +72,7 @@ export function AppearanceProvider({ children }) {
     reduced.addEventListener("change", onReduced);
     return () => {
       live = false;
-      window.removeEventListener("cage-session-ready", load);
+      window.removeEventListener("eden-session-ready", load);
       dark.removeEventListener("change", onDark);
       reduced.removeEventListener("change", onReduced);
     };
@@ -104,7 +104,7 @@ export function AppearanceProvider({ children }) {
         foreground: variables["--sidebar-ink"],
         translucent: !theme.opaqueWindows,
       }).catch(() =>
-        setError("外观已应用到工作台，原生窗口未能同步，请重新打开 Cage。"),
+        setError("外观已应用到工作台，原生窗口未能同步，请重新打开 Eden。"),
       );
   }, [appearance, variant, systemReduced]);
   const update = (next) => {
@@ -122,7 +122,7 @@ export function AppearanceProvider({ children }) {
         if (id !== revision.current) return;
         try {
           await api("/appearance", next);
-          localStorage.setItem("cage-appearance", JSON.stringify(next));
+          localStorage.setItem("eden-appearance", JSON.stringify(next));
           if (id === revision.current) setSaving(false);
           return true;
         } catch (e) {

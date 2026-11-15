@@ -9,7 +9,7 @@ interface Props { locale: EdenLocale }
 const { locale } = Astro.props;
 const c = edenCopy[locale];
 type PlatformRelease = { version: string; releaseURL: string; downloadURL: string; unsigned?: boolean };
-const published: { version: string | null; releaseURL: string; platforms: Partial<Record<'windows' | 'android', PlatformRelease>> } = releaseData;
+const published: { version: string | null; releaseURL: string; platforms: Partial<Record<'windows', PlatformRelease>> } = releaseData;
 const downloads = published.platforms;
 const base = import.meta.env.BASE_URL;
 const repo = 'https://github.com/CarterLeeAlt/Claude-Eden';
@@ -26,9 +26,6 @@ const platforms = [
     url: downloads.windows?.downloadURL, version: downloads.windows?.version,
     preview: downloads.windows?.unsigned,
     notes: downloads.windows?.releaseURL, guideURL: `${repo}/blob/main/docs/windows.md` },
-  { name: 'Android', icon: 'android', requirements: 'Android 8.0+ · arm64', format: '.apk',
-    url: downloads.android?.downloadURL, version: downloads.android?.version,
-    notes: downloads.android?.releaseURL, guideURL: `${base}docs/mobile/` },
 ];
 const pathFor = (code: EdenLocale) => `${base}${code === 'zh' ? '' : `${code}/`}`;
 const canonical = Astro.site ? new URL(pathFor(locale), Astro.site) : undefined;

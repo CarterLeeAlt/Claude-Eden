@@ -8,7 +8,7 @@ const vite = await createServer({ root, configFile: `${root}/vite.config.js`, se
 await vite.listen();
 const url = `http://127.0.0.1:${vite.httpServer.address().port}`;
 try {
-  for (const platform of ["darwin", "windows", "linux"]) {
+  for (const platform of ["windows"]) {
     const { browser, page, state, errors } = await createWorkbench({ url, clientContext: { mode: "local", connection_id: "local", client_platform: platform, server_platform: platform, connection: { state: "disconnected" } } });
     try {
       const defaultProject = state.status.environment_directory;
@@ -20,11 +20,11 @@ try {
       await page.getByRole("button", { name: "添加项目", exact: true }).click();
       let dialog = page.getByRole("dialog", { name: "打开项目", exact: true });
       await dialog.getByRole("radio", { name: /alpha/ }).check();
-      await dialog.getByRole("button", { name: "从 Cage 移除此项目" }).click();
+      await dialog.getByRole("button", { name: "从 Eden 移除此项目" }).click();
       await dialog.getByRole("button", { name: "取消移除" }).click();
       assert.ok(state.status.projects.includes(project));
       state.failRemove = true;
-      await dialog.getByRole("button", { name: "从 Cage 移除此项目" }).click();
+      await dialog.getByRole("button", { name: "从 Eden 移除此项目" }).click();
       await dialog.getByRole("button", { name: "确认移除项目" }).click();
       await dialog.getByRole("alert").waitFor();
       assert.ok(state.status.projects.includes(project));
@@ -33,7 +33,7 @@ try {
       await dialog.getByRole("radio", { name: /alpha/ }).waitFor({ state: "detached" });
       assert.deepEqual(state.status.projects, [defaultProject, other]);
       assert.equal(state.settings.workspace, defaultProject);
-      assert.equal(await dialog.getByRole("button", { name: "从 Cage 移除此项目" }).count(), 1);
+      assert.equal(await dialog.getByRole("button", { name: "从 Eden 移除此项目" }).count(), 1);
       await dialog.getByRole("button", { name: "取消", exact: true }).click();
       await page.getByRole("region", { name: "项目 alpha", exact: true }).waitFor({ state: "detached" });
       Object.assign(state.status, { ready: false, vm_running: false });
@@ -42,12 +42,12 @@ try {
       dialog = page.getByRole("dialog", { name: "打开项目", exact: true });
       await dialog.getByRole("radio", { name: /beta/ }).check();
       assert.equal(await dialog.getByRole("button", { name: "打开项目", exact: true }).isDisabled(), true);
-      await dialog.getByRole("button", { name: "从 Cage 移除此项目" }).click();
+      await dialog.getByRole("button", { name: "从 Eden 移除此项目" }).click();
       await dialog.getByRole("button", { name: "确认移除项目" }).click();
       await dialog.getByRole("radio", { name: /beta/ }).waitFor({ state: "detached" });
       assert.deepEqual(state.status.projects, [defaultProject]);
-      await dialog.getByRole("radio", { name: /\.claude-cage-workspace/ }).check();
-      await dialog.getByRole("button", { name: "从 Cage 移除此项目" }).click();
+      await dialog.getByRole("radio", { name: /\.claude-eden-workspace/ }).check();
+      await dialog.getByRole("button", { name: "从 Eden 移除此项目" }).click();
       await dialog.getByRole("button", { name: "确认移除项目" }).click();
       await dialog.getByRole("radio").waitFor({ state: "detached" });
       assert.deepEqual(state.status.projects, []);

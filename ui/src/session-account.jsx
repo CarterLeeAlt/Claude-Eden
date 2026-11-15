@@ -4,7 +4,7 @@ import "./session-account.css";
 
 const failures = {rate_limit:"请求受到限流，请核对额度后选择等待或接续",authentication_failed:"账号登录失效，请重新登录",account_on_hold:"账号受限，自动接续已停止",overloaded:"服务暂时过载，保留原账号",server_error:"服务暂时异常，保留原账号"};
 
-// Desktop and mobile use the same session operation and durable request ID.
+// Session operations retain their durable request ID.
 export function SessionAccount({ id, request, onChanged, compact = false }) {
   const [open,setOpen]=useState(false), [view,setView]=useState(null), [busy,setBusy]=useState(false), [error,setError]=useState("");
   const [target,setTarget]=useState(""), [confirmed,setConfirmed]=useState(false), [continueTask,setContinueTask]=useState(false);

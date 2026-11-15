@@ -78,7 +78,7 @@ func (s *Stream) summary() {
 func (s *Stream) output(level, line string) {
 	// Compare complete raw lines, so distinct credentials never become identical
 	// just because redaction removes their values. Never coalesce progress records.
-	if line == s.last && !strings.HasPrefix(line, "CAGE_") {
+	if line == s.last && !strings.HasPrefix(line, "EDEN_") && !strings.HasPrefix(line, "WORKBENCH_") {
 		s.repeated++
 		if time.Since(s.reported) >= time.Second {
 			s.summary()

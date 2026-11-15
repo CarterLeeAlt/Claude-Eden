@@ -1,53 +1,45 @@
 ---
-title: 选择客机系统
-description: 在 Windows 10 桌面选择 Debian 13 或 Ubuntu 22.04 Linux 客机，也可连接 Linux 云端环境。
+title: Debian 13 客机
+description: 在 Windows 10 桌面准备本地 Debian 13 客机，管理镜像、存储与 Linux 开发环境。
 group: 开始使用
 order: 1.5
-keywords: 客机 客户机 本机 系统选择 Windows Debian Ubuntu Linux QEMU WHPX 开发
+keywords: 客机 客户机 本机 Windows Debian 13 Linux QEMU WHPX 开发
 ---
-## 在熟悉的系统里开发
+## 在独立 Debian 13 环境里开发
 
-Claude Eden 的桌面使用链固定为 Windows 10 主机运行 Linux 客机，将终端、浏览器、编辑器和 Claude Desktop 放在同一个工作台里。客机使用 Linux 开发工具，共享明确打开的目录，并独立管理环境网络。
+Claude Eden 的使用链固定为 Windows 10 主机运行本地 Debian 13 客机，将终端、浏览器、编辑器和 Claude Desktop 放在同一个工作台里。客机使用 Linux 开发工具，共享明确打开的目录，并独立管理环境网络。
 
 运行 Claude Eden 桌面应用的电脑称为主机，虚拟机里的系统称为客机。客机使用中性的 Workbench 标识，系统账户、应用与文件保存在独立磁盘中。
 
-## 这台电脑可以选择什么
+## 宿主与客机条件
 
-| 你的电脑 | 可选客机 | 适合的工作 |
+| 你的电脑 | 客机 | 适合的工作 |
 | --- | --- | --- |
-| Windows 10 x64 主机，实际检查确认 Windows 虚拟机监控程序平台（WHPX）可用 | Debian 13 或 Ubuntu 22.04 x86_64 | 在独立 Linux 环境中使用 Claude Code、浏览器、编辑器和 Claude Desktop。 |
+| Windows 10 x64 主机，实际检查确认 Windows 虚拟机监控程序平台（WHPX）可用 | 本地 Debian 13 x86_64 | 在独立 Linux 环境中使用 Claude Code、浏览器、编辑器和 Claude Desktop。 |
 
-桌面程序在 Windows 10 安装与验收；项目中的程序在 Linux 客机执行。Debian 和 Ubuntu 适合命令行、服务与 Linux 工具。Linux 服务器用于[云端部署](cloud.md)，与本机客机选择分别管理。
+桌面程序在 Windows 10 运行，项目中的程序在 Debian 13 客机执行，适合命令行、服务与 Linux 工具。
 
-Windows 家庭版也可启用“Windows 虚拟机监控程序平台”，按系统要求重启后选择 Debian 13 或 Ubuntu 22.04。该路线使用 QEMU／WHPX，不依赖 WSL。请先在[Windows 指南](../windows.md)核对系统要求。
+Windows 家庭版也可启用“Windows 虚拟机监控程序平台”，按系统要求重启后创建 Debian 13 客机。该路线使用 QEMU／WHPX，不依赖 WSL。请先在[Windows 指南](../windows.md)核对系统要求。
 
 客机系统决定项目中的程序实际在哪里运行。需要额外虚拟机的应用功能还受嵌套虚拟化等条件限制，Claude Desktop 的 Cowork 暂不支持。
 
 ## 当前开发构建的验证范围
 
-系统选择和平台接线不代表完整实机验收。当前 Claude Eden 改名构建仍需完成 Windows 10 桌面、Linux 客机的 WHPX 首装、冷启动、项目共享、输入、网络及官方 Claude 登录全流程验证。公开安装包的能力和验证范围以本仓库实际发行说明为准。
+自动化检查、构建成功和启动成功分别验证不同环节，不能代替 Windows 10 桌面、Debian 13 的 WHPX 首装、冷启动、项目共享、输入、网络及官方 Claude 登录全流程验收。公开安装包的能力和验证范围以本仓库实际发行说明为准。
 
-多账号、手机和原生 Desktop 文件操作还需各自的应用级检查，分别见[多账号与额度](accounts.md)、[手机连接](mobile.md)和[Claude Desktop](desktop.md)。
+多账号和 Desktop 文件操作还需各自的应用级检查，分别见[多账号与额度](accounts.md)和[Claude Desktop](desktop.md)。
 
 ## 首次创建环境
 
 1. 按[安装与首次启动](installation.md)安装 Claude Eden，创建或解锁账户。
-2. 在独立初始化界面的“系统与存储”中选择客机系统和存储位置。
-3. 配置自己的代理。Debian 和 Ubuntu 使用对应的官方云镜像，程序下载后校验镜像。
+2. 在独立初始化界面的“系统与存储”中确认 Debian 13，并选择存储位置。
+3. 配置自己的代理。程序下载固定版本的 Debian 13 官方云镜像，并按模板中的摘要校验。
 4. 程序准备 Linux 客机账户和 Workbench 组件。
 5. 安装、授权和网络检查完成后，进入工作台、打开项目、新建终端，在环境内完成 Claude 授权。以后启动复用原系统、工具、文件和登录资料。中断后可继续原安装流程。
 
-一个 Claude Eden 安装包可选择 Debian 或 Ubuntu 客机。客机使用独立账户与持久磁盘，主机账户、Claude 登录、浏览器资料和 SSH 密钥由用户分别管理。
+客机使用独立账户与持久磁盘，主机账户、Claude 登录、浏览器资料和 SSH 密钥由用户分别管理。
 
 安装卡片会显示当前阶段。下载镜像时可查看已下载大小、总量、百分比和实时采样速度；校验镜像单独显示进度。系统恢复和安装工具期间，卡片显示正在处理的步骤；这些步骤没有可测总量时不显示百分比。中断后可点击“继续安装”，复用原安装记录和已保存的下载。
-
-### 直接安装 Ubuntu 22.04
-
-首次创建时，从“客户机系统”选择 **Ubuntu 22.04**。Windows x64 使用 amd64 镜像。Claude Eden 下载固定版本的 Canonical 官方云镜像并校验 SHA-256。
-
-镜像约 669–697 MiB，创建前至少预留 17 GiB；虚拟磁盘按实际写入增长，后续项目和工具仍需额外空间。安装后，工作台提供终端、Chromium 浏览器和编辑器，也可以按需安装 Claude Desktop。
-
-安装中断后继续使用原镜像、安装身份和磁盘。完成后普通启动仍为 Ubuntu；来源资料缺失或不一致时提示恢复原资料，不自动改用 Debian。该选项不会就地转换已有系统。验证范围见本页上方说明。
 
 ## 下载量与磁盘空间
 
@@ -57,23 +49,17 @@ Windows 家庭版也可启用“Windows 虚拟机监控程序平台”，按系�
 
 ## 打开项目与使用原生工具
 
-选择项目后，在工作台使用 Linux 终端与工具链。共享的 Windows 项目目录映射到 Linux 路径，程序在所选 Debian 或 Ubuntu 环境编译运行。
+选择项目后，在工作台使用 Linux 终端与工具链。共享的 Windows 项目目录映射到 Linux 路径，程序在 Debian 13 环境编译运行。
 
 浏览器、编辑器和 Claude Desktop 从 Claude Eden 工作台进入，安装和登录资料保存在客机内；系统首次登录和必要授权完成后，日常操作无需切换到另一个完整桌面。
 
 共享目录中的修改和删除直接作用于主机原文件，重要项目应使用版本控制或备份。项目共享只限明确授权的目录，下载使用独立的暂存目录，项目内的 Git 元数据可读写；切换项目继续使用同一环境，不会创建另一台虚拟机。操作方法见[项目、终端与文件](workbench.md)。
 
-## 已有环境与更换系统
+## 持久数据
 
 Claude Eden 采用独立新装配置。更新、重装 Claude Eden 或重新启动会保留其原客机、工具、文件和登录资料。
 
-更换 Linux 发行版需要独立安装。保留原环境的完整备份，并为新系统准备空间。步骤见[备份、重装与卸载](maintenance.md#备份重装与卸载)。
-
-## 云端和手机如何配合
-
-云端模式运行在自己的 Linux 服务器上，使用容器，无需服务器提供 KVM；它与本机客机系统的选择分开。通过侧栏 SSH 进入远端后，项目、程序和网络出口都属于所选服务器，本机虚拟机可以保持关闭。见[云端部署与 SSH](cloud.md)。
-
-手机连接电脑上的 Claude Eden，接续 Claude Code 会话、处理工具审批和操作远程窗口，任务仍在电脑上运行。手机不安装上述客机系统；见[手机连接与远程会话](mobile.md)。
+备份和重装步骤见[备份、重装与卸载](maintenance.md#备份重装与卸载)。
 
 ## 环境存储与项目恢复
 

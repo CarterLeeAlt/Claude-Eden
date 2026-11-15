@@ -30,8 +30,8 @@ func TestProjectRemovalRefreshesExternalSessions(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".bash_profile"), []byte("export PATH="+shellescape.Quote(bin)+":/usr/bin:/bin\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	mobileTestSSH(t, s, home, []string{"HOME=" + home, "PATH=" + bin + ":/usr/bin:/bin", "CLAUDE_CONFIG_DIR=" + filepath.Join(home, ".claude")})
-	record, err := s.mobileCLI.record(s.profile, id)
+	cliTestSSH(t, s, home, []string{"HOME=" + home, "PATH=" + bin + ":/usr/bin:/bin", "CLAUDE_CONFIG_DIR=" + filepath.Join(home, ".claude")})
+	record, err := s.cliSessions.record(s.profile, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestProjectRemovalRefreshesExternalSessions(t *testing.T) {
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"tabs":[]}`))}, nil
 	}))
 	removeProjectRequest(t, s, project, 409)
-	if !s.mobileCLI.running[id] {
+	if !s.cliSessions.running[id] {
 		t.Fatal("removal did not refresh the previously empty process cache")
 	}
 	if err := os.WriteFile(registry, []byte("invalid JSON"), 0600); err != nil {

@@ -5,7 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Runtime.InteropServices;
 
-namespace Cage.Windows;
+namespace Eden.Windows;
 
 internal static class Program
 {
@@ -27,25 +27,36 @@ internal static class Program
             if (dialog.ShowDialog() == DialogResult.Abort) Application.Exit();
         };
         TaskScheduler.UnobservedTaskException += (_, e) => _ = Backend.Report(e.Exception.ToString());
-        ApplicationConfiguration.Initialize();
-        if (RuntimeInformation.OSArchitecture != Architecture.X64 || Environment.OSVersion.Version.Build < 19045)
+        if (RuntimeInformation.OSArchitecture != Architecture.X64 || !OperatingSystem.IsWindowsVersionAtLeast(10))
         {
-            MessageBox.Show("Cage 需要 Windows 10 22H2（19045）或 Windows 11，x64（Intel/AMD）系统。", "Cage");
+            MessageBox.Show("此 Claude Eden 安装包需要 Windows 10 的 x64（Intel/AMD）系统。", "Claude Eden");
             return 1;
         }
+        var kernel = NativeLibrary.Load("kernel32.dll");
+        try
+        {
+            foreach (var api in new[] { "CreatePseudoConsole", "ResizePseudoConsole", "ClosePseudoConsole" })
+            {
+                if (NativeLibrary.TryGetExport(kernel, api, out _)) continue;
+                MessageBox.Show($"Windows 缺少终端所需的 {api} 接口。请更新到提供 ConPTY 的 Windows 10 版本（微软从 1809 起提供该接口）。", "Claude Eden");
+                return 1;
+            }
+        }
+        finally { NativeLibrary.Free(kernel); }
+        ApplicationConfiguration.Initialize();
         var sid = WindowsIdentity.GetCurrent().User?.Value ?? Environment.UserName;
         var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sid + "\0" + Path.GetFullPath(Backend.Root).TrimEnd(Path.DirectorySeparatorChar).ToUpperInvariant())))[..24];
-        using var mutex = new Mutex(true, @"Local\Cage-" + key, out var owner);
+        using var mutex = new Mutex(true, @"Local\Eden-" + key, out var owner);
         if (!owner)
         {
             if (SmokeOutput != null) return 3;
             try
             {
-                using var client = new NamedPipeClientStream(".", "Cage-" + key, PipeDirection.Out, PipeOptions.CurrentUserOnly);
+                using var client = new NamedPipeClientStream(".", "Eden-" + key, PipeDirection.Out, PipeOptions.CurrentUserOnly);
                 client.Connect(3000); client.WriteByte(1);
             }
-            catch (IOException) { MessageBox.Show("Cage 已在运行，但窗口暂时无法唤起。请从任务栏打开 Cage。", "Cage"); }
-            catch (TimeoutException) { MessageBox.Show("Cage 正在启动，请稍候。", "Cage"); }
+            catch (IOException) { MessageBox.Show("Claude Eden 已在运行，但窗口暂时无法唤起。请从任务栏打开 Claude Eden。", "Claude Eden"); }
+            catch (TimeoutException) { MessageBox.Show("Claude Eden 正在启动，请稍候。", "Claude Eden"); }
             return 0;
         }
         using var form = new MainWindow();
@@ -56,7 +67,7 @@ internal static class Program
             {
                 try
                 {
-                    await using var pipe = new NamedPipeServerStream("Cage-" + key, PipeDirection.In, 1,
+                    await using var pipe = new NamedPipeServerStream("Eden-" + key, PipeDirection.In, 1,
                         PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
                     await pipe.WaitForConnectionAsync(cancellation.Token);
                     var data = new byte[1];

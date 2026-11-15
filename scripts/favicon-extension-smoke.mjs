@@ -8,11 +8,11 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.CAGE_PLAYWRIGHT_MODULE || "playwright");
-const extension = fileURLToPath(new URL("../internal/cage/split-extension", import.meta.url));
+const { chromium } = require(process.env.EDEN_PLAYWRIGHT_MODULE || "playwright");
+const extension = fileURLToPath(new URL("../internal/eden/split-extension", import.meta.url));
 const extensionId = createHash("sha256").update(extension).digest("hex").slice(0, 32)
   .replace(/./g, digit => String.fromCharCode(97 + parseInt(digit, 16)));
-const profile = await mkdtemp(join(tmpdir(), "cage-favicon-extension-"));
+const profile = await mkdtemp(join(tmpdir(), "workbench-favicon-extension-"));
 const requests = [];
 const icons = http.createServer((req, res) => {
   requests.push(req.url);
@@ -32,7 +32,7 @@ const site = http.createServer((req, res) => {
 await new Promise(resolve => site.listen(0, "127.0.0.1", resolve));
 const origin = `http://localhost:${site.address().port}`;
 const launch = () => chromium.launchPersistentContext(profile, {
-  executablePath: process.env.CAGE_TEST_BROWSER_PATH,
+  executablePath: process.env.EDEN_TEST_BROWSER_PATH,
   channel: "chromium",
   headless: true,
   args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, "--restore-last-session"],
@@ -58,12 +58,12 @@ async function setupController() {
   await page.goto(`chrome-extension://${extensionId}/control.html`);
   await page.evaluate(() => {
     globalThis.faviconEvents = [];
-    globalThis.cageFaviconChanged = target => faviconEvents.push(target);
+    globalThis.workbenchFaviconChanged = target => faviconEvents.push(target);
   });
   return page;
 }
 async function read(page, target) {
-  return page.evaluate(id => readCageFavicon(id), target);
+  return page.evaluate(id => readWorkbenchFavicon(id), target);
 }
 try {
   context = await launch();
@@ -106,7 +106,7 @@ try {
       await decode.call(this);
       await new Promise(resolve => { globalThis.releaseFaviconDecode = resolve; });
     };
-    globalThis.pendingFaviconRead = readCageFavicon(id);
+    globalThis.pendingFaviconRead = readWorkbenchFavicon(id);
   }, target);
   await controller.waitForFunction(() => typeof releaseFaviconDecode === "function");
   await page.goto(origin + "/blocked-race");
@@ -121,7 +121,7 @@ try {
       await originalFaviconDecode.call(this);
       await new Promise(resolve => { globalThis.releaseFaviconDecode = resolve; });
     };
-    globalThis.pendingFaviconRead = readCageFavicon(id);
+    globalThis.pendingFaviconRead = readWorkbenchFavicon(id);
   }, target);
   await controller.waitForFunction(() => typeof releaseFaviconDecode === "function");
   await page.close();

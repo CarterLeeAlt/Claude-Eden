@@ -4,7 +4,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json;
 
-namespace Cage.Windows;
+namespace Eden.Windows;
 
 internal sealed class AppUpdater : IDisposable
 {
@@ -35,12 +35,6 @@ internal sealed class AppUpdater : IDisposable
 
     public Dictionary<string, object?> Handle(string operation)
     {
-        if (Backend.ClientOnly)
-        {
-            if (state["phase"] as string != "manual" || operation != "status")
-                Change("manual", "轻量客户端使用独立安装包更新；连接配置会保留，云端任务不受影响。");
-            return new(state);
-        }
         if (operation is "check" or "install" &&
             DateTimeOffset.TryParse(state.GetValueOrDefault("retryAt") as string, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var retryAt) && retryAt > DateTimeOffset.UtcNow)
             return new(state);
@@ -62,11 +56,11 @@ internal sealed class AppUpdater : IDisposable
 
     public void MarkReady()
     {
-        if (!Guid.TryParse(Environment.GetEnvironmentVariable("CAGE_UPDATE_CONFIRMATION"), out var token)) return;
+        if (!Guid.TryParse(Environment.GetEnvironmentVariable("EDEN_UPDATE_CONFIRMATION"), out var token)) return;
         Directory.CreateDirectory(Root); UpdatePolicy.PlainPath(Root);
         File.WriteAllText(Path.Combine(Root, "launch-" + token + ".json"), JsonSerializer.Serialize(new { version = Version }));
-        Change("current", "Cage 已更新至 " + Version);
-        Environment.SetEnvironmentVariable("CAGE_UPDATE_CONFIRMATION", null);
+        Change("current", "Claude Eden 已更新至 " + Version);
+        Environment.SetEnvironmentVariable("EDEN_UPDATE_CONFIRMATION", null);
     }
 
     private async Task Run(bool checkOnly)
@@ -161,7 +155,7 @@ internal sealed class AppUpdater : IDisposable
             if (helper.HasExited) throw new IOException("安装程序已退出，原应用已保留");
             await helper.StandardInput.WriteLineAsync("COMMIT"); await helper.StandardInput.FlushAsync(token);
             helper.StandardInput.Close(); committed = true;
-            Change("installing", "正在安装并重启 Cage"); quit();
+            Change("installing", "正在安装并重启 Claude Eden"); quit();
         }
         catch (Exception error) { Change("failed", error is OperationCanceledException ? "安装准备超时，原应用已保留" : error.Message, true); reconnect(); }
         finally

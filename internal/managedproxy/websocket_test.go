@@ -62,7 +62,7 @@ func TestWebSocketAliasesSurviveImportStoreAndRuntime(t *testing.T) {
 						t.Fatalf("WebSocket transport changed across import, store or runtime: %#v", opts)
 					}
 					if config["udp"] != false || config["network"] != "ws" {
-						t.Fatal("conversion changed Cage UDP policy or transport")
+						t.Fatal("conversion changed Eden UDP policy or transport")
 					}
 				}
 				if tc.name == "variants" && generated.Proxies[0]["ws-opts"].(map[string]any)["max-early-data"] != 64 {
@@ -137,46 +137,5 @@ func TestWebSocketAliasesRequireAnApplicableTransport(t *testing.T) {
 	opts := nodes[0].Config["ws-opts"].(map[string]any)
 	if opts["PATH"] != "/retained" || opts["headers"].(map[string]any)["x_custom"] != "example" {
 		t.Fatal("normalization rewrote unrelated protocol data")
-	}
-}
-
-func TestWebSocketRuntimeNormalizesOlderStoresWithoutMutatingThem(t *testing.T) {
-	profile := t.TempDir()
-	store, _ := Load(profile)
-	if err := store.Import("websocket", "", []byte(`proxies: [{name: old, type: vless, server: example.com, port: 443, network: ws}]`), "test", 0, ""); err != nil {
-		t.Fatal(err)
-	}
-	store.Selected = store.Sources[0].Nodes[0].ID
-	config := store.Sources[0].Nodes[0].Config
-	config["ws-path"] = "/stored"
-	config["ws-headers"] = map[string]any{"host": "edge.example"}
-	config["ws-opts"] = map[string]any{"PATH": "/stored", "headers": map[string]any{"X-Modern": "retained"}}
-	if err := store.Save(profile); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := Load(profile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	before, _ := json.Marshal(loaded)
-	runtime, err := loaded.Runtime(profile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var generated struct{ Proxies []map[string]any }
-	if err := yaml.Unmarshal(runtime, &generated); err != nil {
-		t.Fatal(err)
-	}
-	opts := generated.Proxies[0]["ws-opts"].(map[string]any)
-	if opts["path"] != "/stored" || !reflect.DeepEqual(opts["headers"], map[string]any{"Host": "edge.example", "X-Modern": "retained"}) {
-		t.Fatal("older persisted aliases were not converted")
-	}
-	after, _ := json.Marshal(loaded)
-	if string(before) != string(after) {
-		t.Fatal("runtime generation mutated stored source")
-	}
-	loaded.Sources[0].Nodes[0].Config["ws-path"] = "/conflict"
-	if _, err := loaded.Runtime(profile); err == nil {
-		t.Fatal("ambiguous older store silently selected one path")
 	}
 }

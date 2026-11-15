@@ -37,16 +37,20 @@ func TestE2E(t *testing.T) {
 	}
 	ctx := instance.WithWatchHostAgentTimeout(context.Background(), timeout)
 	// Short: Lima's sockets live under it, at most 104 or 108 characters.
-	// AGENT_VM_E2E_DIR: where, when /tmp cannot hold the VMs' disks.
+	// AGENT_VM_E2E_DIR may select another explicitly isolated disk directory.
 	parent := os.Getenv("AGENT_VM_E2E_DIR")
 	if parent == "" {
-		parent = "/tmp"
+		parent = os.TempDir()
 	}
 	home, err := os.MkdirTemp(parent, "avm")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(home) })
+	t.Cleanup(func() {
+		if err := os.RemoveAll(home); err != nil {
+			t.Error(err)
+		}
+	})
 	t.Setenv("HOME", home)
 	t.Setenv("AGENT_VM_STATE_DIR", filepath.Join(home, ".agent-vm"))
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")

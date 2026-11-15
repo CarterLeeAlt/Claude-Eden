@@ -13,8 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
-	"github.com/sylvinus/agent-vm/internal/guestos"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/host"
 	"github.com/sylvinus/agent-vm/internal/version"
 	"github.com/sylvinus/agent-vm/internal/workbench"
@@ -30,12 +29,6 @@ type agentReply struct {
 }
 
 func Main(args []string, stdin io.Reader, stdout io.Writer) int {
-	return runAgent(args, stdin, stdout, false)
-}
-func ClientMain(args []string, stdin io.Reader, stdout io.Writer) int {
-	return runAgent(args, stdin, stdout, true)
-}
-func runAgent(args []string, stdin io.Reader, stdout io.Writer, clientOnly bool) int {
 	reply := agentReply{Protocol: workbench.AgentProtocol, Version: version.Version, Status: "completed"}
 	finish := func(data any, err error) int {
 		reply.Data = data
@@ -47,7 +40,7 @@ func runAgent(args []string, stdin io.Reader, stdout io.Writer, clientOnly bool)
 			if errors.As(err, &ae) {
 				reply.Error = ae
 			} else {
-				reply.Error = &workbench.AgentError{Code: "operation_failed", Message: "Cage could not complete the operation. Inspect diagnostics.", NextAction: "doctor"}
+				reply.Error = &workbench.AgentError{Code: "operation_failed", Message: "Claude Eden could not complete the operation. Inspect diagnostics.", NextAction: "doctor"}
 			}
 			if reply.Error.Code == "invalid_input" || reply.Error.Code == "unknown_operation" {
 				code = 2
@@ -86,28 +79,25 @@ func runAgent(args []string, stdin io.Reader, stdout io.Writer, clientOnly bool)
 		}
 		requestPath, args = args[0], args[1:]
 	}
-	flags := flag.NewFlagSet("cage agent", flag.ContinueOnError)
+	flags := flag.NewFlagSet("eden agent", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	config := flags.String("config", os.Getenv(cage.ConfigEnv), "")
+	config := flags.String("config", os.Getenv(eden.ConfigEnv), "")
 	input := flags.String("input", "", "")
 	output := flags.String("output", "", "")
 	wait := flags.Duration("wait", 0, "")
 	defaultScope := "local"
-	if clientOnly {
-		defaultScope = "client"
-	}
 	scope := flags.String("scope", defaultScope, "")
 	connection := flags.String("connection", "", "")
 	contentType := flags.String("content-type", "application/json", "")
 	_ = flags.Bool("json", true, "")
 	if flags.Parse(args) != nil || flags.NArg() != 0 {
-		return bad("Usage: cage agent capabilities|doctor|init|service.start|host.inspect|call NAME|request METHOD /api/PATH|socket /api/PATH|routes|job ID|diagnostics [--config PATH] [--input -|FILE] [--wait 5m] [--output PATH]")
+		return bad("Usage: eden agent capabilities|doctor|init|service.start|call NAME|request METHOD /api/PATH|socket /api/PATH|routes|job ID|diagnostics [--config PATH] [--input -|FILE] [--wait 5m] [--output PATH]")
 	}
 	if *wait < 0 || *wait > 24*time.Hour {
 		return bad("--wait must be between 0 and 24h.")
 	}
-	if *scope != "local" && *scope != "client" && *scope != "desktop" && *scope != "selected" {
-		return bad("scope must be local, client, desktop or selected")
+	if *scope != "local" && *scope != "desktop" && *scope != "selected" {
+		return bad("scope must be local, desktop or selected")
 	}
 	if command != "call" && command != "request" && command != "socket" && command != "job" && command != "routes" && command != "doctor" && command != "diagnostics" && (*scope != defaultScope || *connection != "") {
 		return bad("scope and connection apply to call, request, socket, job, routes, doctor and diagnostics")
@@ -126,10 +116,7 @@ func runAgent(args []string, stdin io.Reader, stdout io.Writer, clientOnly bool)
 		if err != nil {
 			return finish(nil, err)
 		}
-		*config = filepath.Join(home, ".claude-cage", "config.json")
-		if clientOnly {
-			*config = filepath.Join(home, ".claude-cage", "client", "config.json")
-		}
+		*config = filepath.Join(home, ".eden", "config.json")
 	}
 	path, err := filepath.Abs(*config)
 	if err != nil {
@@ -143,10 +130,10 @@ func runAgent(args []string, stdin io.Reader, stdout io.Writer, clientOnly bool)
 		response, err := workbench.AgentRequest(ctx, path, workbench.AgentTarget{Scope: *scope, Connection: *connection}, "GET", "/api/agent/routes", nil, "", "")
 		return finish(response.Data, err)
 	case "help", "--help", "capabilities":
-		return finish(map[string]any{"platform": runtime.GOOS, "arch": runtime.GOARCH, "commands": []string{"capabilities", "doctor", "init", "service.start", "host.inspect", "call NAME", "request METHOD /api/PATH", "socket /api/PATH", "routes", "job ID", "diagnostics"}, "operations": workbench.AgentOperations(), "routes": "agent routes reads the actual registered routes from the chosen live listener", "exit_codes": map[string]int{"completed_or_accepted": 0, "operation_failed": 1, "invalid_input": 2, "user_action_required": 3, "wait_timeout": 4}, "guide": "https://claude-cage.com/docs/agent/", "scope": "local: owning workload; desktop: client configuration; selected: explicit desktop connection generation; client: lightweight client listener", "request": map[string]any{"methods": []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"}, "path": "relative /api/ endpoint from the UI", "binary": "--input FILE --content-type application/octet-stream; --output ABSOLUTE_NEW_FILE", "native": "call native.submit --scope desktop; request GET /api/agent/native/ID --scope desktop; use the same native action and connection_id as the open window"}, "job_retention": "only the latest job; query promptly and never resubmit an unknown mutation automatically"}, nil)
+		return finish(map[string]any{"platform": runtime.GOOS, "arch": runtime.GOARCH, "commands": []string{"capabilities", "doctor", "init", "service.start", "call NAME", "request METHOD /api/PATH", "socket /api/PATH", "routes", "job ID", "diagnostics"}, "operations": workbench.AgentOperations(), "routes": "agent routes reads the actual registered routes from the chosen live listener", "exit_codes": map[string]int{"completed_or_accepted": 0, "operation_failed": 1, "invalid_input": 2, "user_action_required": 3, "wait_timeout": 4}, "guide": "https://github.com/CarterLeeAlt/Claude-Eden/blob/main/docs/guide/agent.md", "scope": "local: owning workload; desktop: local window configuration; selected: explicit desktop connection generation", "request": map[string]any{"methods": []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"}, "path": "relative /api/ endpoint from the UI", "binary": "--input FILE --content-type application/octet-stream; --output ABSOLUTE_NEW_FILE", "native": "call native.submit --scope desktop; request GET /api/agent/native/ID --scope desktop; use the same native action and connection_id as the open window"}, "job_retention": "only the latest job; query promptly and never resubmit an unknown mutation automatically"}, nil)
 	case "init":
 		if _, err := os.Stat(path); err == nil {
-			if _, err := cage.Load(path); err != nil {
+			if _, err := eden.Load(path); err != nil {
 				return finish(nil, &workbench.AgentError{Code: "config_invalid", Message: "Existing configuration is invalid. Preserve it and export diagnostics.", NextAction: "diagnostics"})
 			}
 			return finish(map[string]bool{"created": false}, nil)
@@ -162,16 +149,13 @@ func runAgent(args []string, stdin io.Reader, stdout io.Writer, clientOnly bool)
 		}
 		err = host.ProtectFile(path)
 		if err == nil {
-			err = json.NewEncoder(file).Encode(cage.DefaultConfig())
+			err = json.NewEncoder(file).Encode(eden.DefaultConfig())
 		}
 		if e := file.Close(); err == nil {
 			err = e
 		}
 		return finish(map[string]bool{"created": err == nil}, err)
 	case "service.start":
-		if clientOnly {
-			return finish(nil, &workbench.AgentError{Code: "user_action_required", Message: "Open the installed Cage client to start its connection service", NextAction: "open_desktop"})
-		}
 		if err := host.ConfigureWindowsRuntime(); err != nil {
 			return finish(nil, err)
 		}
@@ -181,10 +165,6 @@ func runAgent(args []string, stdin io.Reader, stdout io.Writer, clientOnly bool)
 			return finish(nil, err)
 		}
 		return finish(map[string]bool{"service_ready": true}, nil)
-	case "host.inspect":
-		probe, cancel := context.WithTimeout(ctx, 20*time.Second)
-		defer cancel()
-		return finish(guestos.Inspect(probe), nil)
 	case "doctor":
 		if *scope != "local" {
 			endpoint := "/api/client/context"
@@ -328,7 +308,7 @@ func runAgent(args []string, stdin io.Reader, stdout io.Writer, clientOnly bool)
 		}
 		return finish(data, nil)
 	default:
-		return bad("Unknown agent command. Run cage agent capabilities.")
+		return bad("Unknown agent command. Run eden agent capabilities.")
 	}
 }
 
@@ -375,7 +355,7 @@ func agentDoctor(ctx context.Context, path string) map[string]any {
 	}
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		add("config_missing", "blocked", "init")
-	} else if _, err := cage.Load(path); err != nil {
+	} else if _, err := eden.Load(path); err != nil {
 		add("config_invalid", "blocked", "diagnostics")
 	} else {
 		add("config_valid", "ok", "")

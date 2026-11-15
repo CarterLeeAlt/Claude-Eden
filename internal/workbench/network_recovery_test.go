@@ -10,9 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/sylvinus/agent-vm/internal/cage"
-	"github.com/sylvinus/agent-vm/internal/guestos"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func TestExitProbeTimeoutKeepsExistingLeaseWithoutRenewing(t *testing.T) {
@@ -22,11 +20,11 @@ func TestExitProbeTimeoutKeepsExistingLeaseWithoutRenewing(t *testing.T) {
 	before := gate.Status()
 	verified := s.safety.VerifiedAt
 	for i := 0; i < 2; i++ {
-		s.monitorSafetyWithProbe(func(context.Context, cage.Config) (string, error) {
+		s.monitorSafetyWithProbe(func(context.Context, eden.Config) (string, error) {
 			return "", context.DeadlineExceeded
 		})
 		after := gate.Status()
-		if after.Mode != cage.GateOpen || after.Until != before.Until || !s.safety.VerifiedAt.Equal(verified) {
+		if after.Mode != eden.GateOpen || after.Until != before.Until || !s.safety.VerifiedAt.Equal(verified) {
 			t.Fatalf("timeout changed the existing lease: before=%+v after=%+v", before, after)
 		}
 	}
@@ -36,7 +34,7 @@ func TestExitProbeTimeoutKeepsExistingLeaseWithoutRenewing(t *testing.T) {
 	}
 	// Windows can grant and renew within the same wall-clock tick.
 	// Advance past the grant tick before requiring a later deadline.
-	for !time.Now().Add(cage.GateLease).After(before.Until) {
+	for !time.Now().Add(eden.GateLease).After(before.Until) {
 		time.Sleep(time.Millisecond)
 	}
 	s.finishSafetyMonitor(context.Background(), client, gate.Status(), "8.8.8.8", "")
@@ -45,80 +43,17 @@ func TestExitProbeTimeoutKeepsExistingLeaseWithoutRenewing(t *testing.T) {
 	}
 	s.safety.VerifiedAt = time.Now().Add(-time.Minute)
 	gate.Close("检查或监测授权已到期")
-	s.monitorSafetyWithProbe(func(context.Context, cage.Config) (string, error) {
+	s.monitorSafetyWithProbe(func(context.Context, eden.Config) (string, error) {
 		t.Fatal("expired gate must not probe or reopen")
 		return "", nil
 	})
-	if gate.Status().Mode != cage.GateClosed || s.recovery.RunID == "" {
+	if gate.Status().Mode != eden.GateClosed || s.recovery.RunID == "" {
 		t.Fatal("expired lease did not remain closed and schedule recovery")
 	}
 }
 
-func TestWindowsFastPacketReconnectSchedulesFreshCheck(t *testing.T) {
-	for _, tc := range []struct {
-		name, reason          string
-		windows, paused, want bool
-	}{
-		{"Windows packet reconnect", windowsPacketDisconnectedReason, true, false, true},
-		{"user pause", windowsPacketDisconnectedReason, true, true, false},
-		{"policy refusal", "当前出口不符合已保存的地区约束", true, false, false},
-		{"other guest", windowsPacketDisconnectedReason, false, false, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			s, gate := grantedToolUpdateServer(t)
-			s.setJobForTest(Job{})
-			if tc.windows {
-				instance := s.instanceDir()
-				s.windowsGuest = &guestos.WindowsProfile{VMID: uuid.New(), InstanceDirectory: instance}
-			}
-			s.ready, s.networkPaused = true, tc.paused
-			s.safety.VerifiedAt = time.Now().Add(-time.Minute)
-			gate.Close(tc.reason)
-			before := gate.Status()
-			s.monitorSafetyWithProbe(func(context.Context, cage.Config) (string, error) {
-				t.Fatal("closed gate ran a monitor probe instead of scheduling a fresh check")
-				return "", nil
-			})
-			if (s.recovery.RunID != "") != tc.want || gate.Status().Mode != cage.GateClosed {
-				t.Fatalf("recovery=%+v gate=%s want scheduled=%t", s.recovery, gate.Status().Mode, tc.want)
-			}
-			if tc.want && (s.recovery.RunID != before.RunID || s.recovery.Epoch != before.Epoch || s.recovery.Configuration != before.Configuration) {
-				t.Fatal("recovery was not bound to the observed closed connection")
-			}
-		})
-	}
-}
-
-func TestMacOSNetworkTickDispatchesRecoveryOnlyAfterSetup(t *testing.T) {
-	for _, tc := range []struct {
-		name, setupID string
-		wantJob       bool
-	}{
-		{"installed guest", "", true},
-		{"setup pending", "pending", false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			s := testServer(t)
-			s.macosGuest = &guestos.MacOSProfile{Instance: "mac", SetupID: tc.setupID}
-			s.ready = true
-			s.safety.VerifiedAt = time.Now()
-			s.recovery = networkRecovery{RunID: "isolated-retry", Next: time.Now().Add(-time.Second)}
-			// Inspect scheduling without starting a guest or executing a network check.
-			s.op.Lock()
-			s.monitorNetworkTick()
-			job := s.jobs.snapshot()
-			s.jobs.cancelRunning()
-			s.op.Unlock()
-			s.jobs.close()
-			if (job.Running && job.Kind == "network-recovery") != tc.wantJob {
-				t.Fatalf("recovery job = %+v, want queued = %t", job, tc.wantJob)
-			}
-		})
-	}
-}
-
 func TestMonitorLocationFailureSchedulesRecoveryButViolationDoesNot(t *testing.T) {
-	for _, policy := range []cage.ExitPolicy{
+	for _, policy := range []eden.ExitPolicy{
 		{Mode: "static", IP: "8.8.8.8"},
 		{Mode: "dynamic", Scope: "any"},
 		{Mode: "dynamic", Scope: "country", CountryCode: "US"},
@@ -142,14 +77,14 @@ func TestMonitorLocationFailureSchedulesRecoveryButViolationDoesNot(t *testing.T
 				if err := writePrivate(s.configPath, cfg); err != nil {
 					t.Fatal(err)
 				}
-				gate, err := cage.NewEgressGate(cfg)
+				gate, err := eden.NewEgressGate(cfg)
 				if err != nil {
 					t.Fatal(err)
 				}
 				if err := os.MkdirAll(s.instanceDir(), 0700); err != nil {
 					t.Fatal(err)
 				}
-				stop, err := cage.StartGateControl(s.configPath, s.instanceDir(), gate)
+				stop, err := eden.StartGateControl(s.configPath, s.instanceDir(), gate)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -158,9 +93,9 @@ func TestMonitorLocationFailureSchedulesRecoveryButViolationDoesNot(t *testing.T
 					t.Fatal(err)
 				}
 				state := gate.Status()
-				report := cage.SafetyReport{Policy: cage.SafetyPolicyVersion, ID: "location-monitor", RunID: state.RunID, CheckID: state.CheckID, Configuration: state.Configuration, CreatedAt: time.Now()}
+				report := eden.SafetyReport{Policy: eden.SafetyPolicyVersion, ID: "location-monitor", RunID: state.RunID, CheckID: state.CheckID, Configuration: state.Configuration, CreatedAt: time.Now()}
 				for _, id := range []string{"egress_policy", "proxy_transport", "dns_transport", "guest_settings", "browser_settings", "filesystem_boundary", "management_boundary", "fail_closed", "udp_policy", "ipv6_policy", "exit_consistency"} {
-					report.Checks = append(report.Checks, cage.SafetyCheck{ID: id, Title: id, Critical: true, State: cage.CheckPassed, Evidence: "isolated fixture", CheckedAt: report.CreatedAt})
+					report.Checks = append(report.Checks, eden.SafetyCheck{ID: id, Title: id, Critical: true, State: eden.CheckPassed, Evidence: "isolated fixture", CheckedAt: report.CreatedAt})
 				}
 				if err := gate.Grant(report); err != nil {
 					t.Fatal(err)
@@ -178,7 +113,7 @@ func TestMonitorLocationFailureSchedulesRecoveryButViolationDoesNot(t *testing.T
 						t.Fatal(err)
 					}
 				}
-				s.monitorSafetyWithProbe(func(context.Context, cage.Config) (string, error) {
+				s.monitorSafetyWithProbe(func(context.Context, eden.Config) (string, error) {
 					if condition == "user paused" {
 						t.Fatal("monitor probed while paused")
 					}
@@ -187,7 +122,7 @@ func TestMonitorLocationFailureSchedulesRecoveryButViolationDoesNot(t *testing.T
 					}
 					return "8.8.8.8", nil
 				})
-				if gate.Status().Mode != cage.GateClosed {
+				if gate.Status().Mode != eden.GateClosed {
 					t.Fatal("unverified or paused network stayed open")
 				}
 				if (s.recovery.RunID != "") != (condition == "location unavailable") {
@@ -202,19 +137,19 @@ func TestNetworkRecoveryAdmissionRequiresObservedPressureToDefer(t *testing.T) {
 	now := time.Now()
 	for _, tc := range []struct {
 		name    string
-		status  cage.ResourceStatus
+		status  eden.ResourceStatus
 		wantJob bool
 	}{
-		{"memory target could not be applied", cage.ResourceStatus{ObservedAt: now, Error: "内存目标未能应用，保持当前配置"}, true},
-		{"failed sample retains stale guest pressure", cage.ResourceStatus{ObservedAt: now.Add(-time.Minute), Error: "资源采样暂时不可用，已暂停内存回收", Pressure: true}, true},
-		{"current guest pressure", cage.ResourceStatus{ObservedAt: now, Pressure: true}, false},
-		{"current host pressure", cage.ResourceStatus{HostPressure: true}, false},
+		{"memory target could not be applied", eden.ResourceStatus{ObservedAt: now, Error: "内存目标未能应用，保持当前配置"}, true},
+		{"failed sample retains stale guest pressure", eden.ResourceStatus{ObservedAt: now.Add(-time.Minute), Error: "资源采样暂时不可用，已暂停内存回收", Pressure: true}, true},
+		{"current guest pressure", eden.ResourceStatus{ObservedAt: now, Pressure: true}, false},
+		{"current host pressure", eden.ResourceStatus{HostPressure: true}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, gate := failedMonitoringServer(t)
 			s.recovery.Next = time.Now().Add(-time.Second)
 			tc.status.Version, tc.status.UpdatedAt = 1, time.Now()
-			if err := writePrivate(filepath.Join(s.instanceDir(), "cage-resources.json"), tc.status); err != nil {
+			if err := writePrivate(filepath.Join(s.instanceDir(), "eden-resources.json"), tc.status); err != nil {
 				t.Fatal(err)
 			}
 			// Inspect actual job admission before allowing the queued worker to run.
@@ -224,14 +159,14 @@ func TestNetworkRecoveryAdmissionRequiresObservedPressureToDefer(t *testing.T) {
 			s.jobs.cancelRunning()
 			s.op.Unlock()
 			s.jobs.close()
-			if (job.Running && job.Kind == "network-recovery") != tc.wantJob || gate.Status().Mode != cage.GateClosed {
+			if (job.Running && job.Kind == "network-recovery") != tc.wantJob || gate.Status().Mode != eden.GateClosed {
 				t.Fatalf("job = %+v, want admitted = %v while gate remains closed", job, tc.wantJob)
 			}
 		})
 	}
 }
 
-func failedMonitoringServer(t *testing.T) (*Server, *cage.EgressGate) {
+func failedMonitoringServer(t *testing.T) (*Server, *eden.EgressGate) {
 	s, gate := grantedToolUpdateServer(t)
 	s.setJobForTest(Job{})
 	client, err := s.gateClient()
@@ -239,7 +174,7 @@ func failedMonitoringServer(t *testing.T) (*Server, *cage.EgressGate) {
 		t.Fatal(err)
 	}
 	s.finishSafetyObservation(context.Background(), client, gate.Status(), "", "guest observation timed out", true)
-	if gate.Status().Mode != cage.GateClosed || s.recovery.RunID == "" {
+	if gate.Status().Mode != eden.GateClosed || s.recovery.RunID == "" {
 		t.Fatal("temporary failure did not revoke and schedule")
 	}
 	return s, gate
@@ -251,12 +186,12 @@ func TestNetworkRecoveryDoesNotReusePriorGrant(t *testing.T) {
 	called := false
 	err := s.runNetworkRecovery(expected, func() error {
 		called = true
-		if gate.Status().Mode != cage.GateClosed {
+		if gate.Status().Mode != eden.GateClosed {
 			t.Fatal("opened before full check")
 		}
 		return errors.New("new full check failed")
 	})
-	if !called || err == nil || gate.Status().Mode != cage.GateClosed || s.recovery.Attempts != 1 || !s.recovery.Next.After(time.Now().Add(20*time.Second)) {
+	if !called || err == nil || gate.Status().Mode != eden.GateClosed || s.recovery.Attempts != 1 || !s.recovery.Next.After(time.Now().Add(20*time.Second)) {
 		t.Fatal("failed check did not remain closed with backoff", err, s.recovery)
 	}
 }
@@ -312,7 +247,7 @@ func TestNetworkRecoverySuccessfulFullCheckClearsRetry(t *testing.T) {
 		}
 		return gate.Grant(report)
 	})
-	if err != nil || gate.Status().Mode != cage.GateOpen || s.recovery.RunID != "" {
+	if err != nil || gate.Status().Mode != eden.GateOpen || s.recovery.RunID != "" {
 		t.Fatal(err, gate.Status().Mode, s.recovery)
 	}
 }
@@ -328,7 +263,7 @@ func TestConfigurationMismatchDoesNotScheduleRecovery(t *testing.T) {
 	}
 	client, _ := s.gateClient()
 	s.finishSafetyObservation(context.Background(), client, state, "", "guest observation timed out", true)
-	if s.recovery.RunID != "" || gate.Status().Mode != cage.GateClosed {
+	if s.recovery.RunID != "" || gate.Status().Mode != eden.GateClosed {
 		t.Fatal("configuration change got transient recovery")
 	}
 }

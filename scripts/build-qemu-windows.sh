@@ -12,7 +12,7 @@ done
 mkdir -p "$build_dir" "$output_dir"
 cd "$build_dir"
 "$source_dir/configure" --target-list=x86_64-softmmu --without-default-features \
-    --prefix=C:/CageQemu --bindir=. --datadir=share --with-suffix= \
+    --prefix=C:/EdenQemu --bindir=. --datadir=share --with-suffix= \
     --extra-cflags=-D_WIN32_WINNT=0x0A00 \
     --enable-whpx --enable-tcg --enable-pixman --enable-slirp --enable-tools \
     --disable-docs --disable-guest-agent --disable-werror \

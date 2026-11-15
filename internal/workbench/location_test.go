@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/managedproxy"
 )
 
@@ -95,7 +95,7 @@ func TestLocationFallbackStaysOnConfiguredProxy(t *testing.T) {
 		w.WriteHeader(http.StatusBadGateway)
 	}))
 	defer proxy.Close()
-	cfg := cage.DefaultConfig()
+	cfg := eden.DefaultConfig()
 	cfg.ProxyURL = proxy.URL
 	if _, err := probeLocationForIP(context.Background(), cfg, "8.8.8.8"); err == nil {
 		t.Fatal("rejected proxy requests produced a location")
@@ -206,18 +206,18 @@ func TestLocationCancellationStopsFallback(t *testing.T) {
 }
 
 func TestLocationProvidersLiveIntegration(t *testing.T) {
-	path := os.Getenv("CAGE_TEST_CONFIG")
+	path := os.Getenv("EDEN_TEST_CONFIG")
 	if path == "" {
 		t.Skip("explicit proxy profile required")
 	}
-	cfg, err := cage.Load(path)
+	cfg, err := eden.Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if core := os.Getenv("CAGE_TEST_CORE"); core != "" {
+	if core := os.Getenv("EDEN_TEST_CORE"); core != "" {
 		cfg = isolatedLocationProxy(t, path, core, cfg)
 	}
-	egress, err := cage.NewEgress(cfg)
+	egress, err := eden.NewEgress(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +230,7 @@ func TestLocationProvidersLiveIntegration(t *testing.T) {
 			t.Fatal("measured-exit location lookup failed", err)
 		}
 	})
-	for _, policy := range []cage.ExitPolicy{
+	for _, policy := range []eden.ExitPolicy{
 		{Mode: "static", Scope: "country"},
 		{Mode: "dynamic", Scope: "any"},
 	} {
@@ -249,7 +249,7 @@ func TestLocationProvidersLiveIntegration(t *testing.T) {
 	}
 	t.Run("manual settings retain country verification", func(t *testing.T) {
 		restricted := cfg
-		restricted.ExitPolicy = cage.ExitPolicy{Mode: "dynamic", Scope: "country", CountryCode: "US"}
+		restricted.ExitPolicy = eden.ExitPolicy{Mode: "dynamic", Scope: "country", CountryCode: "US"}
 		loc, err := probeEnvironmentLocation(context.Background(), restricted, Preferences{})
 		if err != nil || loc.CountryCode == "" || loc.Timezone == "" {
 			t.Fatal("manual settings skipped required country lookup", err)
@@ -268,7 +268,7 @@ func TestLocationProvidersLiveIntegration(t *testing.T) {
 			t.Fatal("cannot save isolated proxy source")
 		}
 		before := cfg
-		before.ExitPolicy = cage.ExitPolicy{Mode: "dynamic", Scope: "any"}
+		before.ExitPolicy = eden.ExitPolicy{Mode: "dynamic", Scope: "any"}
 		if err := writePrivate(s.configPath, before); err != nil {
 			t.Fatal(err)
 		}
@@ -281,7 +281,7 @@ func TestLocationProvidersLiveIntegration(t *testing.T) {
 		if err := s.apply(savedProfile{Config: after, Preferences: preferences}, true); err != nil {
 			t.Fatal("validated manual settings save failed", err)
 		}
-		saved, err := cage.Load(s.configPath)
+		saved, err := eden.Load(s.configPath)
 		if err != nil || saved.Timezone != after.Timezone || saved.Locale != after.Locale || saved.BrowserLanguage != after.BrowserLanguage || saved.ExitPolicy != before.ExitPolicy {
 			t.Fatal("manual settings were not persisted or exit rule changed")
 		}
@@ -319,7 +319,7 @@ func TestLocationProvidersLiveIntegration(t *testing.T) {
 
 // Run the generated config with a fresh port, credentials and directory. The
 // daily core and its node selection are never stopped or reconfigured.
-func isolatedLocationProxy(t *testing.T, configPath, core string, cfg cage.Config) cage.Config {
+func isolatedLocationProxy(t *testing.T, configPath, core string, cfg eden.Config) eden.Config {
 	t.Helper()
 	store, err := managedproxy.Load(filepath.Dir(configPath))
 	if err != nil {

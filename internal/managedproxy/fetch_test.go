@@ -162,7 +162,7 @@ func TestRuntimeUsesRedundantBootstrapWithoutChangingBusinessDNS(t *testing.T) {
 }
 
 func TestInfrastructureDNSLiveIntegration(t *testing.T) {
-	if os.Getenv("CAGE_TEST_BOOTSTRAP") != "1" {
+	if os.Getenv("EDEN_TEST_BOOTSTRAP") != "1" {
 		t.Skip("explicit host-network DNS test required")
 	}
 	tr := &http.Transport{Proxy: nil}

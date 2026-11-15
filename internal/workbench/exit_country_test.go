@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func TestLocationObservationRevokesUnsafeExitAndIgnoresPreviousRoute(t *testing.T) {
@@ -31,9 +31,9 @@ func TestLocationObservationRevokesUnsafeExitAndIgnoresPreviousRoute(t *testing.
 			if err := s.finishLocationProbe(cfg, loc, probeErr); err != nil {
 				t.Fatal(err)
 			}
-			want := cage.GateClosed
+			want := eden.GateClosed
 			if condition == "previous route" {
-				want = cage.GateOpen
+				want = eden.GateOpen
 			}
 			if gate.Status().Mode != want {
 				t.Fatalf("gate mode=%s want=%s", gate.Status().Mode, want)
@@ -48,7 +48,7 @@ func TestLocationObservationRevokesUnsafeExitAndIgnoresPreviousRoute(t *testing.
 }
 
 func TestExitCountryCannotBeSkippedByStaticOrUnrestrictedMode(t *testing.T) {
-	for _, policy := range []cage.ExitPolicy{{Mode: "static", IP: "8.8.8.8"}, {Mode: "dynamic", Scope: "any"}} {
+	for _, policy := range []eden.ExitPolicy{{Mode: "static", IP: "8.8.8.8"}, {Mode: "dynamic", Scope: "any"}} {
 		t.Run(policy.Mode, func(t *testing.T) {
 			s := testServer(t)
 			var calls atomic.Int32
@@ -57,17 +57,17 @@ func TestExitCountryCannotBeSkippedByStaticOrUnrestrictedMode(t *testing.T) {
 				w.WriteHeader(http.StatusServiceUnavailable)
 			}))
 			defer proxy.Close()
-			cfg := cage.DefaultConfig()
+			cfg := eden.DefaultConfig()
 			cfg.ProxyURL, cfg.ExitPolicy = proxy.URL, policy
-			if state, _ := s.checkExitPolicy(context.Background(), cfg, "8.8.8.8"); state != cage.CheckUnknown || calls.Load() == 0 {
+			if state, _ := s.checkExitPolicy(context.Background(), cfg, "8.8.8.8"); state != eden.CheckUnknown || calls.Load() == 0 {
 				t.Fatal("unavailable country lookup did not block or bypassed proxy")
 			}
 			s.locations = map[string]Location{"8.8.8.8": {IP: "8.8.8.8", CountryCode: "CN", CheckedAt: time.Now()}}
-			if state, _ := s.checkExitPolicy(context.Background(), cfg, "8.8.8.8"); state != cage.CheckFailed {
+			if state, _ := s.checkExitPolicy(context.Background(), cfg, "8.8.8.8"); state != eden.CheckFailed {
 				t.Fatal("mainland geolocation accepted")
 			}
 			s.locations["8.8.8.8"] = Location{IP: "8.8.8.8", CountryCode: "US", CheckedAt: time.Now()}
-			if state, _ := s.checkExitPolicy(context.Background(), cfg, "8.8.8.8"); state != cage.CheckPassed {
+			if state, _ := s.checkExitPolicy(context.Background(), cfg, "8.8.8.8"); state != eden.CheckPassed {
 				t.Fatal("verified non-mainland exit rejected")
 			}
 		})

@@ -26,7 +26,6 @@ func TestSuite(t *testing.T) {
 }
 
 const (
-	sock           = "/tmp/gvproxy-api.sock"
 	qemuPort       = 5555
 	sshPort        = 2222
 	ignitionUser   = "test"
@@ -39,6 +38,7 @@ const (
 )
 
 var (
+	sock            string
 	tmpDir          string
 	binDir          string
 	host            *exec.Cmd
@@ -62,6 +62,7 @@ func init() {
 }
 
 var _ = ginkgo.BeforeSuite(func() {
+	sock = filepath.Join(tmpDir, "gvproxy-api.sock")
 	gomega.Expect(os.MkdirAll(filepath.Join(tmpDir, "disks"), os.ModePerm)).Should(gomega.Succeed())
 
 	downloader, err := e2e_utils.NewFcosDownloader(filepath.Join(tmpDir, "disks"))

@@ -1,4 +1,4 @@
-// Isolated browser fixture. No request from this page reaches the running Cage service.
+// Isolated browser fixture. No request from this page reaches the running Eden service.
 import { createRequire } from "node:module";
 import { defaultAppearance, presets } from "../src/appearance-state.mjs";
 const require = createRequire(import.meta.url);
@@ -18,12 +18,12 @@ export async function createWorkbench({
   startupFailure = false,
   waitForReady = true,
   initialization = { required: false },
-  clientContext = { mode: "local", connection_id: "local", client_platform: "darwin", server_platform: "darwin", connection: { state: "disconnected" } },
+  clientContext = { mode: "local", connection_id: "local", client_platform: "windows", server_platform: "windows", connection: { state: "disconnected" } },
 } = {}) {
   const engines = require(
-    process.env.CAGE_PLAYWRIGHT_MODULE || "playwright",
+    process.env.EDEN_PLAYWRIGHT_MODULE || "playwright",
   );
-  const browser = await engines[process.env.CAGE_TEST_BROWSER || "chromium"].launch({ headless: true, executablePath: process.env.CAGE_TEST_BROWSER_PATH, ...launchOptions });
+  const browser = await engines[process.env.EDEN_TEST_BROWSER || "chromium"].launch({ headless: true, executablePath: process.env.EDEN_TEST_BROWSER_PATH, ...launchOptions });
   const context = await browser.newContext({ viewport, recordVideo, deviceScaleFactor });
   const page = await context.newPage();
   const errors = [];
@@ -46,7 +46,7 @@ export async function createWorkbench({
       },
     },
     failAppearance: false,
-    chosenFolder: "/Users/shihao/Projects/design-lab",
+    chosenFolder: "C:/Users/developer/Projects/design-lab",
     failSave: false,
     failJob: false,
     saves: [],
@@ -57,7 +57,8 @@ export async function createWorkbench({
     accountPassword: "fixture-password",
     failAccountSave: false,
     settings: {
-      workspace: "/Users/shihao/.claude-cage-workspace",
+      balanced_display: false,
+      workspace: "C:/Users/developer/.claude-eden-workspace",
       browser_home_url: "https://www.bing.com/",
       dns_url: "https://cloudflare-dns.com/dns-query",
       timezone: "Asia/Shanghai",
@@ -65,16 +66,16 @@ export async function createWorkbench({
       browser_language: "zh-CN",
       auto_timezone: true,
       auto_language: false,
-      keyboard: "mac",
+      keyboard: "native",
       exit_policy: { mode: "dynamic", scope: "country", country_code: "US" },
     },
     status: {
-      environment_directory: "/Users/shihao/.claude-cage-workspace",
+      environment_directory: "C:/Users/developer/.claude-eden-workspace",
       environment_workspace: true,
-      projects: ["/Users/shihao/.claude-cage-workspace"],
+      projects: ["C:/Users/developer/.claude-eden-workspace"],
       ready: false,
       vm_running: false,
-      keyboard: "mac",
+      keyboard: "native",
       job: { running: false },
       can_restore: true,
     },
@@ -86,16 +87,12 @@ export async function createWorkbench({
   await page.exposeFunction("chooseTestFolder", () => state.chosenFolder);
   await page.exposeFunction("requestNativeForTest", async (body) => nativeRequest ? nativeRequest(body) : null);
   await page.addInitScript(() => {
-    window.webkit = {
-      messageHandlers: {
-        cage: {
-          postMessage: async (body) => {
-            const { action } = body;
-            if (action === "chooseFolder") return window.chooseTestFolder();
-            if (action === "clipboardRead") return "fixture clipboard";
-            return window.requestNativeForTest(body);
-          },
-        },
+    window.edenNativeBridge = {
+      postMessage: async (body) => {
+        const { action } = body;
+        if (action === "chooseFolder") return window.chooseTestFolder();
+        if (action === "clipboardRead") return "fixture clipboard";
+        return window.requestNativeForTest(body);
       },
     };
   });
@@ -104,7 +101,7 @@ export async function createWorkbench({
       state.terminalConnections++;
       socket.send(
         Buffer.from(
-          "\r\n\u001b[1mCage\u001b[0m  ·  Linux terminal\r\n\r\n~/Projects/design-lab  $ ",
+          "\r\n\u001b[1mWorkbench\u001b[0m  ·  Linux terminal\r\n\r\n~/Projects/design-lab  $ ",
         ),
       );
     } else socket.close();
@@ -125,9 +122,9 @@ export async function createWorkbench({
     if (path === "/account") return route.fulfill({ json: accountView() });
     if (path.startsWith("/account/")) {
       const action = path.split("/").at(-1);
-      if (!["create", "unlock"].includes(action) && !state.account.unlocked) return route.fulfill({ status: 423, body: "请先解锁 Cage" });
+      if (!["create", "unlock"].includes(action) && !state.account.unlocked) return route.fulfill({ status: 423, contentType: "text/plain; charset=utf-8", body: "请先解锁 Eden" });
       if (action === "create") {
-        if (state.account.exists || !body.username?.trim() || body.password?.length < 8 || body.password !== body.confirm_password) return route.fulfill({ status: 400, body: "账户信息无效" });
+        if (state.account.exists || !body.username?.trim() || body.password?.length < 8 || body.password !== body.confirm_password) return route.fulfill({ status: 400, contentType: "text/plain; charset=utf-8", body: "账户信息无效" });
         Object.assign(state.account, { exists: true, unlocked: true, username: body.username.trim(), avatar: body.avatar || "" });
         state.accountPassword = body.password;
       } else if (action === "unlock") {
@@ -135,11 +132,11 @@ export async function createWorkbench({
         state.account.unlocked = true;
         state.account.require_authentication = false;
       } else if (action === "profile") {
-        if (state.failAccountSave) return route.fulfill({ status: 400, body: "资料未能保存，请重试" });
+        if (state.failAccountSave) return route.fulfill({ status: 400, contentType: "text/plain; charset=utf-8", body: "资料未能保存，请重试" });
         Object.assign(state.account, { username: body.username.trim(), avatar: body.avatar });
       } else if (action === "password") {
-        if (body.old_password !== state.accountPassword) return route.fulfill({ status: 400, body: "密码不正确" });
-        if (body.password?.length < 8 || body.password !== body.confirm_password) return route.fulfill({ status: 400, body: "新密码无效" });
+        if (body.old_password !== state.accountPassword) return route.fulfill({ status: 400, contentType: "text/plain; charset=utf-8", body: "密码不正确" });
+        if (body.password?.length < 8 || body.password !== body.confirm_password) return route.fulfill({ status: 400, contentType: "text/plain; charset=utf-8", body: "新密码无效" });
         state.accountPassword = body.password;
       } else if (action === "lock") { state.account.unlocked = false; state.account.require_authentication = true; }
       else if (action === "suspend") state.account.unlocked = false;
@@ -154,7 +151,7 @@ export async function createWorkbench({
       }
       return route.fulfill({ json: accountView() });
     }
-    if (!state.account.unlocked && !["/session", "/launch", "/appearance"].includes(path)) return route.fulfill({ status: 423, body: "Cage 已锁定，请先登录" });
+    if (!state.account.unlocked && !["/session", "/launch", "/appearance"].includes(path)) return route.fulfill({ status: 423, contentType: "text/plain; charset=utf-8", body: "Eden 已锁定，请先登录" });
     if (browserRequest && path.startsWith("/browser/") && path !== "/browser/events") return browserRequest(route, path, body);
     if (path.startsWith("/cli/")) {
       if (cliRequest) return cliRequest(route, path, body);
@@ -175,6 +172,7 @@ export async function createWorkbench({
         if (state.failAppearance)
           return route.fulfill({
             status: 500,
+            contentType: "text/plain; charset=utf-8",
             body: "外观设置未能保存，请重试",
           });
         state.appearance = structuredClone(body);
@@ -261,7 +259,7 @@ export async function createWorkbench({
           if (!state.status.projects.includes(body.workspace))
             state.status.projects.push(body.workspace);
           state.status.environment_workspace = body.workspace.endsWith(
-            "/.claude-cage-workspace",
+            "/.claude-eden-workspace",
           );
         }
       }
@@ -274,7 +272,7 @@ export async function createWorkbench({
       result = { id };
     } else if (path === "/start") {
       state.status.job = { id: "start", kind: "start", running: false };
-      state.settings.workspace = "/Users/shihao/.claude-cage-workspace";
+      state.settings.workspace = "C:/Users/developer/.claude-eden-workspace";
       state.status.environment_workspace = true;
       state.status.ready = true;
       state.status.vm_running = true;
@@ -308,8 +306,8 @@ export async function createWorkbench({
     }
     else if (path === "/browser/settings") {
       let tab = state.tabs.find(tab => tab.kind === "browser-settings");
-      if (!tab) { tab = { id: "browser-settings", kind: "browser-settings", title: "设置", url: "cage://settings#general" }; state.tabs.push(tab); }
-      tab.url = "cage://settings#" + (body?.mode || "general"); state.active = tab.id; result = tab;
+      if (!tab) { tab = { id: "browser-settings", kind: "browser-settings", title: "设置", url: "workbench://settings#general" }; state.tabs.push(tab); }
+      tab.url = "workbench://settings#" + (body?.mode || "general"); state.active = tab.id; result = tab;
     }
     else if (path === "/browser/extensions") result = { items: [] };
     else if (path === "/vnc-credentials") result = { password: "fixture-only" };
@@ -383,8 +381,8 @@ export async function createWorkbench({
     return route.fulfill({ json: result });
   });
   if (beforeNavigate) await beforeNavigate(page, state);
-  await page.goto(url || process.env.CAGE_UI_URL || "http://127.0.0.1:5198");
-  if (waitForReady && !startupFailure && !state.status.vm_running && clientContext.mode !== "none") await page.getByRole("heading", { name: state.initialization.required ? state.initialization.started ? "安装并检查客机环境" : "为 Cage 准备独立环境" : "先启动 Cage 环境" }).waitFor();
+  await page.goto(url || process.env.EDEN_UI_URL || "http://127.0.0.1:5198");
+  if (waitForReady && !startupFailure && !state.status.vm_running && clientContext.mode !== "none") await page.getByRole("heading", { name: state.initialization.required ? state.initialization.started ? "安装并检查客机环境" : "为 Eden 准备独立环境" : "先启动 Eden 环境" }).waitFor();
   return { browser, context, page, state, errors };
 }
 

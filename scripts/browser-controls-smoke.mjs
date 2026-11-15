@@ -12,7 +12,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 assert.equal(process.platform, "linux", "Run in the Linux guest");
 assert.ok(process.env.DISPLAY, "Provide an isolated X display");
-const directory = await mkdtemp(join(tmpdir(), "cage-controls-smoke-"));
+const directory = await mkdtemp(join(tmpdir(), "workbench-controls-smoke-"));
 const reports = new Map();
 const site = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
@@ -27,11 +27,11 @@ const site = http.createServer(async (req, res) => {
   }
   res.setHeader("Content-Type", "text/html");
   if (url.pathname === "/first")
-    res.setHeader("Set-Cookie", "cage_smoke=1; SameSite=Lax");
+    res.setHeader("Set-Cookie", "workbench_smoke=1; SameSite=Lax");
   res.end(`<!doctype html><title>${url.pathname}</title><p>Browser smoke test</p><a href="#section">Section</a><button onclick="history.pushState({}, '', '#pushed')">Push history</button>
     <script>fetch('/report?path='+encodeURIComponent(location.pathname), {
       method:'POST',body:JSON.stringify({webdriver:navigator.webdriver,
-        cookie:document.cookie.includes('cage_smoke=1')})
+        cookie:document.cookie.includes('workbench_smoke=1')})
     });${url.pathname === "/spa" ? "setTimeout(() => history.pushState({}, '', '#pushed'), 500);" : ""}</script>`);
 });
 await new Promise((resolve) => site.listen(0, "127.0.0.1", resolve));
@@ -111,19 +111,19 @@ async function stop() {
 try {
   // Redirect deployment paths and the control listener; keep host credentials
   // out of the disposable profile. Browser-control handlers stay unchanged.
-  const source = await readFile(new URL("../internal/cage/browser-agent.mjs", import.meta.url), "utf8");
+  const source = await readFile(new URL("../internal/eden/browser-agent.mjs", import.meta.url), "utf8");
   const listen = 'server.listen(18500, "127.0.0.1");';
   assert.ok(source.includes(listen), "Update the isolated control-listener adapter");
   assert.ok(source.includes('spawn(browserBinary, flags'), "Update the isolated browser launch adapter");
   await writeFile(join(directory, "agent.mjs"), source
-    .replaceAll("/home/cage-browser", directory)
-    .replaceAll("/usr/local/lib/cage-split", join(directory, "split-extension"))
-    .replace("/etc/claude-cage/browser-control.json", join(directory, "control.json"))
+    .replaceAll("/home/browser", directory)
+    .replaceAll("/usr/local/lib/workbench-split", join(directory, "split-extension"))
+    .replace("/etc/workbench/browser-control.json", join(directory, "control.json"))
     .replace('spawn(browserBinary, flags', 'spawn(browserBinary, [...flags, "--use-mock-keychain", "--password-store=basic"]')
     .replace(listen, 'server.listen(0, "127.0.0.1", () => console.log("CONTROL_PORT=" + server.address().port));'));
   for (const name of ["browser-audit", "browser-downloads", "browser-uploads", "browser-login", "browser-private", "browser-cookies", "browser-extensions", "browser-vault", "browser-clipboard", "native-input"])
-    await copyFile(new URL(`../internal/cage/${name}.mjs`, import.meta.url), join(directory, `${name}.mjs`));
-  await cp(new URL("../internal/cage/split-extension", import.meta.url), join(directory, "split-extension"), { recursive: true });
+    await copyFile(new URL(`../internal/eden/${name}.mjs`, import.meta.url), join(directory, `${name}.mjs`));
+  await cp(new URL("../internal/eden/split-extension", import.meta.url), join(directory, "split-extension"), { recursive: true });
   await writeFile(join(directory, "control.json"), JSON.stringify({ token, workspace: directory }));
   await writeFile(join(directory, "homepage.json"), JSON.stringify({ url: origin + "/first" }));
   await start();

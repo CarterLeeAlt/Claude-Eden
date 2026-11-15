@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -17,7 +17,7 @@ func transferMountServer(t *testing.T, running bool, mounted string) *Server {
 	transfer, old := t.TempDir(), t.TempDir()
 	transfer, _ = filepath.EvalSymlinks(transfer)
 	old, _ = filepath.EvalSymlinks(old)
-	if err := writePrivate(filepath.Join(s.profile, "environment.json"), cage.EnvironmentRecord{Directory: transfer, IdentityDirectory: old}); err != nil {
+	if err := writePrivate(filepath.Join(s.profile, "environment.json"), eden.EnvironmentRecord{Directory: transfer, IdentityDirectory: old}); err != nil {
 		t.Fatal(err)
 	}
 	if mounted == "current" {
@@ -37,7 +37,7 @@ func transferMountServer(t *testing.T, running bool, mounted string) *Server {
 		t.Fatal(err)
 	}
 	if running {
-		if err = writePrivate(filepath.Join(s.instanceDir(), "cage-running.json"), map[string]int{"pid": os.Getpid()}); err != nil {
+		if err = writePrivate(filepath.Join(s.instanceDir(), "eden-running.json"), map[string]int{"pid": os.Getpid()}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -57,7 +57,7 @@ func TestTransferMountMigrationRequiresRestartAtEveryEntry(t *testing.T) {
 			case "start":
 				err = s.startEnvironment(false)
 			case "up":
-				err = s.runCage("up")
+				err = s.runEden("up")
 			}
 			var failure *projectShareError
 			if !errors.As(err, &failure) || failure.Recovery != "environment-restart" || s.ready {

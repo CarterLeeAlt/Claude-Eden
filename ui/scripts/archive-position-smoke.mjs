@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
-const output = process.env.CAGE_TEST_CAPTURE || "/tmp/cage-archive-position";
-const engine = process.env.CAGE_TEST_BROWSER || "chromium";
+const output = process.env.EDEN_TEST_CAPTURE || "../.tmp/guest-neutralization/ui-eden/archive-position";
+const engine = process.env.EDEN_TEST_BROWSER || "chromium";
 const { page, state, browser, errors } = await createWorkbench({
-  url: process.env.CAGE_UI_URL || "http://127.0.0.1:5217",
+  url: process.env.EDEN_UI_URL || "http://127.0.0.1:5217",
 });
 const workspace = state.settings.workspace;
 const sessions = Array.from({ length: 18 }, (_, i) => ({

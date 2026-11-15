@@ -31,7 +31,7 @@ func TestDesktopLocalProbeLeavesColdProfileUntouched(t *testing.T) {
 
 func TestDesktopLocalReleaseHasIndependentLauncherAndAccountGuards(t *testing.T) {
 	s := testServer(t)
-	path := filepath.Join(s.profile, "state", "lima", "fixture", "cage-running.json")
+	path := filepath.Join(s.profile, "state", "lima", "fixture", "eden-running.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestDesktopLocalAuthenticatedViewAndIdleExit(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, exe, "-test.run=^TestServeShutdownHandoff$", "-test.timeout=25s")
-	cmd.Env = append(os.Environ(), "CAGE_TEST_SHUTDOWN_CONFIG="+config)
+	cmd.Env = append(os.Environ(), "EDEN_TEST_SHUTDOWN_CONFIG="+config)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -176,8 +176,8 @@ func TestDesktopLocalAuthenticatedViewAndIdleExit(t *testing.T) {
 	if err != nil || !after.ServiceRunning || after.ControllerID != st.ControllerID {
 		t.Fatalf("view closed controller: %+v %v", after, err)
 	}
-	if released, err := d.(*desktopLocal).ReleaseOwnedIdle(ctx, after); err != nil || released {
-		t.Fatalf("independently started service auto-release: released=%v err=%v", released, err)
+	if err := d.(*desktopLocal).ReleaseUnused(ctx, session); err != nil {
+		t.Fatalf("independently started service view release: %v", err)
 	}
 	if after, err = d.Status(ctx); err != nil || !after.ServiceRunning || after.ControllerID != st.ControllerID {
 		t.Fatalf("independent owner was lost: %+v %v", after, err)

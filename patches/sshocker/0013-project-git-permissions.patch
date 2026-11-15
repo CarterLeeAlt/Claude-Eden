@@ -28,7 +28,7 @@
 -	for _, name := range strings.Split(rel, "/") {
 -		n := FoldName(name)
 -		switch n {
--		case ".git", ".hg", ".sl", ".jj", ".ssh", ".gnupg", ".aws", ".kube", ".azure", ".docker", ".config", ".claude-cage", ".agent-vm", ".lima",
+-		case ".git", ".hg", ".sl", ".jj", ".ssh", ".gnupg", ".aws", ".kube", ".azure", ".docker", ".config", ".eden", ".agent-vm", ".lima",
 -			".env", ".envrc", ".netrc", "_netrc", ".npmrc", ".pypirc", ".git-credentials", ".gitconfig", ".gitmodules",
 -			".claude", ".codex", ".cursor", ".vscode", ".idea", ".zed", ".gemini", ".devcontainer", ".devcontainer.json",
 -			".dir-locals.el", ".mcp.json", ".githooks", ".husky", ".pre-commit-config.yaml",

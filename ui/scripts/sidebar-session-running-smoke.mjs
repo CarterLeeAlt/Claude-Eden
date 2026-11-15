@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
-const output = process.env.CAGE_TEST_CAPTURE || "/tmp/cage-sidebar-session-running";
+const output = process.env.EDEN_TEST_CAPTURE || "../.tmp/guest-neutralization/ui-eden/sidebar-session-running";
 await mkdir(output, {recursive:true});
-for (const platform of ["darwin", "windows", "linux"]) {
+for (const platform of ["windows"]) {
   const sessions = [
     {id:"external",title:"其他窗口中的会话",running:true},
-    {id:"owned",title:"Cage 中已打开的会话",running:true,active:true},
+    {id:"owned",title:"Eden 中已打开的会话",running:true,active:true},
     {id:"waiting",title:"等待打开的会话"},
     {id:"available",title:"可以接续的会话"},
     {id:"desktop",title:"设置界面字体和设计，保留长标题的省略显示",running:true,claude_desktop:true,pinned:true},
@@ -15,7 +15,7 @@ for (const platform of ["darwin", "windows", "linux"]) {
   const releases = [], opens = [];
   let behavior = "hold", state;
   const fixture = await createWorkbench({
-    url:process.env.CAGE_UI_URL || "http://127.0.0.1:5228",
+    url:process.env.EDEN_UI_URL || "http://127.0.0.1:5228",
     clientContext:{mode:"local",connection_id:"local",client_platform:platform,server_platform:platform},
     beforeNavigate:async (_page, value) => {
       state = value;
@@ -116,7 +116,7 @@ for (const platform of ["darwin", "windows", "linux"]) {
     // Exit the external process, then refresh using the production list event.
     sessions[0].running = false;
     sessions[4].running = false;
-    await page.evaluate(()=>window.dispatchEvent(new Event("cage-cli-sessions-changed")));
+    await page.evaluate(()=>window.dispatchEvent(new Event("eden-cli-sessions-changed")));
     await page.waitForFunction(()=>document.querySelector('[aria-label="其他窗口中的会话"]')?.disabled === false);
     assert.equal(await externalIcon.count(),0);
     assert.equal(await desktopIcon.count(),0,"Desktop indicator survived after exit");

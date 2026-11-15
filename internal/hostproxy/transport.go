@@ -1,5 +1,5 @@
 // Package hostproxy routes host-side image and application requests through the host's
-// proxy settings. Guest traffic must continue to use cage.Egress instead.
+// proxy settings. Guest traffic must continue to use eden.Egress instead.
 package hostproxy
 
 import (

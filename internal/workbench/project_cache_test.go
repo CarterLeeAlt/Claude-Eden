@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func TestProjectShareOptionsCacheNamesAndAttributes(t *testing.T) {
@@ -22,7 +22,7 @@ func TestProjectShareOptionsCacheNamesAndAttributes(t *testing.T) {
 
 func TestProjectFileCacheChoiceSurvivesOlderClients(t *testing.T) {
 	s := testServer(t)
-	cfg, err := cage.Load(s.configPath)
+	cfg, err := eden.Load(s.configPath)
 	if err != nil {
 		t.Fatal(err)
 	}

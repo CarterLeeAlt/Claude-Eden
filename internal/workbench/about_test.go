@@ -15,10 +15,9 @@ func TestAboutUsesLocalBuildAndAuthenticatedUpdateEgress(t *testing.T) {
 	t.Setenv("NO_PROXY", "")
 	t.Setenv("no_proxy", "")
 	s := testServer(t)
-	// A selected remote host must never own this software's build information.
-	s.remote = newRemoteGateway(s.profile)
-	s.remote.setRemote(true)
-	t.Cleanup(s.remote.close)
+	// The desktop gateway serves the installed application's build metadata.
+	s.gateway = newDesktopGateway(nil)
+	t.Cleanup(s.gateway.close)
 	if got := request(s, "GET", "/api/client/about", "", "", false).Code; got != 401 {
 		t.Fatalf("unauthenticated: %d", got)
 	}

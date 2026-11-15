@@ -3,14 +3,14 @@ package workbench
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/sylvinus/agent-vm/internal/cage"
-	"github.com/sylvinus/agent-vm/internal/guestos"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func TestEnvironmentUpgradeSeparatesPrivateLegacyWorkspaceFromVMIdentity(t *testing.T) {
@@ -20,10 +20,10 @@ func TestEnvironmentUpgradeSeparatesPrivateLegacyWorkspaceFromVMIdentity(t *test
 	}
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	for _, system := range []string{"linux", "macos", "windows"} {
+	for _, system := range []string{"linux"} {
 		t.Run(system, func(t *testing.T) {
 			s := testServer(t)
-			s.profile = filepath.Join(home, ".claude-cage", system)
+			s.profile = filepath.Join(home, ".eden", system)
 			legacy := s.profile + "-workspace"
 			selected := filepath.Join(home, "projects", system)
 			for _, path := range []string{s.profile, legacy, selected} {
@@ -32,15 +32,10 @@ func TestEnvironmentUpgradeSeparatesPrivateLegacyWorkspaceFromVMIdentity(t *test
 				}
 			}
 			s.preferences.Workspace = selected
-			if system == "macos" {
-				s.macosGuest = &guestos.MacOSProfile{Instance: "mac", User: "guest"}
-			} else if system == "windows" {
-				s.windowsGuest = &guestos.WindowsProfile{}
-			}
 			if err := writePrivate(filepath.Join(s.profile, "environment.json"), map[string]string{"directory": legacy}); err != nil {
 				t.Fatal(err)
 			}
-			identity := cage.InstanceName(s.profile, legacy)
+			identity := eden.InstanceName(s.profile, legacy)
 			disk := filepath.Join(s.profile, "state", "lima", identity, "disk")
 			if err := writePrivate(filepath.Join(filepath.Dir(disk), "lima.yaml"), map[string]string{}); err != nil {
 				t.Fatal(err)
@@ -55,7 +50,7 @@ func TestEnvironmentUpgradeSeparatesPrivateLegacyWorkspaceFromVMIdentity(t *test
 				if err := s.prepareEnvironment(); err != nil {
 					t.Fatal(err)
 				}
-				if s.environmentDir() != cage.DefaultEnvironmentDir(s.profile) || s.workspace() != selected || cage.InstanceName(s.profile, s.environmentDir()) != identity {
+				if s.environmentDir() != eden.DefaultEnvironmentDir(s.profile) || s.workspace() != selected || eden.InstanceName(s.profile, s.environmentDir()) != identity {
 					t.Fatal("startup changed the VM identity or selected project")
 				}
 				if _, err := validateWorkspace(legacy, s.profile); err == nil {
@@ -99,7 +94,7 @@ func TestEnvironmentIdentityDoesNotFollowLastProject(t *testing.T) {
 
 func TestFreshEnvironmentHasNoProjectGrantAcrossRestarts(t *testing.T) {
 	s := testServer(t)
-	t.Cleanup(func() { _ = os.RemoveAll(cage.DefaultEnvironmentDir(s.profile)) })
+	t.Cleanup(func() { _ = os.RemoveAll(eden.DefaultEnvironmentDir(s.profile)) })
 	for range 2 {
 		if err := s.prepareEnvironment(); err != nil {
 			t.Fatal(err)
@@ -121,7 +116,7 @@ func TestEnvironmentEntryPreservesLiveProject(t *testing.T) {
 	s := testServer(t)
 	s.preferences.Workspace, _ = filepath.EvalSymlinks(t.TempDir())
 	workspace := s.workspace()
-	path := filepath.Join(s.profile, "state", "lima", cage.InstanceName(s.profile, workspace), "cage-running.json")
+	path := filepath.Join(s.profile, "state", "lima", eden.InstanceName(s.profile, workspace), "eden-running.json")
 	if err := writePrivate(filepath.Join(filepath.Dir(path), "lima.yaml"), map[string]string{}); err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +126,7 @@ func TestEnvironmentEntryPreservesLiveProject(t *testing.T) {
 	if err := s.prepareEnvironment(); err != nil {
 		t.Fatal(err)
 	}
-	if s.workspace() != workspace || cage.EnvironmentIdentityDir(s.profile) != workspace {
+	if s.workspace() != workspace || eden.EnvironmentIdentityDir(s.profile) != workspace {
 		t.Fatal("live project was replaced")
 	}
 }

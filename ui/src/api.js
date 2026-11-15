@@ -1,6 +1,6 @@
 import { reportDiagnostic } from "./diagnostics.mjs";
 import { httpErrorMessage, connectionErrorMessage, operationName, nativeFailureMessage } from "./error-message.mjs";
-import { assertConnection, connectionHeaders, getClientContext, isProjectSharesPath } from "./client-context.mjs";
+import { assertConnection, connectionHeaders, getClientContext } from "./client-context.mjs";
 import { installAgentNativeConsumer } from "./agent-native.js";
 let sessionRenewal;
 class WorkbenchUnreachable extends Error {}
@@ -9,7 +9,7 @@ async function responseError(response, path, method = "GET") {
     httpErrorMessage(path, response.status, await response.text(), response.headers.get("Content-Type") || "", method),
   );
   error.status = response.status;
-  error.recovery = response.headers.get("X-Cage-Recovery") || "";
+  error.recovery = response.headers.get("X-Eden-Recovery") || "";
   return error;
 }
 async function renewSession() {
@@ -58,12 +58,12 @@ export async function api(path, body, method, headers = {}, { signal } = {}) {
     await renewSession();
     response = await send();
   }
-  if (response.status === 423 && !path.startsWith("/client/")) window.dispatchEvent(new Event("cage-account-locked"));
+  if (response.status === 423 && !path.startsWith("/client/")) window.dispatchEvent(new Event("eden-account-locked"));
   if (!response.ok) throw await responseError(response, path, options.method);
   let value;
   try { value = await response.json(); }
   catch (error) { reportDiagnostic("frontend", error); throw new Error(`${operationName(path, options.method)}失败：后台返回的结果格式无效。请重新连接；仍出现时在设置中导出诊断包。`, { cause: error }); }
-  if (path !== "/session" && !path.startsWith("/agent/native") && (!path.startsWith("/client/") || isProjectSharesPath(path))) assertConnection(connection);
+  if (path !== "/session" && !path.startsWith("/agent/native") && !path.startsWith("/client/")) assertConnection(connection);
   return value;
 }
 export async function uploadFile(path, file, { signal, onProgress } = {}) {
@@ -78,11 +78,11 @@ export async function uploadFile(path, file, { signal, onProgress } = {}) {
     request.setRequestHeader("Content-Type", "application/octet-stream");
     for (const [name, value] of Object.entries(headers)) request.setRequestHeader(name, value);
     request.upload.onprogress = event => onProgress?.(event.loaded, event.total || file.size);
-    request.onerror = () => { cleanup(); reject(new Error("上传文件失败：与 Cage 后台的连接中断。请恢复连接后核对目标是否已收到文件，再重新选择文件。")); };
+    request.onerror = () => { cleanup(); reject(new Error("上传文件失败：与 Eden 后台的连接中断。请恢复连接后核对目标是否已收到文件，再重新选择文件。")); };
     request.onabort = () => { cleanup(); reject(new DOMException("上传已取消", "AbortError")); };
     request.onload = () => {
       cleanup();
-      if (request.status === 423) window.dispatchEvent(new Event("cage-account-locked"));
+      if (request.status === 423) window.dispatchEvent(new Event("eden-account-locked"));
       if (request.status !== 200) {
         const error = new Error(httpErrorMessage(path, request.status, request.responseText, request.getResponseHeader("Content-Type") || ""));
         error.status = request.status; reject(error); return;
@@ -102,15 +102,14 @@ export async function uploadFile(path, file, { signal, onProgress } = {}) {
     return send();
   }
 }
-const nativeBridge = () =>
-  window.cageNativeBridge || window.webkit?.messageHandlers?.cage;
+const nativeBridge = () => window.edenNativeBridge;
 export const nativeAvailable = () => Boolean(nativeBridge());
 const lostLocalView = (context) =>
   context.desktop_gateway && context.mode === "local" &&
   context.connection?.state === "failed" && context.connection.error_code === "connection_lost";
 
 async function suspendBeforeQuit(context) {
-  if (context.mode !== "local" || context.client_only || lostLocalView(context)) return;
+  if (context.mode !== "local" || lostLocalView(context)) return;
   try {
     await api("/account/suspend", {});
   } catch (error) {

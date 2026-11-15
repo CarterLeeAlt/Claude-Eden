@@ -3,5 +3,5 @@
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$Path)
 . (Join-Path $PSScriptRoot 'windows-common.ps1')
-try { Sign-CageFile $Path (Get-SigningTool) }
+try { Sign-EdenFile $Path (Get-SigningTool) }
 catch { Write-Error $_; exit 1 }

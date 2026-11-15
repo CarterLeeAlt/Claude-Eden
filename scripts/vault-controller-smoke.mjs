@@ -9,8 +9,8 @@ import https from "node:https";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-assert.ok(process.env.CAGE_TEST_BROWSER_PATH, "Set CAGE_TEST_BROWSER_PATH to Chromium");
-const dir = await realpath(await mkdtemp(join(tmpdir(), "cage-vault-controller-")));
+assert.ok(process.env.EDEN_TEST_BROWSER_PATH, "Set EDEN_TEST_BROWSER_PATH to Chromium");
+const dir = await realpath(await mkdtemp(join(tmpdir(), "workbench-vault-controller-")));
 const token = randomBytes(32).toString("hex"), lease = randomBytes(32).toString("hex");
 execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", join(dir, "key.pem"), "-out", join(dir, "cert.pem"), "-days", "1", "-subj", "/CN=localhost"], { stdio: "ignore" });
 const site = https.createServer({ key: await readFile(join(dir,"key.pem")), cert: await readFile(join(dir,"cert.pem")) }, (req,res) => {
@@ -36,15 +36,15 @@ async function evaluate(id, expression) {
   return result.result.value;
 }
 try {
-  const sourceDir=new URL("../internal/cage/",import.meta.url);
+  const sourceDir=new URL("../internal/eden/",import.meta.url);
   for(const name of await readdir(sourceDir)) if ((name.startsWith("browser-")&&name.endsWith(".mjs"))||name==="native-input.mjs") await cp(new URL(name,sourceDir),join(dir,name));
   await cp(new URL("split-extension",sourceDir),join(dir,"extension"),{recursive:true});
   const original=await readFile(new URL("browser-agent.mjs",sourceDir),"utf8");
   const marker='const input = JSON.parse(text || "{}");';
   assert.ok(original.includes('spawn(browserBinary, flags'), "Update the isolated browser launch adapter");
-  const adapted=original.replaceAll("/home/cage-browser",dir).replace("/etc/claude-cage/browser-control.json",join(dir,"control.json"))
-    .replace("/usr/local/lib/cage-split",join(dir,"extension"))
-    .replace('spawn(browserBinary, flags',`spawn(${JSON.stringify(process.env.CAGE_TEST_BROWSER_PATH)}, [...flags, "--use-mock-keychain", "--password-store=basic"]`)
+  const adapted=original.replaceAll("/home/browser",dir).replace("/etc/workbench/browser-control.json",join(dir,"control.json"))
+    .replace("/usr/local/lib/workbench-split",join(dir,"extension"))
+    .replace('spawn(browserBinary, flags',`spawn(${JSON.stringify(process.env.EDEN_TEST_BROWSER_PATH)}, [...flags, "--password-store=basic"]`)
     .replace('"--start-fullscreen",','"--headless=new", "--ignore-certificate-errors", "--disable-background-networking",')
     .replace('server.listen(18500, "127.0.0.1");','server.listen(0,"127.0.0.1",()=>console.log("PORT="+server.address().port));')
     .replace(marker,`${marker}\nif (req.url === "/__vault-test") { res.end(JSON.stringify(await cdp(input.method,input.params||{},await session(input.id)))); return; }`);

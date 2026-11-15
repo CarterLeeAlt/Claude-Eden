@@ -13,7 +13,6 @@ import {
   Plus,
   RefreshCw,
   Settings,
-  Server,
   SquareTerminal,
   UsersRound,
 } from "lucide-react";
@@ -24,7 +23,6 @@ import { projectName } from "./workspace-state.mjs";
 import { WorkspaceTabs } from "./workspace-tabs";
 import { projectSessionRows, sessionKey } from "./session-order.mjs";
 import { AccountMenu } from "./account";
-import { useSSHNavigation } from "./remote-hosts";
 import { GuestSystemIcon } from "./guest-system-icon";
 
 const SESSION_PREVIEW_LIMIT = 5;
@@ -82,7 +80,6 @@ export function WorkspaceSidebar({
   onCollapse,
   updateAction,
 }) {
-  const ssh = useSSHNavigation();
   const [collapsed, setCollapsed] = useState({});
   const [allSessionsShown, setAllSessionsShown] = useState({});
   const sessionBaseline = useRef(new Map());
@@ -92,14 +89,13 @@ export function WorkspaceSidebar({
     if (activeWorkspace)
       setCollapsed((previous) => ({ ...previous, [activeWorkspace]: false }));
   }, [active, activeWorkspace]);
-  if (ssh?.expanded) return null;
   const healthy = ready && network.mode === "open";
   return (
     <aside className="workspace-sidebar" aria-label="项目与终端">
       <div className="sidebar-top">
         <span className="sidebar-brand">
           <img className="brand-logo" src={logo} alt="" />
-          Cage
+          Eden
                 <GuestSystemIcon system={guestSystem} />
         </span>
         <button
@@ -141,7 +137,6 @@ export function WorkspaceSidebar({
           </button>
         </div>
         <button className={`sidebar-link ${tailscaleOpen ? "selected" : ""}`} aria-current={tailscaleOpen ? "page" : undefined} onClick={onTailscale} aria-label="打开 Tailscale"><Network size={17} />Tailscale</button>
-        {ssh && <button className="sidebar-link ssh-navigation" onClick={ssh.open} aria-label="SSH 主机"><Server size={17} />SSH</button>}
         <button className={`sidebar-link ${desktopOpen ? "selected" : ""}`} onClick={onClaudeDesktop} disabled={!running || busy} title="安装或打开 Claude Desktop"><Monitor size={17} />Claude Desktop</button>
         <button className={`sidebar-link ${claudeAccountsOpen ? "selected" : ""}`} onClick={onClaudeAccounts}
           aria-current={claudeAccountsOpen ? "page" : undefined}>

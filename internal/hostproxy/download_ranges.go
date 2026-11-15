@@ -87,7 +87,7 @@ func downloadRanges(parent context.Context, client *http.Client, address, target
 		progress.Lock()
 		defer progress.Unlock()
 		received += int64(n)
-		fmt.Fprintf(out, "CAGE_HOST_BYTES %s %d %d\n", name, received, total)
+		fmt.Fprintf(out, "EDEN_HOST_BYTES %s %d %d\n", name, received, total)
 	}
 	fmt.Fprintf(out, "%s：最多 4 连接分段下载\n", name)
 	report(0)

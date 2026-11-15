@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/sylvinus/agent-vm/internal/diagnostics"
-	"github.com/sylvinus/agent-vm/internal/usererror"
 	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/sylvinus/agent-vm/internal/diagnostics"
+	"github.com/sylvinus/agent-vm/internal/usererror"
 )
 
 type Job struct {
@@ -28,7 +29,7 @@ type Job struct {
 
 var (
 	errJobBusy    = errors.New("另一个操作仍在进行，请稍候")
-	errJobsClosed = errors.New("后台正在更新，请重新打开 Cage。")
+	errJobsClosed = errors.New("后台正在更新，请重新打开 Eden。")
 )
 
 // jobManager owns accepted work independently of HTTP requests. The operation
@@ -99,7 +100,7 @@ func (m *jobManager) submit(operation sync.Locker, kind string, pauseVersion uin
 					}
 					execution.progressUpdated = now
 					m.state.SetupProgress = p
-					if strings.HasPrefix(line, "CAGE_") {
+					if strings.HasPrefix(line, "EDEN_") || strings.HasPrefix(line, "WORKBENCH_") {
 						return true
 					}
 				}

@@ -2,7 +2,7 @@ import React, { lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { installDiagnostics } from "./diagnostics.mjs";
 import { DiagnosticBoundary } from "./diagnostics.jsx";
-import { ClientRoot } from "./remote-hosts";
+import { LocalWorkbenchRoot } from "./local-workbench";
 import { native } from "./api";
 import "./style.css";
 import { IconHints } from "./icon-hints.jsx";
@@ -11,14 +11,14 @@ const Workbench = lazy(() => import("./main.jsx"));
 
 installDiagnostics();
 // Keep the native menu usable while the workbench is loading or disconnected.
-window.cageNativeAction = (command) => {
-  if (window.cageWorkbenchAction) return window.cageWorkbenchAction(command);
+window.edenNativeAction = (command) => {
+  if (window.edenWorkbenchAction) return window.edenWorkbenchAction(command);
   if (command === "quit") return native("quitNow");
 };
 createRoot(document.getElementById("root")).render(
   <DiagnosticBoundary>
     <IconHints />
-    <ClientRoot>
+    <LocalWorkbenchRoot>
       <Suspense
         fallback={
           <div className="client-loading" role="status">
@@ -28,7 +28,7 @@ createRoot(document.getElementById("root")).render(
       >
         <Workbench />
       </Suspense>
-    </ClientRoot>
+    </LocalWorkbenchRoot>
   </DiagnosticBoundary>,
 );
 

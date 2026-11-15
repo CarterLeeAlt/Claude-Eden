@@ -3,6 +3,10 @@ module github.com/lima-vm/lima/v2
 
 go 1.26.0
 
+replace workbench.local/guestidentity => ../../shared/guestidentity
+
+require workbench.local/guestidentity v0.0.0
+
 // Our own packages and golang.org/x packages are trusted
 //gosocialcheck:trusted
 require (

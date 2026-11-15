@@ -1,9 +1,9 @@
 // Real Chromium, isolated profile, intercepted HTTPS fixtures; no personal sites.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { BrowserVault } from "../internal/cage/browser-vault.mjs";
+import { BrowserVault } from "../internal/eden/browser-vault.mjs";
 const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.CAGE_PLAYWRIGHT_MODULE || "playwright");
+const { chromium } = require(process.env.EDEN_PLAYWRIGHT_MODULE || "playwright");
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext();
 const page = await context.newPage();
@@ -36,7 +36,7 @@ try {
   let state = await status();
   assert.equal(state.origin, "https://mail.example.test");
   assert.ok(state.document);
-  assert.equal(await page.evaluate(() => typeof globalThis.cageVaultSubmitted), "undefined", "page gained vault binding");
+  assert.equal(await page.evaluate(() => typeof globalThis.workbenchVaultSubmitted), "undefined", "page gained vault binding");
   await page.getByLabel("Email").fill("alice@example.test");
   await page.getByLabel("Password").fill("first-secret");
   await page.evaluate(() => document.querySelector("form").dispatchEvent(new Event("submit", { bubbles: true })));

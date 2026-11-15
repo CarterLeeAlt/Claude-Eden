@@ -1,6 +1,6 @@
 package workbench
 
-import "github.com/sylvinus/agent-vm/internal/cage"
+import "github.com/sylvinus/agent-vm/internal/eden"
 
 // These are product defaults for common regions, not a claim that a country
 // has one language. Unlisted regions retain the user's applied language.
@@ -19,7 +19,7 @@ func languageSuggestion(country string) (locale, browser string) {
 	return "", ""
 }
 
-func autoRegionSettings(cfg cage.Config, preferences Preferences, location Location) cage.Config {
+func autoRegionSettings(cfg eden.Config, preferences Preferences, location Location) eden.Config {
 	if preferences.AutoTimezone && location.Timezone != "" {
 		cfg.Timezone = location.Timezone
 	}

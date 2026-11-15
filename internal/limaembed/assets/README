@@ -1,3 +1,4 @@
-The Makefile places Lima's templates and the gzipped Linux guest agent here.
-Apple Silicon builds also place the macOS guest agent in Darwin/. Other builds
-exclude that directory. See ../share.go for extraction and guest selection.
+The Windows build and Makefile place the gzipped Linux guest agent here.
+scripts/prepare-lima-templates.mjs copies only Debian 13 and its _images/debian-13
+and _default/mounts dependencies. The reviewed image pin lives in internal/hostimage/images.
+See ../share.go for extraction.

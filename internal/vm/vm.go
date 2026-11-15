@@ -25,11 +25,11 @@ var ErrUnmountable = errors.New("a share the backend cannot take as written")
 // ErrLimaOverrides is returned while the backend's own config would add to
 // what agent-vm sets for every VM (Lima's _config/default.yaml and
 // override.yaml).
-var ErrLimaOverrides = errors.New("agent-vm does not use Lima's default.yaml or override.yaml; move it out of the way")
+var ErrLimaOverrides = errors.New("the VM requires its generated configuration without Lima's default.yaml or override.yaml; move the override out of the way")
 
 // ErrUnconfined is returned by Start for a VM with a share the VM could
 // reach the rest of the host through (see Confined).
-var ErrUnconfined = errors.New("agent-vm starts no VM with a share not confined to its folder")
+var ErrUnconfined = errors.New("each VM share must be confined to its own folder")
 
 // Status of a VM.
 type Status string
@@ -93,8 +93,6 @@ type Settings struct {
 
 	// noEphemeralPorts: see ephemeralPorts.
 	noEphemeralPorts bool
-	// Refresh the cloud-init timezone on cold starts of an existing virtual Mac.
-	macOSTimezone string
 }
 
 // ephemeralPorts is the guest kernel's range for the ports a program gets

@@ -80,9 +80,6 @@
   padding: 48px var(--s-gutter) 72px;
   font-size: var(--s-md);
 }
-.settings-page .settings-content.settings-content--remote {
-  padding: 48px clamp(16px, 4vw, 64px) 72px;
-}
 
 /* Section title: the one large heading on each page. */
 .settings-page .settings-content .section-title {
@@ -554,17 +551,6 @@
   font-size: var(--s-md);
 }
 .settings-page .about-result-detail {
-  font-size: var(--s-xs);
-}
-
-/* ── Remote connection ───────────────────────────────────── */
-.settings-page .settings-content .remote-link-settings .section-title h3 {
-  font-size: var(--s-xl);
-}
-.settings-page .settings-content .remote-relay-settings h4 {
-  margin-top: 0;
-}
-.settings-page .remote-pair-privacy {
   font-size: var(--s-xs);
 }
 

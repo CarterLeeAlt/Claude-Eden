@@ -45,13 +45,13 @@ func (e *app) scan(ctx context.Context, dir string) *gitguard.Result {
 	return gitguard.Scan(ctx, shares, paths.Home())
 }
 
-// Cage projects support Git writes by default. Standalone agent-vm requires
+// Eden projects support Git writes by default. Standalone agent-vm requires
 // an explicit host-side opt-out.
 func writableGitOptOut(flag bool) bool {
-	return cageWritableGit() || flag || os.Getenv("AGENT_VM_UNSAFE_WRITABLE_GIT") == "1"
+	return edenWritableGit() || flag || os.Getenv("AGENT_VM_UNSAFE_WRITABLE_GIT") == "1"
 }
 
-func cageWritableGit() bool { return os.Getenv("CLAUDE_CAGE_CONFIG") != "" }
+func edenWritableGit() bool { return os.Getenv("EDEN_CONFIG") != "" }
 
 // tristate is a key's value: 1, 0, or unknown when the backend could not be
 // asked, never a confident 0.

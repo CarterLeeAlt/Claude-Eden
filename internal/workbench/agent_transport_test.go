@@ -103,7 +103,7 @@ func TestAgentNativeQueueClaimsOnceAndKeepsReceipts(t *testing.T) {
 	claim := func(connection string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("GET", s.origin+"/api/agent/native?consumer=window", nil)
 		r.Header.Set(connectionHeader, connection)
-		r.Header.Set("X-Cage-Agent-Window", grant.Proof)
+		r.Header.Set("X-Eden-Agent-Window", grant.Proof)
 		r.AddCookie(&http.Cookie{Name: s.cookieName(), Value: s.session})
 		w := httptest.NewRecorder()
 		s.handler().ServeHTTP(w, r)
@@ -126,7 +126,7 @@ func TestAgentNativeQueueClaimsOnceAndKeepsReceipts(t *testing.T) {
 		r := httptest.NewRequest("POST", s.origin+complete, strings.NewReader(body))
 		r.Header.Set("Origin", s.origin)
 		r.Header.Set("Content-Type", "application/json")
-		r.Header.Set("X-Cage-Agent-Window", grant.Proof)
+		r.Header.Set("X-Eden-Agent-Window", grant.Proof)
 		r.AddCookie(&http.Cookie{Name: s.cookieName(), Value: s.session})
 		w := httptest.NewRecorder()
 		s.handler().ServeHTTP(w, r)
@@ -153,8 +153,8 @@ func TestAgentDesktopConfigurationUsesExplicitSelection(t *testing.T) {
 	s.desktopEntry = true
 	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { jsonReply(w, map[string]bool{"ok": true}) }))
 	t.Cleanup(endpoint.Close)
-	s.remote = newDesktopGateway(s.profile, &gatewayLocalFixture{endpoint: endpoint, status: DesktopLocalStatus{Known: true}})
-	t.Cleanup(s.remote.close)
+	s.gateway = newDesktopGateway(&gatewayLocalFixture{endpoint: endpoint, status: DesktopLocalStatus{Known: true}})
+	t.Cleanup(s.gateway.close)
 	path := desktopConfigPath(full)
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		t.Fatal(err)
@@ -185,13 +185,10 @@ func TestAgentDesktopConfigurationUsesExplicitSelection(t *testing.T) {
 	if !current.DesktopGateway || current.ConnectionID == "" {
 		t.Fatal(string(result.Data))
 	}
-	body := `{"name":"test host","host":"127.0.0.1","port":22,"user":"qa","auth":{"kind":"agent"}}`
-	result, err = AgentRequest(context.Background(), full, target, "POST", "/api/client/hosts", strings.NewReader(body), "application/json", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.HTTPStatus != 200 || !strings.Contains(string(result.Data), "test host") {
-		t.Fatal(string(result.Data))
+	_, err = AgentRequest(context.Background(), full, target, "POST", "/api/client/hosts", strings.NewReader(`{}`), "application/json", "")
+	var removed *AgentError
+	if !errors.As(err, &removed) || removed.HTTPStatus != http.StatusNotFound {
+		t.Fatal("removed host management endpoint accepted", err)
 	}
 	_, err = AgentRequest(context.Background(), full, target, "POST", "/api/stop", strings.NewReader(`{}`), "application/json", "")
 	var ae *AgentError

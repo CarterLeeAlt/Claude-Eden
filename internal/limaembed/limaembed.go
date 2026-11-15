@@ -25,10 +25,9 @@ import (
 	"github.com/lima-vm/lima/v2/pkg/osutil"
 	"github.com/lima-vm/sshocker/pkg/reversesshfs"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
 	"github.com/sylvinus/agent-vm/internal/diagnostics"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/guard"
-	"github.com/sylvinus/agent-vm/internal/guestos"
 	"github.com/sylvinus/agent-vm/internal/netguard"
 	"github.com/sylvinus/agent-vm/internal/state"
 	"github.com/sylvinus/agent-vm/internal/vmname"
@@ -48,13 +47,13 @@ func Run(args []string) bool {
 		return false
 	}
 	var diagnosticStream *diagnostics.Stream
-	if path := os.Getenv(cage.ConfigEnv); path != "" {
+	if path := os.Getenv(eden.ConfigEnv); path != "" {
 		hostagent.ManageResources = func(ctx context.Context, dir string, cfg *limatype.LimaYAML, balloon driver.MemoryBalloon, read func(context.Context, string) ([]byte, error)) func() {
 			maximum, err := units.RAMInBytes(*cfg.Memory)
 			if err != nil || *cfg.OS != limatype.LINUX {
 				return func() {}
 			}
-			return cage.StartResourceManager(ctx, dir, uint64(maximum), *cfg.CPUs, read, balloon.SetMemoryTarget)
+			return eden.StartResourceManager(ctx, dir, uint64(maximum), *cfg.CPUs, read, balloon.SetMemoryTarget)
 		}
 		diagnosticStream = diagnostics.New(filepath.Dir(path)).Stream("vm-hostagent", "warn")
 		diagnostics.SetDefault(diagnostics.New(filepath.Dir(path)))
@@ -85,12 +84,12 @@ func Run(args []string) bool {
 		usernet.Names, usernet.Answered = policy.Name, policy.Answered
 		dns.Names, dns.Answered = policy.Name, policy.Answered
 	}
-	if path := os.Getenv(cage.ConfigEnv); path != "" {
-		stopJobWatch, err = cage.WatchJobStop(filepath.Dir(path), os.Getenv(cage.JobEnv), notifyHostagentStop)
+	if path := os.Getenv(eden.ConfigEnv); path != "" {
+		stopJobWatch, err = eden.WatchJobStop(filepath.Dir(path), os.Getenv(eden.JobEnv), notifyHostagentStop)
 		if err != nil {
 			logrus.Fatal(err)
 		}
-		cfg, err := cage.Load(path)
+		cfg, err := eden.Load(path)
 		if err != nil {
 			logrus.Fatal(err)
 		}
@@ -103,28 +102,19 @@ func Run(args []string) bool {
 		if name == vmname.Template+"-building" {
 			// The base builder installs trusted tooling before any project is
 			// mounted. Project VMs always start with the external gate closed.
-			egress, err := cage.NewEgress(cfg)
+			egress, err := eden.NewEgress(cfg)
 			if err != nil {
 				logrus.Fatal(err)
 			}
 			usernet.Outbound, usernet.GuestDial = egress.Allows, egress.DialContext
 			usernet.DNSExchange, dns.Exchange = egress.ExchangeDNS, egress.ExchangeDNS
 		} else {
-			gate, err := cage.NewEgressGate(cfg)
+			gate, err := eden.NewEgressGate(cfg)
 			if err != nil {
 				logrus.Fatal(err)
 			}
-			if stopGateControl, err = cage.StartGateControl(path, filepath.Join(string(st), "lima", name), gate); err != nil {
+			if stopGateControl, err = eden.StartGateControl(path, filepath.Join(string(st), "lima", name), gate); err != nil {
 				logrus.Fatal(err)
-			}
-			if name == "mac" {
-				// The installed Mac profile binds this exact VZ instance. Other
-				// workloads retain their existing switch behavior.
-				if binding, err := guestos.LoadMacOSProfile(filepath.Dir(path)); err != nil {
-					logrus.Fatal(err)
-				} else if binding != nil && binding.Instance == name {
-					usernet.DroppedIPv6 = gate.ObserveDroppedIPv6
-				}
 			}
 			usernet.Outbound, usernet.GuestDial = gate.Allows, gate.DialContext
 			usernet.DNSExchange, dns.Exchange = gate.ExchangeDNS, gate.ExchangeDNS
@@ -135,14 +125,14 @@ func Run(args []string) bool {
 	}
 	// The user is asked before the VM changes a file their machine runs on
 	// its own (guard): the shares' SFTP server runs here.
-	if os.Getenv(cage.ConfigEnv) == "" {
+	if os.Getenv(eden.ConfigEnv) == "" {
 		g, err := guard.Load(string(st), args[len(args)-1])
 		if err != nil {
 			logrus.Fatal(err)
 		}
 		reversesshfs.Guard = g.Allow
 	} else {
-		// Cage grants normal file access inside explicitly shared directories.
+		// Claude Eden grants normal file access inside explicitly shared directories.
 		reversesshfs.Guard = nil
 	}
 	root := &cobra.Command{

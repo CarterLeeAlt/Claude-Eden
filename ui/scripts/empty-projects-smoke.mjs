@@ -8,7 +8,7 @@ const vite = await createServer({ root, configFile: `${root}/vite.config.js`, se
 await vite.listen();
 const url = `http://127.0.0.1:${vite.httpServer.address().port}`;
 try {
-  for (const platform of ["darwin", "windows", "linux"]) {
+  for (const platform of ["windows"]) {
     const { browser, page, state, errors } = await createWorkbench({ url,
       clientContext: { mode: "local", connection_id: "local", client_platform: platform, server_platform: platform, connection: { state: "disconnected" } },
       beforeNavigate: async (_page, state) => {

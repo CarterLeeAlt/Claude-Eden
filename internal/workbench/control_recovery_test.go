@@ -75,7 +75,7 @@ func TestControllerRestartAfterGracefulAndForcedExit(t *testing.T) {
 			}
 			start := func() *exec.Cmd {
 				cmd := exec.Command(exe, "-test.run=^TestServeShutdownHandoff$", "-test.timeout=30s")
-				cmd.Env = append(os.Environ(), "CAGE_TEST_SHUTDOWN_CONFIG="+config)
+				cmd.Env = append(os.Environ(), "EDEN_TEST_SHUTDOWN_CONFIG="+config)
 				if err := cmd.Start(); err != nil {
 					t.Fatal(err)
 				}
@@ -137,7 +137,7 @@ func TestControllerRestartAfterGracefulAndForcedExit(t *testing.T) {
 			if !controllerLockFree(profile) {
 				t.Fatal("exited process left the OS lock held")
 			}
-			// Occupy the old port with a different service while reopening Cage.
+			// Occupy the old port with a different service while reopening Eden.
 			listener, err := net.Listen("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(old.Port)))
 			if err != nil {
 				t.Fatal(err)

@@ -4,10 +4,10 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
-import { BrowserClipboard } from "../internal/cage/browser-clipboard.mjs";
+import { BrowserClipboard } from "../internal/eden/browser-clipboard.mjs";
 
 const { chromium } = createRequire(import.meta.url)(
-  process.env.CAGE_PLAYWRIGHT_MODULE || "playwright",
+  process.env.EDEN_PLAYWRIGHT_MODULE || "playwright",
 );
 const site = http.createServer((request, response) => {
   if (request.url === "/source") {
@@ -28,7 +28,7 @@ const site = http.createServer((request, response) => {
 await new Promise((resolve) => site.listen(0, "127.0.0.1", resolve));
 const origin = `http://127.0.0.1:${site.address().port}`;
 const browser = await chromium.launch({ headless: true,
-  ...(process.env.CAGE_BROWSER_TEST_CHROMIUM ? { executablePath: process.env.CAGE_BROWSER_TEST_CHROMIUM } : {}) });
+  ...(process.env.EDEN_BROWSER_TEST_CHROMIUM ? { executablePath: process.env.EDEN_BROWSER_TEST_CHROMIUM } : {}) });
 const context = await browser.newContext({
   permissions: ["clipboard-write"],
 });
@@ -92,7 +92,7 @@ try {
   await click(page, ["中文🙂\nexact text"]);
   await click(page, ["中文🙂\nexact text"]);
   const fingerprint = () => ({
-    globals: Object.getOwnPropertyNames(globalThis).filter(name => /cage/i.test(name)),
+    globals: Object.getOwnPropertyNames(globalThis).filter(name => /workbench/i.test(name)),
     native: [Clipboard.prototype.writeText, Clipboard.prototype.write, DataTransfer.prototype.setData, DataTransfer.prototype.clearData, Document.prototype.execCommand]
       .every(fn => /\{ \[native code\] \}/.test(Function.prototype.toString.call(fn))),
   });
@@ -201,8 +201,8 @@ try {
       navigator.clipboard.write([
         new ClipboardItem({
           "text/plain": new Blob(["must not escape"], { type: "text/plain" }),
-          "application/x-cage-invalid": new Blob(["unsupported"], {
-            type: "application/x-cage-invalid",
+          "application/x-workbench-invalid": new Blob(["unsupported"], {
+            type: "application/x-workbench-invalid",
           }),
         }),
       ]);

@@ -8,10 +8,12 @@ import (
 
 var physicalProxyInterface = managedproxy.PhysicalInterface
 
-// The lifecycle lock is held by monitorNetwork. Schedule a regular job so a
-// user stop can cancel recovery and pause can still revoke the gate immediately.
+// Physical interface discovery can take seconds on Windows. Observe without
+// the environment lock, then validate the same configuration and job generation
+// before applying the result. Recovery remains an ordinary cancellable job.
 func (s *Server) monitorProxyInterface() {
-	if s.busy() {
+	job := s.jobs.snapshot()
+	if job.Running {
 		return
 	}
 	cfg, err := loadConfig(s.configPath)
@@ -19,19 +21,32 @@ func (s *Server) monitorProxyInterface() {
 		return
 	}
 	name, err := physicalProxyInterface(s.lifetimeContext())
+	if s.lifetimeContext().Err() != nil {
+		return
+	}
+	// A successful unchanged observation has nothing to commit.
+	s.mu.Lock()
+	lost := s.proxyNetworkLost
+	s.mu.Unlock()
+	bound, boundErr := managedproxy.BoundInterface(filepath.Join(managedproxy.Dir(s.profile), "config.yaml"))
+	if err == nil && (boundErr != nil || (bound == name && !lost)) {
+		return
+	}
+	if !s.op.TryLock() {
+		return
+	}
+	defer s.op.Unlock()
+	current, configErr := loadConfig(s.configPath)
+	nextJob := s.jobs.snapshot()
+	if configErr != nil || current != cfg || nextJob.Running || nextJob.ID != job.ID || s.lifetimeContext().Err() != nil {
+		return
+	}
 	if err != nil {
 		_ = s.closeProxyGate(err.Error())
 		s.mu.Lock()
 		s.safety.monitorError = err.Error()
 		s.proxyNetworkLost = true
 		s.mu.Unlock()
-		return
-	}
-	s.mu.Lock()
-	lost := s.proxyNetworkLost
-	s.mu.Unlock()
-	bound, err := managedproxy.BoundInterface(filepath.Join(managedproxy.Dir(s.profile), "config.yaml"))
-	if err != nil || (bound == name && !lost) {
 		return
 	}
 	// Revoke the previous report before the asynchronous recovery can start.

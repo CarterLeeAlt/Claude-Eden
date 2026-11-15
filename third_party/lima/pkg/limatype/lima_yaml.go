@@ -7,7 +7,7 @@ import (
 	"net"
 	"runtime"
 
-	"github.com/lima-vm/lima/v2/pkg/guestidentity"
+	"workbench.local/guestidentity"
 
 	"github.com/lima-vm/go-qcow2reader/image"
 	"github.com/opencontainers/go-digest"

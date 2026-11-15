@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
 	"github.com/sylvinus/agent-vm/internal/diagnostics"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func TestUpdateCheckWaitsForProxyButDownloadReportsFailure(t *testing.T) {
@@ -20,7 +20,7 @@ func TestUpdateCheckWaitsForProxyButDownloadReportsFailure(t *testing.T) {
 		t.Run(operation, func(t *testing.T) {
 			profile := t.TempDir()
 			config := filepath.Join(profile, "config.json")
-			data, _ := json.Marshal(cage.DefaultConfig())
+			data, _ := json.Marshal(eden.DefaultConfig())
 			if err := os.WriteFile(config, data, 0600); err != nil {
 				t.Fatal(err)
 			}

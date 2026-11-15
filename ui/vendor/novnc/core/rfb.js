@@ -15,8 +15,8 @@ import { clientToElement } from './util/element.js';
 import { setCapture } from './util/events.js';
 import EventTargetMixin from './util/eventtarget.js';
 import Display from "./display.js";
-import CageBrowserDisplay from "./cage-browser-display.js";
-import CageWheel, { cageWheelCapability, cageWheelEncoding, cageWheelNotched, cageWheelPacket } from "./cage-wheel.js";
+import WorkbenchBrowserDisplay from "./workbench-browser-display.js";
+import WorkbenchWheel, { workbenchWheelCapability, workbenchWheelEncoding, workbenchWheelNotched, workbenchWheelPacket } from "./workbench-wheel.js";
 import Inflator from "./inflator.js";
 import Deflator from "./deflator.js";
 import Keyboard from "./input/keyboard.js";
@@ -196,16 +196,16 @@ export default class RFB extends EventTargetMixin {
         this._viewportHasMoved = false;
         this._accumulatedWheelDeltaX = 0;
         this._accumulatedWheelDeltaY = 0;
-        // Offered to Cage's own display server, which confirms it in a fence.
-        this._cageBrowserDisplay = !!options.cageBrowserDisplay;
-        this._cagePixelWheel = false;
+        // Offered to Workbench's display server, which confirms it in a fence.
+        this._workbenchBrowserDisplay = !!options.workbenchBrowserDisplay;
+        this._workbenchPixelWheel = false;
         // A display server that knows no distance leaves it to this function,
         // which resolves to whether the guest scrolled by it.
-        this._cageWheelSink = options.cageWheelSink || null;
-        this._cageWheelAt = -Infinity;
-        this._cageWheelRetry = -Infinity;
-        this._cageWheelSteps = false;
-        this._cageWheel = new CageWheel((x, y, dx, dy) => this._cageSendWheel(x, y, dx, dy));
+        this._workbenchWheelSink = options.workbenchWheelSink || null;
+        this._workbenchWheelAt = -Infinity;
+        this._workbenchWheelRetry = -Infinity;
+        this._workbenchWheelSteps = false;
+        this._workbenchWheel = new WorkbenchWheel((x, y, dx, dy) => this._workbenchSendWheel(x, y, dx, dy));
 
         // Gesture state
         this._gestureLastTapTime = null;
@@ -244,7 +244,7 @@ export default class RFB extends EventTargetMixin {
         this._screen.appendChild(this._canvas);
 
         // Cursor
-        this._cursor = new Cursor(options.cageBrowserDisplay || options.cageCursorFallback ? 'default' : 'none');
+        this._cursor = new Cursor(options.workbenchBrowserDisplay ? 'default' : 'none');
 
         // XXX: TightVNC 2.8.11 sends no cursor at all until Windows changes
         // it. Result: no cursor at all until a window border or an edit field
@@ -272,7 +272,7 @@ export default class RFB extends EventTargetMixin {
         // NB: nothing that needs explicit teardown should be done
         // before this point, since this can throw an exception
         try {
-            const DisplayClass = options.cageBrowserDisplay ? CageBrowserDisplay : Display;
+            const DisplayClass = options.workbenchBrowserDisplay ? WorkbenchBrowserDisplay : Display;
             this._display = new DisplayClass(this._canvas);
         } catch (exc) {
             Log.Error("Display exception: " + exc);
@@ -652,7 +652,7 @@ export default class RFB extends EventTargetMixin {
         }
         clearTimeout(this._resizeTimeout);
         clearTimeout(this._mouseMoveTimer);
-        this._cageWheel.stop();
+        this._workbenchWheel.stop();
         Log.Debug("<< RFB.disconnect");
     }
 
@@ -1255,19 +1255,19 @@ export default class RFB extends EventTargetMixin {
         let dX = ev.deltaX;
         let dY = ev.deltaY;
 
-        // Cage: the guest scrolls by the distance itself. A wheel turned
+        // Workbench: the guest scrolls by the distance itself. A wheel turned
         // while a button is held keeps the steps below, which carry the mask.
-        if (this._cagePixelWheel && bmask === 0) {
+        if (this._workbenchPixelWheel && bmask === 0) {
             const unit = ev.deltaMode === 1 ? WHEEL_LINE_HEIGHT :
                 ev.deltaMode === 2 ? this._canvas.clientHeight : 1;
-            this._cageWheel.add(pos.x, pos.y, dX * unit, dY * unit);
+            this._workbenchWheel.add(pos.x, pos.y, dX * unit, dY * unit);
             return;
         }
 
-        // Cage: the same through the sink, in framebuffer pixels.
-        if (bmask === 0 && this._cageSinkTakes(ev)) {
-            const ratio = this._cageWheelRatio();
-            this._cageWheel.add(pos.x, pos.y, dX * ratio.x, dY * ratio.y);
+        // Workbench: the same through the sink, in framebuffer pixels.
+        if (bmask === 0 && this._workbenchSinkTakes(ev)) {
+            const ratio = this._workbenchWheelRatio();
+            this._workbenchWheel.add(pos.x, pos.y, dX * ratio.x, dY * ratio.y);
             return;
         }
 
@@ -1281,54 +1281,54 @@ export default class RFB extends EventTargetMixin {
             dY *= WHEEL_LINE_HEIGHT;
         }
 
-        this._cageStepWheel(pos.x, pos.y, bmask, dX, dY);
+        this._workbenchStepWheel(pos.x, pos.y, bmask, dX, dY);
     }
 
-    // Cage: framebuffer pixels per pixel of the canvas as it is shown.
-    _cageWheelRatio() {
+    // Workbench: framebuffer pixels per pixel of the canvas as it is shown.
+    _workbenchWheelRatio() {
         const shown = this._canvas.getBoundingClientRect();
         return { x: shown.width ? this._fbWidth / shown.width : 1,
                  y: shown.height ? this._fbHeight / shown.height : 1 };
     }
 
-    // Cage: whether this event goes to the sink as a distance. A gesture keeps
+    // Workbench: whether this event goes to the sink as a distance. A gesture keeps
     // the way it started with. A notched wheel names steps, which the guest
     // animates itself, and a held modifier means zoom or the other axis there.
     // macOS turns the notches of a wheel into a distance before they arrive.
-    _cageSinkTakes(ev) {
-        if (!this._cageWheelSink || ev.deltaMode !== 0) return false;
-        const now = performance.now(), continuing = now - this._cageWheelAt < 200;
-        this._cageWheelAt = now;
+    _workbenchSinkTakes(ev) {
+        if (!this._workbenchWheelSink || ev.deltaMode !== 0) return false;
+        const now = performance.now(), continuing = now - this._workbenchWheelAt < 200;
+        this._workbenchWheelAt = now;
         if (!continuing) {
-            this._cageWheelSteps = (!isMac() && cageWheelNotched(ev)) || now < this._cageWheelRetry;
+            this._workbenchWheelSteps = (!isMac() && workbenchWheelNotched(ev)) || now < this._workbenchWheelRetry;
         }
-        if (this._cageModifiers && this._cageModifiers.size) this._cageWheelSteps = true;
-        return !this._cageWheelSteps;
+        if (this._workbenchModifiers && this._workbenchModifiers.size) this._workbenchWheelSteps = true;
+        return !this._workbenchWheelSteps;
     }
 
-    _cageSinkWheel(x, y, dx, dy) {
-        const sink = this._cageWheelSink;
+    _workbenchSinkWheel(x, y, dx, dy) {
+        const sink = this._workbenchWheelSink;
         // What the guest did not scroll by goes to the display as steps,
         // together with the distance that arrived in the meantime.
         const steps = () => {
-            const rest = this._cageWheel.take(), ratio = this._cageWheelRatio();
-            this._cageWheelSteps = true;
+            const rest = this._workbenchWheel.take(), ratio = this._workbenchWheelRatio();
+            this._workbenchWheelSteps = true;
             if (this._rfbConnectionState !== 'connected' || this._viewOnly) return;
-            this._cageStepWheel(x, y, 0, (dx + rest.dx) / ratio.x, (dy + rest.dy) / ratio.y);
+            this._workbenchStepWheel(x, y, 0, (dx + rest.dx) / ratio.x, (dy + rest.dy) / ratio.y);
         };
         return sink({ x: this._display.absX(x), y: this._display.absY(y), deltaX: dx, deltaY: dy }).then((handled) => {
             if (handled) return;
             // A menu, a second pane or developer tools: ask again in a moment.
-            this._cageWheelRetry = performance.now() + 1000;
+            this._workbenchWheelRetry = performance.now() + 1000;
             steps();
         }, () => {
             // A guest without this ability keeps the steps for good.
-            if (this._cageWheelSink === sink) this._cageWheelSink = null;
+            if (this._workbenchWheelSink === sink) this._workbenchWheelSink = null;
             steps();
         });
     }
 
-    _cageStepWheel(x, y, bmask, dX, dY) {
+    _workbenchStepWheel(x, y, bmask, dX, dY) {
         const pos = { x, y };
 
         // Mouse wheel events are sent in steps over VNC. This means that the VNC
@@ -1364,18 +1364,18 @@ export default class RFB extends EventTargetMixin {
         }
     }
 
-    _cageSendWheel(x, y, dx, dy) {
-        if (!this._cagePixelWheel) {
-            if (!this._cageWheelSink || this._rfbConnectionState !== 'connected' || this._viewOnly) return undefined;
-            return this._cageSinkWheel(x, y, dx, dy);
+    _workbenchSendWheel(x, y, dx, dy) {
+        if (!this._workbenchPixelWheel) {
+            if (!this._workbenchWheelSink || this._rfbConnectionState !== 'connected' || this._viewOnly) return undefined;
+            return this._workbenchSinkWheel(x, y, dx, dy);
         }
         const send = () => {
             if (this._rfbConnectionState !== 'connected' || this._viewOnly) return;
-            this._sock.sQpushBytes(cageWheelPacket(this._display.absX(x), this._display.absY(y), dx, dy));
+            this._sock.sQpushBytes(workbenchWheelPacket(this._display.absX(x), this._display.absY(y), dx, dy));
             this._sock.flush();
         };
         // Stay behind input that is still waiting for its turn.
-        if (this._cageInputChain) this._cageQueueInput(send);
+        if (this._workbenchInputChain) this._workbenchQueueInput(send);
         else send();
     }
 
@@ -2366,7 +2366,7 @@ export default class RFB extends EventTargetMixin {
         }
 
         // Unknown to other servers, which skip it.
-        if (this._cageBrowserDisplay) encs.push(cageWheelEncoding);
+        if (this._workbenchBrowserDisplay) encs.push(workbenchWheelEncoding);
 
         RFB.messages.clientEncodings(this._sock, encs);
     }
@@ -2607,8 +2607,8 @@ export default class RFB extends EventTargetMixin {
         }
 
         const payload = this._sock.rQshiftStr(length);
-        if ((flags & (1 << 31)) && this._cageBrowserDisplay && payload === cageWheelCapability) {
-            this._cagePixelWheel = true;
+        if ((flags & (1 << 31)) && this._workbenchBrowserDisplay && payload === workbenchWheelCapability) {
+            this._workbenchPixelWheel = true;
         }
 
         this._supportsFence = true;
@@ -3111,7 +3111,7 @@ export default class RFB extends EventTargetMixin {
         this._fbHeight = height;
 
         this._display.resize(this._fbWidth, this._fbHeight);
-        if (sizeChanged && this._display instanceof CageBrowserDisplay && this._rfbConnectionState === 'connected') {
+        if (sizeChanged && this._display instanceof WorkbenchBrowserDisplay && this._rfbConnectionState === 'connected') {
             // Refresh unchanged regions too, so the stretched preview is fully replaced.
             // The server answers a full request with its screen layout, which arrives
             // here again at the same size; asking once more would never stop.

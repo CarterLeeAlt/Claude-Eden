@@ -32,7 +32,7 @@ func (e *app) target(ctx context.Context, verb string, args []string) (name stri
 	case 1:
 		name = args[0]
 	default:
-		fmt.Fprintf(e.io.Stderr, "Usage: agent-vm %s [vm-name]\n", verb)
+		fmt.Fprintf(e.io.Stderr, "Usage: %s %s [vm-name]\n", Command, verb)
 		return "", exitUsage
 	}
 	b, err := e.backend()
@@ -137,7 +137,7 @@ func (e *app) deleteVM(ctx context.Context, name string) bool {
 // that gives the disk space back. `agent-vm setup` rebuilds the template.
 func (e *app) destroyAllCmd(ctx context.Context, args []string) int {
 	if len(args) > 0 {
-		fmt.Fprintln(e.io.Stderr, "Usage: agent-vm destroy-all")
+		fmt.Fprintf(e.io.Stderr, "Usage: %s destroy-all\n", Command)
 		return exitUsage
 	}
 	vms, err := e.agentVMs(ctx)
@@ -204,7 +204,7 @@ func (e *app) lookVMs(ctx context.Context) ([]*vm.Instance, error) {
 // last column. Read-only: 0.2's VMs are said to wait, not moved.
 func (e *app) listCmd(ctx context.Context, args []string) int {
 	if len(args) > 0 {
-		fmt.Fprintln(e.io.Stderr, "Usage: agent-vm list")
+		fmt.Fprintf(e.io.Stderr, "Usage: %s list\n", Command)
 		return exitUsage
 	}
 	current := ""

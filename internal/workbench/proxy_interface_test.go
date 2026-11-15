@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/managedproxy"
 )
 
-func interfaceMonitorServer(t *testing.T) (*Server, *cage.EgressGate) {
+func interfaceMonitorServer(t *testing.T) (*Server, *eden.EgressGate) {
 	t.Helper()
 	s := testServer(t)
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
@@ -42,15 +42,15 @@ func interfaceMonitorServer(t *testing.T) (*Server, *cage.EgressGate) {
 	if err := os.WriteFile(filepath.Join(s.profile, "proxy", "config.yaml"), data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(s.profile, "state", "lima", cage.InstanceName(s.profile, s.environmentDir()))
-	if err := writePrivate(filepath.Join(dir, "cage-running.json"), map[string]int{"pid": os.Getpid()}); err != nil {
+	dir := filepath.Join(s.profile, "state", "lima", eden.InstanceName(s.profile, s.environmentDir()))
+	if err := writePrivate(filepath.Join(dir, "eden-running.json"), map[string]int{"pid": os.Getpid()}); err != nil {
 		t.Fatal(err)
 	}
-	gate, err := cage.NewEgressGate(cfg)
+	gate, err := eden.NewEgressGate(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	stop, err := cage.StartGateControl(s.configPath, dir, gate)
+	stop, err := eden.StartGateControl(s.configPath, dir, gate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,12 @@ func interfaceMonitorServer(t *testing.T) (*Server, *cage.EgressGate) {
 
 func TestInterfaceRecoveryRevokesGateAndPreservesManualPause(t *testing.T) {
 	previous := physicalProxyInterface
-	t.Cleanup(func() { physicalProxyInterface = previous })
+	previousValidate := validateProxyCore
+	t.Cleanup(func() { physicalProxyInterface, validateProxyCore = previous, previousValidate })
+	validateProxyCore = func(ctx context.Context, _ string, _ managedproxy.Store) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	for _, tc := range []struct {
 		name, next   string
 		paused, lost bool
@@ -76,17 +81,15 @@ func TestInterfaceRecoveryRevokesGateAndPreservesManualPause(t *testing.T) {
 			s, gate := interfaceMonitorServer(t)
 			s.networkPaused, s.proxyNetworkLost = tc.paused, tc.lost
 			physicalProxyInterface = func(context.Context) (string, error) { return tc.next, nil }
-			// Keep the recovery queued: assert the synchronous revocation before
-			// any core can restart, then cancel through the normal stop path.
-			s.op.Lock()
+			// Hold recovery in cancellable validation, before a core can restart.
+			// Revocation is synchronous; stop cancels the admitted recovery job.
 			s.monitorProxyInterface()
 			s.mu.Lock()
 			queued, paused := s.jobs.snapshot().Kind == "proxy-network" && s.jobs.snapshot().Running, s.networkPaused
 			s.mu.Unlock()
-			closed := gate.Status().Mode == cage.GateClosed
+			closed := gate.Status().Mode == eden.GateClosed
 			finished := make(chan struct{})
 			s.launch(httptest.NewRecorder(), "stop", func() error { close(finished); return nil })
-			s.op.Unlock()
 			select {
 			case <-finished:
 			case <-time.After(time.Second):
@@ -101,13 +104,54 @@ func TestInterfaceRecoveryRevokesGateAndPreservesManualPause(t *testing.T) {
 	}
 }
 
+func TestInterfaceObservationDoesNotApplyToChangedConfigurationOrJob(t *testing.T) {
+	previous := physicalProxyInterface
+	t.Cleanup(func() { physicalProxyInterface = previous })
+	for _, change := range []string{"configuration", "job", "shutdown"} {
+		t.Run(change, func(t *testing.T) {
+			s := testServer(t)
+			started, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			physicalProxyInterface = func(context.Context) (string, error) {
+				close(started)
+				<-release
+				return "", errors.New("old interface observation failed")
+			}
+			go func() { defer close(done); s.monitorProxyInterface() }()
+			<-started
+			s.op.Lock()
+			switch change {
+			case "configuration":
+				cfg, err := loadConfig(s.configPath)
+				if err != nil {
+					t.Error(err)
+				} else {
+					cfg.ProxyRevision = "new-selection"
+					if err := writePrivate(s.configPath, cfg); err != nil {
+						t.Error(err)
+					}
+				}
+			case "job":
+				s.setJobForTest(Job{ID: "completed-stop", Kind: "stop"})
+			case "shutdown":
+				s.beginClose()
+			}
+			s.op.Unlock()
+			close(release)
+			<-done
+			if s.proxyNetworkLost || s.safety.monitorError != "" || s.busy() {
+				t.Fatal("stale observation changed the current network state")
+			}
+		})
+	}
+}
+
 func TestMissingPhysicalInterfaceClosesGateWithoutUnboundFallback(t *testing.T) {
 	s, gate := interfaceMonitorServer(t)
 	previous := physicalProxyInterface
 	t.Cleanup(func() { physicalProxyInterface = previous })
 	physicalProxyInterface = func(context.Context) (string, error) { return "", errors.New("physical network unavailable") }
 	s.monitorProxyInterface()
-	if gate.Status().Mode != cage.GateClosed || s.networkPaused || !s.proxyNetworkLost || s.jobs.snapshot().Running || s.currentNetworkErrorLocked() == "" {
+	if gate.Status().Mode != eden.GateClosed || s.networkPaused || !s.proxyNetworkLost || s.jobs.snapshot().Running || s.currentNetworkErrorLocked() == "" {
 		t.Fatal("missing uplink did not preserve offline recovery state")
 	}
 	data, _ := os.ReadFile(filepath.Join(s.profile, "proxy", "config.yaml"))

@@ -11,16 +11,10 @@ func TestSetupScript(t *testing.T) {
 	runScript(t, "tests/setup-script.sh")
 }
 
-// tests/installer.sh: the curl installer and agent-vm.sh, against stub
-// releases and a stub clone.
-func TestInstaller(t *testing.T) {
-	runScript(t, "tests/installer.sh")
-}
-
 func runScript(t *testing.T, script string) {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("runs in a Linux guest, or on macOS and Linux")
+	if runtime.GOOS != "linux" {
+		t.Skip("runs the Linux guest setup script")
 	}
 	bash, err := exec.LookPath("bash")
 	if err != nil {

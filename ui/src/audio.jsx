@@ -4,7 +4,7 @@ import { AudioOutput } from "./audio-output";
 
 function savedAudio() {
   try {
-    const value = JSON.parse(localStorage.getItem("cage.audio") || "{}");
+    const value = JSON.parse(localStorage.getItem("eden.audio") || "{}");
     return { muted: value.muted === true, volume: Number.isFinite(value.volume) ? Math.max(0, Math.min(1, value.volume)) : 1 };
   } catch { return { muted: false, volume: 1 }; }
 }
@@ -30,7 +30,7 @@ export function useAudioOutput(enabled) {
   useEffect(() => {
     player.current?.setVolume(preferences.volume);
     player.current?.setActive(enabled && !preferences.muted && preferences.volume > 0);
-    try { localStorage.setItem("cage.audio", JSON.stringify(preferences)); } catch { /* Playback also works without storage. */ }
+    try { localStorage.setItem("eden.audio", JSON.stringify(preferences)); } catch { /* Playback also works without storage. */ }
   }, [enabled, preferences]);
   const toggle = () => {
     const muted = !preferences.muted && preferences.volume > 0;

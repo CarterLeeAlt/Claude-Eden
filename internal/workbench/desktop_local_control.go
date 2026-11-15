@@ -39,7 +39,7 @@ func (s *Server) desktopLocalSnapshot() desktopLocalReply {
 	reply := desktopLocalReply{
 		DesktopLocalStatus: DesktopLocalStatus{Available: true, ServiceRunning: true},
 		Identity:           s.identity, OwnerID: localControllerID(s.token), InstanceID: s.instanceID,
-		LaunchID: os.Getenv("CAGE_DESKTOP_START_ID"), JobID: job.ID, JobRunning: job.Running, JobFailed: job.Error != "",
+		LaunchID: os.Getenv("EDEN_DESKTOP_START_ID"), JobID: job.ID, JobRunning: job.Running, JobFailed: job.Error != "",
 	}
 	owners, err := controllerVMOwners(s.profile)
 	reply.Running = len(owners) != 0
@@ -59,9 +59,6 @@ func (s *Server) desktopLocalSnapshot() desktopLocalReply {
 	s.mu.Lock()
 	reply.Busy = s.closing || job.Running
 	s.mu.Unlock()
-	if len(s.mobileCLI.activeAccounts()) != 0 || (s.remote != nil && s.remote.isRemote()) {
-		reply.Busy = true
-	}
 	if reply.Busy {
 		reply.Message = "本机控制服务正在执行操作或被其他入口使用"
 	}
@@ -77,7 +74,7 @@ func (s *Server) desktopLocalControl(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &request) {
 		return
 	}
-	if s.clientOnly || !equalSecret(request.Token, s.token) {
+	if !equalSecret(request.Token, s.token) {
 		http.Error(w, "Launcher refused", http.StatusUnauthorized)
 		return
 	}

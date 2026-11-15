@@ -33,9 +33,6 @@ func resolveProjectFilePath(guest string, projects []string) (string, error) {
 		return "", errors.New("文件位置无效")
 	}
 	for _, project := range projects {
-		if isClientMountPath(project) {
-			continue
-		}
 		root := strings.TrimRight(guestPath(project), "/")
 		if guest != root && !strings.HasPrefix(guest, root+"/") {
 			continue
@@ -50,52 +47,19 @@ func resolveProjectFilePath(guest string, projects []string) (string, error) {
 		}
 		relative, err := filepath.Rel(hostRoot, target)
 		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
-			return "", errors.New("文件指向 Cage 项目目录之外，无法打开")
+			return "", errors.New("文件指向 Eden 项目目录之外，无法打开")
 		}
 		info, err := os.Stat(target)
 		if err != nil || (!info.Mode().IsRegular() && !info.IsDir()) {
-			return "", errors.New("请选择 Cage 项目中的普通文件或文件夹")
+			return "", errors.New("请选择 Eden 项目中的普通文件或文件夹")
 		}
 		return target, nil
 	}
-	return "", errors.New("只能打开 Cage 项目目录中的文件和文件夹")
+	return "", errors.New("只能打开 Eden 项目目录中的文件和文件夹")
 }
 
 func (s *Server) resolveDesktopProjectFile(guest string, projects []string) (string, error) {
-	if s.macosGuest == nil && s.windowsGuest == nil {
-		return resolveProjectFilePath(guest, projects)
-	}
-	if s.windowsGuest != nil {
-		guest = strings.ReplaceAll(guest, "\\", "/")
-		if !windowsCLIAbsolutePath(guest) || strings.Contains(guest[2:], ":") {
-			return "", errors.New("文件位置无效")
-		}
-	}
-	if pathpkg.Clean(guest) != guest || strings.ContainsAny(guest, "\x00\\") {
-		return "", errors.New("文件位置无效")
-	}
-	for _, project := range projects {
-		if isClientMountPath(project) {
-			continue
-		}
-		var root string
-		if s.macosGuest != nil {
-			root = macOSProjectPath(s.macosGuest.User, project)
-		} else {
-			binding, err := s.windowsProjectForHost(project)
-			if err != nil {
-				continue
-			}
-			root = strings.ReplaceAll(binding.Path, "\\", "/")
-		}
-		root = strings.TrimRight(root, "/")
-		if !cliWorkspaceWithin(guest, root, s.windowsGuest != nil) {
-			continue
-		}
-		mapped := strings.TrimRight(guestPath(project), "/") + guest[len(root):]
-		return resolveProjectFilePath(mapped, []string{project})
-	}
-	return "", errors.New("只能打开已授权 Cage 项目中的文件和文件夹")
+	return resolveProjectFilePath(guest, projects)
 }
 
 func (s *Server) desktopFileOpenAction(w http.ResponseWriter, r *http.Request) {
@@ -130,21 +94,10 @@ func (s *Server) desktopFileOpenAction(w http.ResponseWriter, r *http.Request) {
 	guest, _ := result["path"].(string)
 	action, _ := result["action"].(string)
 	var target string
-	download, _ := result["download_id"].(string)
 	if message, _ := result["error"].(string); message != "" {
 		err = errors.New(message)
 	} else if action != "open" && action != "reveal" {
 		err = errors.New("文件打开操作无效")
-	} else if download != "" && (s.macosGuest != nil || s.windowsGuest != nil) {
-		var saved browserDownloadInfo
-		saved, err = s.downloadInfo(ctx, download)
-		if err == nil && saved.State != "saved" {
-			err = errors.New("文件尚未完整保存到主机，请稍后重新打开")
-		}
-		target = saved.Path
-		if err == nil && result["directory"] == true {
-			target = filepath.Dir(target)
-		}
 	} else {
 		var projects []string
 		projects, err = s.projectPaths()
@@ -179,7 +132,7 @@ func DesktopFileForConnection(configPath, connectionID, id string) (map[string]a
 	if err != nil || status != 200 {
 		return nil, errors.New("无法连接文件操作会话")
 	}
-	connection, err := client.bindConnection(connectionID)
+	_, err = client.bindConnection(connectionID)
 	if err != nil {
 		return nil, err
 	}
@@ -191,9 +144,7 @@ func DesktopFileForConnection(configPath, connectionID, id string) (map[string]a
 	if request.Handled {
 		return map[string]any{"handled": true}, nil
 	}
-	if connection.Mode == "remote" {
-		err = errors.New("此文件位于远程环境，请先在下载列表中保存到本机")
-	} else if request.ID != id || !filepath.IsAbs(request.Path) || (request.Action != "open" && request.Action != "reveal") {
+	if request.ID != id || !filepath.IsAbs(request.Path) || (request.Action != "open" && request.Action != "reveal") {
 		err = errors.New("文件打开响应无效")
 	} else {
 		err = openHostFile(request.Path, request.Action)
@@ -239,48 +190,31 @@ func desktopOpenCall(client *controllerClient, input map[string]string, output a
 	return nil
 }
 
-func hostFileCommand(platform, path, action string, directory bool) *exec.Cmd {
-	switch platform {
-	case "darwin":
-		if action == "reveal" {
-			return exec.Command("/usr/bin/open", "-R", "--", path)
-		}
-		return exec.Command("/usr/bin/open", "--", path)
-	case "windows":
-		if action == "reveal" {
-			return exec.Command("explorer.exe", "/select,"+path)
-		}
-		if directory {
-			return exec.Command("explorer.exe", path)
-		}
-		return exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", path)
-	default:
-		if action == "reveal" {
-			uri := (&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String()
-			return exec.Command("gdbus", "call", "--session", "--dest", "org.freedesktop.FileManager1", "--object-path", "/org/freedesktop/FileManager1", "--method", "org.freedesktop.FileManager1.ShowItems", "[\""+uri+"\"]", "")
-		}
-		return exec.Command("gio", "open", path)
+func hostFileCommand(path, action string, directory bool) *exec.Cmd {
+	if action == "reveal" {
+		return exec.Command("explorer.exe", "/select,"+path)
 	}
+	if directory {
+		return exec.Command("explorer.exe", path)
+	}
+	return exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", path)
 }
 
 func openHostFile(path, action string) error {
+	if runtime.GOOS != "windows" {
+		return errors.New("请通过 Windows 桌面客户端打开本机文件")
+	}
 	info, err := os.Stat(path)
 	if err != nil || (!info.Mode().IsRegular() && !info.IsDir()) {
 		return errors.New("文件已移动、删除或无法访问")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	command := hostFileCommand(runtime.GOOS, path, action, info.IsDir())
+	command := hostFileCommand(path, action, info.IsDir())
 	cmd := exec.CommandContext(ctx, command.Path, command.Args[1:]...)
 	host.HideCommandWindow(cmd)
 	if err = cmd.Run(); err != nil {
-		if runtime.GOOS != "linux" || action != "reveal" {
-			return errors.New("无法打开本机文件或文件管理器，请检查默认应用和文件权限")
-		}
-		fallback := exec.CommandContext(ctx, "gio", "open", filepath.Dir(path))
-		if fallback.Run() != nil {
-			return errors.New("无法打开本机文件管理器，请检查桌面环境和文件权限")
-		}
+		return errors.New("无法打开本机文件或文件管理器，请检查默认应用和文件权限")
 	}
 	return nil
 }

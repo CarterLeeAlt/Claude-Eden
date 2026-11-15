@@ -4,16 +4,16 @@
 
 ## 使用与反馈
 
-面向日常使用的[使用文档](guide/index.md)包括多账号、浏览器、手机、Linux 云端、设置与排障；下表提供安装、平台说明与维护资料的直接入口。
+面向日常使用的[使用文档](guide/index.md)包括本地 Debian 13、多账号、浏览器、私网、设置与排障；下表提供安装、平台说明与维护资料的直接入口。
 
 | 你要做什么 | 从这里开始 |
 |---|---|
 | 让自己的 Agent 下载、安装、配置 Claude Eden，跟踪任务并排查故障 | [Agent 使用指南](guide/agent.md) |
 | 安装 Windows 桌面程序，配置代理并打开第一个项目 | [开始使用](getting-started.md) |
-| 选择与主机同类的客机系统，了解原生工具、镜像与数据保留 | [选择客机系统](guide/guest-systems.md) |
+| 了解 Debian 13 客机、Linux 工具、镜像与数据保留 | [Debian 13 客机](guide/guest-systems.md) |
 | 查看快捷键、文件保存、关闭与退出行为 | [日常使用](getting-started.md#日常使用) |
 | 在 Windows 上安装、使用和更新 | [Windows 支持](windows.md) |
-| 部署 Linux 云端环境或使用本机 Linux 客机 | [Linux 支持](linux.md) |
+| 在 Windows 上使用本地 Debian 13 客机 | [Linux 客机说明](linux.md) |
 | 升级应用、更新环境工具或卸载 | [升级与卸载](getting-started.md#升级与卸载) |
 | 查看当前已发布版本的能力与验收范围 | [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases) |
 | 排查下载、启动、联网与授权问题 | [常见问题与恢复](troubleshooting.md) |

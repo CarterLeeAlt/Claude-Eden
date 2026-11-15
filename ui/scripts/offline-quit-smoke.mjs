@@ -10,7 +10,7 @@ const { page, browser, errors } = await createWorkbench({
   clientContext: view,
   nativeRequest: async (request) => { calls.push(request); return null; },
 });
-const quit = () => page.evaluate(() => window.cageNativeAction("quit"));
+const quit = () => page.evaluate(() => window.edenNativeAction("quit"));
 const exits = () => calls.filter(({ action }) => action === "quitNow").length;
 const refused = (route) => route.abort("connectionrefused");
 const stops = [];
@@ -23,7 +23,7 @@ try {
   await page.route("**/api/**", refused);
   await page.locator(".connection-banner").waitFor();
   await quit();
-  const dialog = page.getByRole("dialog", { name: "退出 Cage" });
+  const dialog = page.getByRole("dialog", { name: "退出 Eden" });
   await dialog.getByRole("button", { name: "取消" }).click();
   assert.equal(exits(), 0);
   await quit();

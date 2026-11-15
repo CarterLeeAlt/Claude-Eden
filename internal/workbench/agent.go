@@ -1,7 +1,6 @@
 package workbench
 
 // The agent adapter uses the same authenticated local workload as the desktop.
-// It never follows the desktop gateway's currently selected remote connection.
 import (
 	"bytes"
 	"context"
@@ -15,7 +14,6 @@ import (
 	"time"
 
 	"github.com/sylvinus/agent-vm/internal/diagnostics"
-	"github.com/sylvinus/agent-vm/internal/remotehost"
 )
 
 const AgentProtocol = 1
@@ -67,12 +65,10 @@ func AgentOperations() []AgentOperation {
 	for _, action := range []string{"import", "refresh", "edit", "delete", "select", "route", "restart", "stop"} {
 		post("proxy."+action, "Proxy operation; import creates a source, refresh updates an existing source. Read state before retrying. select/route applies the route", "/api/proxy/"+action, proxy)
 	}
-	get("guest.options", "Available guest systems and resumable installation state", "/api/environment/guest-systems")
-	get("guest.match", "Inspect a host-matching clean image plan; pass key as clone_key and plan.host.system as guest_system to environment.start", "/api/environment/guest-systems/clone")
-	post("guest.activate", "Activate an installed guest; controller may retire, reconnect afterwards", "/api/environment/guest-systems/activate", object(nil))
+	get("guest.options", "Debian 13 image and resumable installation state", "/api/environment/guest-systems")
 	get("initialization.status", "Read initial setup state", "/api/environment/initialization")
 	post("initialization.set", "action: begin, install or complete; complete requires verified readiness", "/api/environment/initialization", object(map[string]string{"action": "string"}))
-	post("environment.start", "Start or resume installation. Omit guest_system for an existing environment; use guest.options for supported choices", "/api/start", from(guestInstallRequest{}))
+	post("environment.start", "Start the local Debian 13 environment or resume its installation", "/api/start", from(guestInstallRequest{}))
 	post("environment.stop", "Stop the environment and active terminals; preserves persistent data", "/api/stop", object(nil))
 	get("environment.versions", "Read installed component and tool versions", "/api/environment/versions")
 	post("environment.update", "Update guest components; may restart guest services", "/api/environment/update", object(nil))
@@ -85,7 +81,7 @@ func AgentOperations() []AgentOperation {
 	post("network.check", "Run existing safety checks; may reopen networking when checks pass", "/api/safety/check", object(nil))
 	post("network.pause", "Close external networking and persist pause intent", "/api/safety/close", object(nil))
 	post("project.open", "Grant access only to a user-authorized directory; add=true remembers the grant", "/api/projects/open", object(map[string]string{"workspace": "string", "add": "boolean", "activate": "boolean"}))
-	post("project.save", "Save a named project with user-authorized folders. For a new project, omit workspace; the first folder becomes its stable default directory. To edit, provide its existing workspace and keep that folder. Returns approval if macOS authorization is needed; retry the same request after approval", "/api/projects/save", from(projectGroup{}))
+	post("project.save", "Save a named project with user-authorized folders. For a new project, omit workspace; the first folder becomes its stable default directory. To edit, provide its existing workspace and keep that folder", "/api/projects/save", from(projectGroup{}))
 	post("project.remove", "Remove a project and revoke every bound folder share. Close its terminals, running sessions and editors first. Preserve files and history", "/api/projects/remove", object(map[string]string{"workspace": "string"}))
 	post("project.refresh", "Linux guests only: forget cached names and attributes of project files so host-side changes show at once", "/api/projects/refresh", object(nil))
 
@@ -106,16 +102,12 @@ func AgentOperations() []AgentOperation {
 	get("proxy.connections", "Inspect live proxy connections", "/api/proxy/connections")
 	get("proxy.logs", "Inspect proxy logs", "/api/proxy/logs")
 	post("proxy.delay", "Measure one proxy node", "/api/proxy/delay", object(map[string]string{"node_id": "string"}))
-	add("guest.reselect", "Clear only the same unstarted installation the UI can reselect", "DELETE", "/api/environment/guest-systems", object(map[string]string{"id": "string"}))
 	get("claude-accounts.get", "Read account roster, quotas and scheduling", "/api/claude-accounts")
 	post("claude-accounts.change", "Apply the same join, cancel, update, scheduling, refresh and removal actions as the UI", "/api/claude-accounts", from(claudeAccountInput{}))
 	get("vault.get", "List metadata; passwords remain hidden exactly as in the UI", "/api/vault")
 	post("vault.change", "Save/delete/unblock; reveal requires the same account_password reauthentication as the UI", "/api/vault", object(map[string]string{"action": "string", "entry": "object", "id": "string", "origin": "string", "account_password": "string"}))
 	ops[len(ops)-1].InputSchema["properties"].(map[string]any)["entry"] = from(vaultEntry{})
 	post("vault.browser", "Use the browser vault's existing save/fill/block actions", "/api/vault/browser", from(vaultBrowserInput{}))
-	get("mobile.get", "Inspect phone pairing", "/api/mobile-pair")
-	post("mobile.pair", "Generate the same phone pairing invitation", "/api/mobile-pair", object(map[string]string{"admin": "string", "relay": "string"}))
-	add("mobile.remove", "Remove the same paired device", "DELETE", "/api/mobile-pair", object(nil))
 	get("tailscale.get", "Read guest private-network state", "/api/tailscale")
 	for _, action := range []string{"install", "connect", "login", "disconnect", "logout", "add-key", "remove-key"} {
 		schema := object(nil)
@@ -135,12 +127,12 @@ func AgentOperations() []AgentOperation {
 	get("terminals.get", "Read terminal sessions", "/api/terminals")
 	post("terminals.create", "Create the same shell/Claude terminal as the UI", "/api/terminals", from(terminalRequest{}))
 	get("client.context", "Read the desktop connection generation; use desktop scope", "/api/client/context")
-	get("client.hosts", "Read saved SSH hosts; use desktop scope", "/api/client/hosts")
-	post("client.hosts.create", "Save an SSH host through the desktop store", "/api/client/hosts", from(remotehost.HostProfile{}))
-	get("client.local-status", "Inspect local workload from the desktop chooser", "/api/client/local-status")
-	for _, action := range []string{"candidate", "commit", "cancel", "disconnect", "local-stop"} {
-		post("client."+action, "Use the desktop chooser's same explicit connection/candidate protocol", "/api/client/"+action, from(switchRequest{}))
+	get("client.local-status", "Inspect the local controller identity and workload; use desktop scope", "/api/client/local-status")
+	for _, action := range []string{"candidate", "commit", "cancel"} {
+		post("client."+action, "Use the desktop's local connection/candidate protocol", "/api/client/"+action, from(switchRequest{}))
 	}
+	post("client.disconnect", "Suspend the local account view and disconnect this desktop generation", "/api/client/disconnect", from(switchRequest{}))
+	post("client.local-stop", "Stop the local workload after checking connection_id and local_controller_id", "/api/client/local-stop", from(switchRequest{}))
 	post("client.trusted-login", "Use create/resume/enable/disable/protect through the desktop's native trusted-login owner", "/api/client/trusted-login", object(map[string]string{"action": "string", "password": "string", "connection_id": "string"}))
 	post("native.submit", "Queue an existing native bridge action or clientPreferences request for the desktop window; use desktop scope", "/api/agent/native", object(map[string]string{"request": "object", "connection_id": "string"}))
 
@@ -159,14 +151,14 @@ type AgentError struct {
 func (e *AgentError) Error() string { return e.Message }
 
 func agentHTTPError(code int) *AgentError {
-	e := &AgentError{Code: "request_rejected", Message: "Cage rejected the operation. Check the input and run doctor.", NextAction: "doctor", HTTPStatus: code}
+	e := &AgentError{Code: "request_rejected", Message: "Eden rejected the operation. Check the input and run doctor.", NextAction: "doctor", HTTPStatus: code}
 	switch code {
 	case 401:
 		e.Code = "authentication_failed"
 		e.NextAction = "service.start"
 	case 423:
 		e.Code = "account_locked"
-		e.Message = "Unlock Cage before configuring the environment."
+		e.Message = "Unlock Eden before configuring the environment."
 		e.NextAction = "account.unlock"
 	case 403:
 		e.Code = "user_action_required"
@@ -205,7 +197,7 @@ func AgentStartService(ctx context.Context, configPath string) error {
 		return &AgentError{Code: "service_unavailable", Message: "The controller cannot be authenticated. Preserve its data and inspect diagnostics.", NextAction: "doctor"}
 	}
 	if err := startController(configPath); err != nil {
-		return &AgentError{Code: "service_start_failed", Message: "Cage could not start its controller.", NextAction: "doctor"}
+		return &AgentError{Code: "service_start_failed", Message: "Eden could not start its controller.", NextAction: "doctor"}
 	}
 	timer := time.NewTicker(100 * time.Millisecond)
 	defer timer.Stop()
@@ -225,7 +217,7 @@ func AgentStartService(ctx context.Context, configPath string) error {
 
 func agentCheckController(c *controllerClient, configPath string) error {
 	want, err := currentController()
-	if err != nil || !want.matches(c.launch.Controller) || c.launch.DesktopGateway || c.launch.ClientOnly {
+	if err != nil || !want.matches(c.launch.Controller) || c.launch.DesktopGateway {
 		return &AgentError{Code: "controller_mismatch", Message: "Use the CLI shipped with the running workload. No controller was replaced.", NextAction: "open_desktop"}
 	}
 	if filepath.Clean(c.launch.ConfigPath) != filepath.Clean(configPath) {
@@ -237,7 +229,7 @@ func agentCheckController(c *controllerClient, configPath string) error {
 func agentConnect(ctx context.Context, configPath string) (*controllerClient, error) {
 	c, err := connectController(filepath.Dir(configPath))
 	if err != nil {
-		return nil, &AgentError{Code: "service_unavailable", Message: "The local Cage controller is unavailable. Run service.start or doctor.", NextAction: "service.start"}
+		return nil, &AgentError{Code: "service_unavailable", Message: "The local Eden controller is unavailable. Run service.start or doctor.", NextAction: "service.start"}
 	}
 	fail := func(err error) (*controllerClient, error) { c.close(); return nil, err }
 	if err := agentCheckController(c, configPath); err != nil {

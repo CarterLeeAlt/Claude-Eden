@@ -18,7 +18,7 @@
 
 作為一個只是想和 Claude 對話與合作的正常使用者，受夠了折騰各種 VPS，指紋瀏覽器，環境檢測，面對封號的擔驚受怕和財產損失。我們提出 **Claude Eden** 專案：**一個桌面工作臺，配置好自己的網路代理，集中管理隔離環境、時區語言和環境檢查。**
 
-Claude Eden 在 Windows 桌面上提供本機 Linux 客機，也可以透過 SSH 使用自己的 Linux 雲端環境。終端、瀏覽器、編輯器和官方 Claude Desktop 集中在同一個工作臺，專案按需共享，網路獨立管理；還能用手機接續電腦上的工作。客機能力與主機要求見系統指南。主要功能包括：
+Claude Eden 在 Windows 10 桌面上管理獨立的本機 Debian 13 客機。終端、瀏覽器、編輯器和官方 Claude Desktop 集中在同一個工作臺，專案按需共享，網路獨立管理。宿主條件、資源與儲存路徑依實際電腦偵測。主要功能包括：
 
 - 和主機隔離的網路設定，Claude Eden 自己接管和代理內部的所有網路流量
 - 和主機隔離的指紋設定，包括時區、語言等，支援自動與代理 IP 同步
@@ -28,13 +28,11 @@ Claude Eden 在 Windows 桌面上提供本機 Linux 客機，也可以透過 SSH
 ## 你可以用它做什麼
 
 - **在一個視窗裡完成工作。** 用終端執行 Claude Code，用編輯器檢視改動，用 Workbench 瀏覽器預覽服務和完成登入。
-- **在獨立 Linux 環境中開發。** 選擇 Debian 或 Ubuntu，使用 Linux 工具，只共享明確授權的專案。 [選擇客機系統](docs/guide/guest-systems.md)
+- **在獨立 Linux 環境中開發。** 在本機 Debian 13 使用 Linux 工具，只共享明確授權的專案。 [Debian 13 客機](docs/guide/guest-systems.md)
 - **控制共享範圍。** 只共享預設工作區和明確開啟的專案資料夾；主機的 Claude 登入、瀏覽器配置和 SSH 金鑰不會自動匯入。
 - **看清網路狀態。** 內建代理管理支援匯入訂閱、選擇節點和檢查出口。關鍵檢查未透過時，環境保持離線；代理不可用時沒有直連回退。
 - **下次繼續使用。** 工具、檔案和登入狀態儲存在虛擬磁碟裡，關閉視窗可以保留後臺任務。
 - **管理多個 Claude Code 帳號。** 查看額度、為新會話分配帳號，並在明確授權後切換帳號接續歷史。 [Claude Code](docs/guide/accounts.md)
-- **用手機接續工作。** Android 手機透過 QR Code 或配對碼連接電腦，接續同一份 Claude Code 對話、傳送訊息和處理工具審批，也可操作遠端瀏覽器和電腦上的 Claude Desktop。
-- **在雲端執行環境。** 透過 SSH 連接部署在符合條件的 Linux x86_64 VPS 上的 Claude Eden，無需 KVM；資料與網路出口位於伺服器。
 - **透過私網連接。** 在 Claude Eden 內登入 Tailscale，讓本機與環境透過 SSH 雙向連接。 [Tailscale / SSH](docs/guide/tailscale.md)
 
 ## 快速開始
@@ -49,13 +47,13 @@ Claude Eden 在 Windows 桌面上提供本機 Linux 客機，也可以透過 SSH
 
 ## 下載與安裝
 
-Claude Eden 的桌面宿主為 Windows 10 x64，本機客機為 Debian 13 或 Ubuntu 22.04，也可使用 Linux 雲端與後端。系統與虛擬化能力依實際電腦偵測。 [Windows](docs/windows.md) · [Linux 雲端](docs/linux.md)。
+Claude Eden 的桌面宿主為 Windows 10 x64，本機客機固定為 Debian 13。系統與虛擬化能力依實際電腦偵測。 [Windows](docs/windows.md) · [Debian 13 客機](docs/guide/guest-systems.md)。
 
 1. 查看 [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases) 的 Windows 安裝包；沒有已發行安裝包時按[建置說明](docs/windows.md)從原始碼建置。
-2. 執行 Windows 安裝程式，啟動 **Claude Eden**。伺服器部署見 [Linux 雲端](docs/guide/cloud.md)。
+2. 執行 Windows 安裝程式，啟動 **Claude Eden**。
 3. 按應用內引導配置自己的代理，啟動環境後開啟專案。
 
-安裝包隨附工作臺和代理核心，無需先安裝 Go、Node.js、Docker 或 Clash。首次建立環境時選擇客機系統與儲存位置，再準備對應的官方系統映像和開發工具。Claude Eden 不提供作業系統授權、代理服務或 Claude 帳戶。
+安裝包隨附工作臺和代理核心，無需先安裝 Go、Node.js、Docker 或 Clash。首次建立環境時選擇 Debian 13 儲存位置，再準備官方系統映像和開發工具。代理服務與 Claude 帳戶由使用者自行準備。
 
 原始碼公開，已發行安裝包的版本說明和校驗檔案見 [Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases)。
 
@@ -71,7 +69,7 @@ Claude Eden 的桌面宿主為 Windows 10 x64，本機客機為 Debian 13 或 Ub
 
 ### 2. 啟動環境
 
-首次選擇 Debian 或 Ubuntu 客機，再選擇儲存位置。安裝客機並啟動環境，按引導完成授權；進度和錯誤可在「操作詳情」查看。以後啟動沿用原環境。
+首次為 Debian 13 客機選擇儲存位置。安裝客機並啟動環境，按引導完成授權；進度和錯誤可在「操作詳情」查看。以後啟動沿用原環境。
 
 ### 3. 開啟專案，執行 Claude
 
@@ -92,7 +90,7 @@ Claude Eden 的桌面宿主為 Windows 10 x64，本機客機為 Debian 13 或 Ub
 
 | 你要做什麼 | 從這裡開始 |
 |---|---|
-| Debian 13 / Ubuntu 22.04 | [選擇客機系統](docs/guide/guest-systems.md) |
+| Debian 13 | [Debian 13 客機](docs/guide/guest-systems.md) |
 | 第一次安裝、配置代理、開啟專案 | [開始使用](docs/getting-started.md) |
 | 處理下載、啟動、聯網和登入問題 | [常見問題與恢復](docs/troubleshooting.md) |
 | 瞭解按鍵、外觀、資料儲存和退出行為 | [日常使用](docs/getting-started.md#日常使用) |

@@ -1,5 +1,6 @@
 ﻿#requires -Version 5.1
 $ErrorActionPreference = 'Stop'
+& (Join-Path $PSScriptRoot 'assert-workspace.ps1')
 $source = Join-Path $PSScriptRoot '../packaging/windows'
 $root = Join-Path ([IO.Path]::GetTempPath()) ('delete-race-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $root | Out-Null
@@ -39,7 +40,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Could not create the isolated junction fixture.' }
     $reparseDenied = $false
     try {
-        $stream = [CageVerifiedFile]::Open($root, 'linked/owned.dll')
+        $stream = [EdenVerifiedFile]::Open($root, 'linked/owned.dll')
         $stream.Dispose()
     } catch { $reparseDenied = $true }
     $externalRetained = [IO.File]::ReadAllText((Join-Path $outside 'owned.dll')) -eq 'external target'

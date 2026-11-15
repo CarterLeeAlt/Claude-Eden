@@ -5,13 +5,13 @@ import { mkdtemp, readFile, rm, mkdir, copyFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import { UploadManager } from "../../internal/cage/browser-uploads.mjs";
-import { DownloadManager } from "../../internal/cage/browser-downloads.mjs";
+import { UploadManager } from "../../internal/eden/browser-uploads.mjs";
+import { DownloadManager } from "../../internal/eden/browser-downloads.mjs";
 const require = createRequire(import.meta.url);
 const { chromium } = require(
-  process.env.CAGE_PLAYWRIGHT_MODULE || "playwright",
+  process.env.EDEN_PLAYWRIGHT_MODULE || "playwright",
 );
-const directory = await mkdtemp(join(tmpdir(), "cage-browser-files-"));
+const directory = await mkdtemp(join(tmpdir(), "workbench-browser-files-"));
 const bytes = Buffer.alloc(8 * 1024 * 1024);
 for (let i = 0; i < bytes.length; i++) bytes[i] = i % 251;
 const received = [];
@@ -45,7 +45,7 @@ const server = http.createServer(async (request, response) => {
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const browser = await chromium.launch({
   headless: true,
-  executablePath: process.env.CAGE_TEST_BROWSER_PATH,
+  executablePath: process.env.EDEN_TEST_BROWSER_PATH,
 });
 const context = await browser.newContext();
 const page = await context.newPage();

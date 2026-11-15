@@ -40,20 +40,11 @@ type localBrowserProfile struct {
 }
 
 func localBrowserRoots() []localBrowserRoot {
-	home, _ := os.UserHomeDir()
-	var base string
-	var locations []string
-	switch runtime.GOOS {
-	case "darwin":
-		base = filepath.Join(home, "Library", "Application Support")
-		locations = []string{"Microsoft Edge", "Google/Chrome", "BraveSoftware/Brave-Browser", "Chromium"}
-	case "windows":
-		base = os.Getenv("LOCALAPPDATA")
-		locations = []string{"Microsoft/Edge/User Data", "Google/Chrome/User Data", "BraveSoftware/Brave-Browser/User Data", "Chromium/User Data"}
-	default:
-		base, _ = os.UserConfigDir()
-		locations = []string{"microsoft-edge", "google-chrome", "BraveSoftware/Brave-Browser", "chromium"}
+	if runtime.GOOS != "windows" {
+		return nil
 	}
+	base := os.Getenv("LOCALAPPDATA")
+	locations := []string{"Microsoft/Edge/User Data", "Google/Chrome/User Data", "BraveSoftware/Brave-Browser/User Data", "Chromium/User Data"}
 	if base == "" {
 		return nil
 	}

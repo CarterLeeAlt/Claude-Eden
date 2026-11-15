@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
-using Cage.Windows;
+using Eden.Windows;
 
 // Headless App/backend fixtures use the production updater, helper, signatures
 // and NSIS unchanged. Only release transport and workbench readiness are local.
@@ -29,7 +29,7 @@ if (args is ["--hold-directory", var directory])
     // A working directory alone no longer blocks an update: NSIS keeps the
     // installation folder and moves its entries. An open program file
     // without delete sharing still does.
-    using var held = new FileStream(Path.Combine(directory, "Cage.install-id"), FileMode.Open, FileAccess.Read, FileShare.Read);
+    using var held = new FileStream(Path.Combine(directory, "Eden.install-id"), FileMode.Open, FileAccess.Read, FileShare.Read);
     Record("held", new { pid = Environment.ProcessId });
     while (!File.Exists(Path.Combine(root, "release.json"))) await Task.Delay(100);
     return 0;
@@ -46,7 +46,7 @@ if (args is ["app-update", "download"])
 {
     var job = Path.Combine(root, "updates", "download-" + Guid.NewGuid());
     Directory.CreateDirectory(job);
-    var archive = Path.Combine(job, "Cage-setup.exe");
+    var archive = Path.Combine(job, "Eden-setup.exe");
     File.Copy(settings.GetProperty("installer").GetString()!, archive);
     using var input = File.OpenRead(archive);
     var digest = Convert.ToHexString(SHA256.HashData(input)).ToLowerInvariant();

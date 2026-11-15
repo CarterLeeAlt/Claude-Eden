@@ -104,7 +104,7 @@ func TestOfflineExportPreservesDestinationOnErrorAndNoArchiveSymlink(t *testing.
 	}
 }
 func TestTaskPanicRecordsFailureBeforeProcessExit(t *testing.T) {
-	const flag = "CAGE_DIAGNOSTICS_PANIC_TEST"
+	const flag = "EDEN_DIAGNOSTICS_PANIC_TEST"
 	if profile := os.Getenv(flag); profile != "" {
 		diagnostics.SetDefault(diagnostics.New(profile))
 		m := new(jobManager)

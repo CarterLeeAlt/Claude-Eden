@@ -1,30 +1,16 @@
 # Cross-platform regression for the real smoke-report and CI artifact contract.
 . (Join-Path $PSScriptRoot 'windows-common.ps1')
-$directory = Join-Path ([IO.Path]::GetTempPath()) ('cage-smoke-contract-' + [guid]::NewGuid().ToString('N'))
+$directory = Join-Path ([IO.Path]::GetTempPath()) ('eden-smoke-contract-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $directory | Out-Null
-$savedRunnerTemp = $env:RUNNER_TEMP
 function Assert-SmokeContract([bool]$Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
 try {
-    $env:RUNNER_TEMP = Join-Path $directory 'runner-temp'
-    Assert-SmokeContract ((Get-WindowsWorkbenchTestBase) -eq [IO.Path]::GetFullPath($env:RUNNER_TEMP)) 'CI report directory ignores RUNNER_TEMP.'
-    $savedTemp = $env:TEMP; $savedTmp = $env:TMP
+    Assert-SmokeContract ((Get-WindowsWorkbenchTestBase) -eq (Join-Path $env:EDEN_WORKSPACE_ROOT '.tmp')) 'Smoke reports must use the short workspace temp.'
     $envFile = Join-Path $directory 'child-env.json'
     $envScript = Join-Path $directory 'child-env.ps1'
     [IO.File]::WriteAllText($envScript, '@{temp=$env:TEMP;tmp=$env:TMP} | ConvertTo-Json | Set-Content -LiteralPath $args[0]')
-    $failed = $false
-    try {
-        Invoke-InIsolatedTestTemp {
-            Invoke-BuildTool (Get-Process -Id $PID).Path @('-NoProfile','-NonInteractive','-File',$envScript,$envFile)
-            throw 'injected test failure'
-        }
-    } catch { $failed = $_.Exception.Message -eq 'injected test failure' }
+    Invoke-BuildTool (Get-Process -Id $PID).Path @('-NoProfile','-NonInteractive','-File',$envScript,$envFile)
     $childEnv = Get-Content -LiteralPath $envFile -Raw | ConvertFrom-Json
-    Assert-SmokeContract $failed 'Isolated test temp swallowed its test failure.'
-    Assert-SmokeContract ($childEnv.temp -eq $childEnv.tmp -and (Split-Path $childEnv.temp -Parent) -eq $env:RUNNER_TEMP) 'Child tests did not inherit the isolated runner temp.'
-    Assert-SmokeContract ($env:TEMP -eq $savedTemp -and $env:TMP -eq $savedTmp) 'Failed tests changed the caller temp environment.'
-    Assert-SmokeContract (-not (Test-Path -LiteralPath $childEnv.temp)) 'Owned test temp was not cleaned.'
-    Remove-Item Env:RUNNER_TEMP -ErrorAction SilentlyContinue
-    Assert-SmokeContract ((Get-WindowsWorkbenchTestBase) -eq [IO.Path]::GetTempPath()) 'Local report directory lost its OS temp fallback.'
+    Assert-SmokeContract ($childEnv.temp -eq $env:TEMP -and $childEnv.tmp -eq $env:TMP) 'Child tests did not inherit the workspace temp.'
     $report = Join-Path $directory 'smoke.json'
     $fixture = Join-Path $directory 'fixture.json'
     $childScript = Join-Path $directory 'child.ps1'
@@ -68,8 +54,8 @@ try {
     Assert-SmokeContract $rejected 'Nonzero child exit was accepted because its report said success.'
     $app = Join-Path $directory 'app'
     New-Item -ItemType Directory -Path (Join-Path $app 'resources') -Force | Out-Null
-    [IO.File]::WriteAllText((Join-Path $app 'Cage.exe'), 'native fixture')
-    $image = Join-Path $app 'resources/cage.exe'
+    [IO.File]::WriteAllText((Join-Path $app 'Eden.exe'), 'native fixture')
+    $image = Join-Path $app 'resources/eden.exe'
     [IO.File]::WriteAllText($image, 'backend fixture')
     $ready = Join-Path $directory 'image-locked'
     $released = Join-Path $directory 'image-released'
@@ -104,6 +90,5 @@ try {
     }
     Write-Output 'PASS: isolated temp, safe smoke diagnostics, exit status and executable release.'
 } finally {
-    $env:RUNNER_TEMP = $savedRunnerTemp
     Remove-Item -LiteralPath $directory -Recurse
 }

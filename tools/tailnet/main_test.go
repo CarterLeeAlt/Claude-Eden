@@ -7,17 +7,19 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	gliderssh "github.com/gliderlabs/ssh"
-	"github.com/pkg/sftp"
-	gossh "golang.org/x/crypto/ssh"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
+	"testing"
+	"time"
+
+	gliderssh "github.com/gliderlabs/ssh"
+	"github.com/pkg/sftp"
+	gossh "golang.org/x/crypto/ssh"
 	"tailscale.com/envknob"
 	"tailscale.com/net/netns"
 	"tailscale.com/tailcfg"
@@ -25,8 +27,6 @@ import (
 	"tailscale.com/tstest/integration"
 	"tailscale.com/tstest/integration/testcontrol"
 	"tailscale.com/types/logger"
-	"testing"
-	"time"
 )
 
 func TestBidirectionalSSHAndPersistentIdentity(t *testing.T) {
@@ -36,24 +36,24 @@ func TestBidirectionalSSHAndPersistentIdentity(t *testing.T) {
 	envknob.SetenvForTest(t, "TS_DEBUG_ALWAYS_USE_DERP", "true")
 	netns.SetEnabled(false)
 	defer netns.SetEnabled(true)
-	control := &testcontrol.Server{DERPMap: integration.RunDERPAndSTUN(t, logger.Discard, "127.0.0.1"), MagicDNSDomain: "cage-test.ts.net", DNSConfig: &tailcfg.DNSConfig{Proxied: true}, Logf: logger.Discard}
+	control := &testcontrol.Server{DERPMap: integration.RunDERPAndSTUN(t, logger.Discard, "127.0.0.1"), MagicDNSDomain: "workbench-test.ts.net", DNSConfig: &tailcfg.DNSConfig{Proxied: true}, Logf: logger.Discard}
 	server := httptest.NewUnstartedServer(control)
 	control.HTTPTestServer = server
 	server.Start()
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	dir := filepath.Join(t.TempDir(), "cage")
+	dir := filepath.Join(t.TempDir(), "workbench")
 	n, err := newNode(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = n.startServer(&tsnet.Server{Dir: dir, Hostname: "cage-test", ControlURL: server.URL, UserLogf: logger.Discard}); err != nil {
+	if err = n.startServer(&tsnet.Server{Dir: dir, Hostname: "workbench-test", ControlURL: server.URL, UserLogf: logger.Discard}); err != nil {
 		t.Fatal(err)
 	}
 	defer func() { n.mu.Lock(); n.stop(); n.mu.Unlock() }()
 	n.config.Enabled = true
-	cageStatus, err := n.server.Up(ctx)
+	workbenchStatus, err := n.server.Up(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,12 +76,12 @@ func TestBidirectionalSSHAndPersistentIdentity(t *testing.T) {
 	}
 	login := &gossh.ClientConfig{User: currentUser(), Auth: []gossh.AuthMethod{gossh.PublicKeys(signer)}, HostKeyCallback: gossh.InsecureIgnoreHostKey(), Timeout: 5 * time.Second}
 	incoming := func(config *gossh.ClientConfig) (*gossh.Client, error) {
-		c, err := remote.Dial(ctx, "tcp", net.JoinHostPort(cageStatus.TailscaleIPs[0].String(), "22"))
+		c, err := remote.Dial(ctx, "tcp", net.JoinHostPort(workbenchStatus.TailscaleIPs[0].String(), "22"))
 		if err != nil {
 			return nil, err
 		}
 		_ = c.SetDeadline(time.Now().Add(8 * time.Second))
-		conn, channels, requests, err := gossh.NewClientConn(c, "cage-test:22", config)
+		conn, channels, requests, err := gossh.NewClientConn(c, "workbench-test:22", config)
 		if err != nil {
 			c.Close()
 			return nil, err
@@ -108,13 +108,10 @@ func TestBidirectionalSSHAndPersistentIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := "printf cage-inbound-ok"
-	if runtime.GOOS == "windows" {
-		command = "[Console]::Write('cage-inbound-ok')"
-	}
+	command := "printf workbench-inbound-ok"
 	out, err := session.Output(command)
 	session.Close()
-	if err != nil || string(out) != "cage-inbound-ok" {
+	if err != nil || string(out) != "workbench-inbound-ok" {
 		t.Fatalf("incoming exec: %q %v", out, err)
 	}
 
@@ -127,7 +124,7 @@ func TestBidirectionalSSHAndPersistentIdentity(t *testing.T) {
 	}
 	output, err := interactive.Output(command)
 	_ = interactive.Close()
-	if err != nil || !strings.Contains(string(output), "cage-inbound-ok") {
+	if err != nil || !strings.Contains(string(output), "workbench-inbound-ok") {
 		t.Fatalf("interactive terminal: %q %v", output, err)
 	}
 	// SFTP and local forwarding support a real editor's SSH transport.
@@ -249,7 +246,7 @@ func TestBidirectionalSSHAndPersistentIdentity(t *testing.T) {
 	if !strings.Contains(string(managed), "Host *\n") {
 		t.Fatal("Include did not reset host scope")
 	}
-	idBefore := cageStatus.Self.ID
+	idBefore := workbenchStatus.Self.ID
 	if _, err = n.run(ctx, request{Action: "disconnect"}); err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +254,7 @@ func TestBidirectionalSSHAndPersistentIdentity(t *testing.T) {
 	if err != nil || len(saved.config.Keys) != 1 || saved.config.Enabled {
 		t.Fatalf("disconnect lost data: %v %+v", err, saved)
 	}
-	if err = n.startServer(&tsnet.Server{Dir: dir, Hostname: "cage-test", ControlURL: server.URL, UserLogf: logger.Discard}); err != nil {
+	if err = n.startServer(&tsnet.Server{Dir: dir, Hostname: "workbench-test", ControlURL: server.URL, UserLogf: logger.Discard}); err != nil {
 		t.Fatal(err)
 	}
 	restored, err := n.server.Up(ctx)
@@ -278,6 +275,7 @@ type bufferedConnection struct {
 func (c *bufferedConnection) Read(b []byte) (int, error) { return c.reader.Read(b) }
 func TestRejectPrivateKeysAndMultipleKeys(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
 	n, err := newNode(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -291,6 +289,7 @@ func TestRejectPrivateKeysAndMultipleKeys(t *testing.T) {
 
 func TestInteractiveAuthorizationFlow(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
 	t.Setenv("TS_NO_LOGS_NO_SUPPORT", "true")
 	netns.SetEnabled(false)
 	defer netns.SetEnabled(true)
@@ -303,7 +302,7 @@ func TestInteractiveAuthorizationFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = n.startServer(&tsnet.Server{Dir: n.dir, Hostname: "cage-login-test", ControlURL: server.URL, UserLogf: logger.Discard}); err != nil {
+	if err = n.startServer(&tsnet.Server{Dir: n.dir, Hostname: "workbench-login-test", ControlURL: server.URL, UserLogf: logger.Discard}); err != nil {
 		t.Fatal(err)
 	}
 	defer n.stop()

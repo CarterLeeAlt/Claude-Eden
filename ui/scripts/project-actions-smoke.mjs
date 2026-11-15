@@ -15,7 +15,7 @@ try {
   ]) {
     const fixture = await createWorkbench({
       url,
-      clientContext: { mode: "local", connection_id: "local", client_platform: platform, server_platform: platform, connection: { state: "disconnected" } },
+      clientContext: { mode: "local", connection_id: "local", client_platform: "windows", server_platform: "windows", connection: { state: "disconnected" } },
     });
     const { browser, page, state, errors } = fixture;
     try {
@@ -45,7 +45,7 @@ try {
       await page.getByRole("menuitem", { name: "普通终端" }).click();
       await page.waitForFunction(() => document.querySelector("header.terminal-chrome .current-title")?.textContent === "终端 2");
       assert.equal(state.terminals[1].workspace, projectB);
-      await page.evaluate(() => window.cageNativeAction("newTerminal"));
+      await page.evaluate(() => window.edenNativeAction("newTerminal"));
       await page.getByRole("menuitem", { name: "Claude 终端" }).waitFor();
       await page.keyboard.press("Escape");
       assert.equal(await page.locator(":focus").getAttribute("title"), projectB);

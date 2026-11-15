@@ -25,7 +25,7 @@ export function parseArgs(args) {
     options[flag.slice(2)] = args[++i];
   }
   if (!['plan', 'download'].includes(options.action)) fail('invalid_input', 'Action must be plan or download.');
-  if (options.platform !== 'win32-amd64') fail('unsupported_platform', 'The desktop package supports Windows x64. For Linux cloud deployment, read deploy/cloud/README.md in the repository.');
+  if (options.platform !== 'win32-amd64') fail('unsupported_platform', 'The desktop package supports Windows 10 x64 with a local Debian 13 guest.');
   if (options.version && !/^v?\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(options.version)) fail('invalid_input', 'Use an explicit release tag such as v0.1.6-alpha-preview.');
   if (options.version && !options.version.startsWith('v')) options.version = `v${options.version}`;
   if (options.action === 'download' && !isAbsolute(options.destination)) fail('invalid_input', 'download requires --destination with an absolute directory path.');

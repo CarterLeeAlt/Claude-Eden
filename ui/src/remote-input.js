@@ -13,8 +13,8 @@ import {
 export function installRemoteInput(
   transport,
   container,
-  { mode, guestPlatform = () => "linux", systemClipboard = () => true, onStatus, onFallback, isActive,
-    insertText, insertComposition, caretRect, surface, inputLabel = "Cage 网页输入", tabId: getTargetId = () => "", pasteContent, preparePaste, setCopyContext, copyText },
+  { mode, systemClipboard = () => true, onStatus, onFallback, isActive,
+    insertText, insertComposition, caretRect, surface, inputLabel = "Eden 网页输入", tabId: getTargetId = () => "", pasteContent, preparePaste, setCopyContext, copyText },
 ) {
   const listeners = [],
     handled = new Set(),
@@ -59,11 +59,8 @@ export function installRemoteInput(
     isActive() &&
     (nativeOwned || container.contains(document.activeElement) ||
       document.activeElement === target);
-  const macGuest = () => ["darwin", "macos"].includes(guestPlatform());
-  const windowsGuest = () => ["windows", "windows-11"].includes(guestPlatform());
-  const sharedClipboard = () => systemClipboard() && window.cageSharedClipboardActive;
+  const sharedClipboard = () => systemClipboard() && window.edenSharedClipboardActive;
   const shortcutModifier = () => {
-    if (macGuest()) return physical.has("MetaRight") ? [0xffec, "MetaRight"] : [0xffeb, "MetaLeft"];
     return physical.has("ControlRight") ? [0xffe4, "ControlRight"] : [0xffe3, "ControlLeft"];
   };
   const cancelCopy = () => {
@@ -117,7 +114,7 @@ export function installRemoteInput(
     });
   };
   const updateNative = (rect) => {
-    if (nativeFailed || !window.cageNativeIMEAvailable || !nativeAvailable() || !focused()) return;
+    if (nativeFailed || !window.edenNativeIMEAvailable || !nativeAvailable() || !focused()) return;
     if (!nativeOwned && composing) return;
     const operation = nativeOwned ? "caret" : "activate";
     if (!nativeOwned) { nativeOwner = crypto.randomUUID(); nativeTarget = getTargetId(); nativeOwned = true; }
@@ -134,7 +131,7 @@ export function installRemoteInput(
     target.style.left = `${Math.max(0, Math.min(x, window.innerWidth - 1))}px`;
     target.style.top = `${Math.max(0, Math.min(y, window.innerHeight - 24))}px`;
   };
-  const syncCaret = async (cursorOnly = false) => {
+  const syncCaret = async () => {
     if (!caretRect || caretPending || disposed || !isActive()) return;
     caretPending = true;
     const id = getTargetId();
@@ -146,7 +143,6 @@ export function installRemoteInput(
         const canvas = surface?.() || container.querySelector("canvas");
         canvas?.style?.setProperty("cursor", value.cursor, "important");
       }
-      if (cursorOnly) return;
       caretState = value?.available ? { ...value, target: id, time: Date.now() } : null;
       if (!value?.available) { deactivateNative(true); return; }
       if (!value.rect || value.rect[3] <= 0) return;
@@ -181,28 +177,6 @@ export function installRemoteInput(
   };
   const bounds = container.getBoundingClientRect();
   position(bounds.left + 12, bounds.top + 12);
-  let lastHoverProbe = -Infinity;
-  let hoverTimer;
-  let hovered = false;
-  const probeHover = () => {
-    if (!windowsGuest() || !hovered || !isActive() || disposed || document.visibilityState === "hidden" ||
-        (!document.hasFocus() && !nativeOwned)) return;
-    if (caretPending) { hoverTimer = setTimeout(probeHover, caretPollFast); return; }
-    lastHoverProbe = Date.now();
-    void syncCaret(true);
-  };
-  listeners.push(() => clearTimeout(hoverTimer));
-  on(container, "pointerleave", () => { hovered = false; clearTimeout(hoverTimer); });
-  on(container, "pointermove", () => {
-    if (!windowsGuest() || !isActive() || disposed || document.visibilityState === "hidden" ||
-        (!document.hasFocus() && !nativeOwned)) return;
-    acted();
-    hovered = true;
-    clearTimeout(hoverTimer);
-    // Hover may follow a toolbar click. Update shape without acquiring IME
-    // ownership or moving focus into the remote application.
-    hoverTimer = setTimeout(probeHover, Math.max(0, caretPollFast - (Date.now() - lastHoverProbe)));
-  });
   on(
     container,
     "pointerdown",
@@ -316,7 +290,7 @@ export function installRemoteInput(
       cancelCopy();
     }
   });
-  on(window, "cage-native-input", (event) => {
+  on(window, "eden-native-input", (event) => {
     const value = event.detail;
     if (disposed || !value || value.owner !== nativeOwner) return;
     if (value.kind === "deactivated") {
@@ -334,8 +308,8 @@ export function installRemoteInput(
     else if (value.kind === "input") commit(value.text);
     else if (["keydown", "keyup"].includes(value.kind)) {
       const key = new KeyboardEvent(value.kind, { ...value, bubbles: true, cancelable: true });
-      key.cageNativeTextKey = value.textKey;
-      key.cageNativeInput = true;
+      key.edenNativeTextKey = value.textKey;
+      key.edenNativeInput = true;
       target.dispatchEvent(key);
     }
   });
@@ -404,7 +378,7 @@ export function installRemoteInput(
     clearTimeout(copyTimer);
     copyTimer = setTimeout(() => {
       copyRequested = false;
-      onFallback(lastText, "未收到新的选中文本，可在这里复制 Cage 剪贴板。");
+      onFallback(lastText, "未收到新的选中文本，可在这里复制 Eden 剪贴板。");
     }, 1600);
   };
   const copy = (key = "c") => {
@@ -480,7 +454,7 @@ export function installRemoteInput(
       say("正在粘贴…");
       return transport.runKeyAction(async sendKey => {
         const before = await caretRect?.();
-        await window.cageSyncClipboard();
+        await window.edenSyncClipboard();
         const after = await caretRect?.();
         if (disposed || !isActive() || id !== getTargetId() ||
             (before?.available && (!after?.available || before.context !== after.context))) {
@@ -509,8 +483,8 @@ export function installRemoteInput(
     physical.clear();
     handled.clear();
   };
-  on(window, "cage-input-interrupted", () => { focusHandoff = null; });
-  on(window, "cage-window-deactivated", () => { focusHandoff = null; });
+  on(window, "eden-input-interrupted", () => { focusHandoff = null; });
+  on(window, "eden-window-deactivated", () => { focusHandoff = null; });
   on(window, "blur", () => {
     // Moving between the native editor and WebView2 also raises DOM blur.
     if (!window.chrome?.webview) focusHandoff = null;
@@ -523,7 +497,7 @@ export function installRemoteInput(
       focusHandoff = null;
       if (!focused()) return;
       acted();
-      if ((event.isTrusted || event.cageNativeInput) && (!copyContext || ["Enter", " ", "Tab"].includes(event.key) ||
+      if ((event.isTrusted || event.edenNativeInput) && (!copyContext || ["Enter", " ", "Tab"].includes(event.key) ||
           event.ctrlKey || event.metaKey || event.altKey)) prepareCopy();
       if (
         composing ||
@@ -537,7 +511,7 @@ export function installRemoteInput(
         return;
       }
       const code = getKeycode(event),
-        mapping = mode() === "mac" && !macGuest(),
+        mapping = mode() === "mac",
         malformedCommandLetter =
           event.metaKey &&
           /^Key[A-Z]$/.test(code) &&
@@ -582,7 +556,7 @@ export function installRemoteInput(
         return;
       }
       const clipboard =
-        (event.metaKey || (!macGuest() && event.ctrlKey)) &&
+        (event.metaKey || event.ctrlKey) &&
         !event.altKey &&
         ((!event.shiftKey && ["c", "x"].includes(key)) || key === "v");
       if (clipboard) {
@@ -603,7 +577,7 @@ export function installRemoteInput(
         return;
       }
       if (
-        (mapping || macGuest()) &&
+        mapping &&
         event.metaKey &&
         !["Meta", "Shift", "Control", "Alt", "CapsLock"].includes(event.key)
       ) {
@@ -626,7 +600,7 @@ export function installRemoteInput(
           transport.sendKey(sym, code, true);
           transport.sendKey(sym, code, false);
           if (event.shiftKey && !held("Shift")) transport.sendKey(...shift, false);
-          if (!held(macGuest() ? "Meta" : "Control")) transport.sendKey(...modifier, false);
+          if (!held("Control")) transport.sendKey(...modifier, false);
           event.preventDefault();
           event.stopImmediatePropagation();
           handled.add(code);
@@ -642,16 +616,10 @@ export function installRemoteInput(
         event.stopImmediatePropagation();
         handled.add(code);
         commit(event.key);
-      } else if (!event.cageNativeTextKey && !event.metaKey && !event.ctrlKey && !event.altKey &&
+      } else if (!event.edenNativeTextKey && !event.metaKey && !event.ctrlKey && !event.altKey &&
           event.key.length === 1 && /[^a-zA-Z0-9 ]/.test(event.key)) {
         // Let the host input method choose punctuation (e.g. ? -> ？).
         // The resulting input event carries the actual character to insert.
-        event.stopImmediatePropagation();
-      } else if (macGuest()) {
-        // noVNC's host-Mac modifier conversion targets non-Mac guests.
-        const sym = getKeysym(event);
-        if (sym !== null) { transport.sendKey(sym, code, true); remote.set(code, sym); }
-        event.preventDefault();
         event.stopImmediatePropagation();
       }
     },

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
 	"github.com/sylvinus/agent-vm/internal/diagnostics"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func monitorTimingRecords(t *testing.T, s *Server, kind string) []map[string]string {
@@ -52,7 +52,7 @@ func TestNetworkMonitorRecordsRepeatedLockSkips(t *testing.T) {
 	s := testServer(t)
 	s.ready = true
 	s.safety.VerifiedAt = time.Now().Add(-85 * time.Second)
-	s.safety.Gate = &cage.GateStatus{Mode: cage.GateOpen, Until: time.Now().Add(5 * time.Second)}
+	s.safety.Gate = &eden.GateStatus{Mode: eden.GateOpen, Until: time.Now().Add(5 * time.Second)}
 	s.op.Lock()
 	defer s.op.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 5200*time.Millisecond)
@@ -107,7 +107,7 @@ func TestConcurrentSafetyMonitorKeepsManualPause(t *testing.T) {
 	finished := make(chan struct{})
 	go func() {
 		defer close(finished)
-		s.monitorSafetyWithProbe(func(ctx context.Context, _ cage.Config) (string, error) {
+		s.monitorSafetyWithProbe(func(ctx context.Context, _ eden.Config) (string, error) {
 			close(started)
 			<-ctx.Done()
 			return "", ctx.Err()
@@ -118,7 +118,7 @@ func TestConcurrentSafetyMonitorKeepsManualPause(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("monitor did not start")
 	}
-	s.monitorSafetyWithProbe(func(context.Context, cage.Config) (string, error) {
+	s.monitorSafetyWithProbe(func(context.Context, eden.Config) (string, error) {
 		t.Error("overlapping monitor started a second probe")
 		return "", nil
 	})
@@ -130,7 +130,7 @@ func TestConcurrentSafetyMonitorKeepsManualPause(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("paused monitor did not stop")
 	}
-	if gate.Status().Mode != cage.GateClosed {
+	if gate.Status().Mode != eden.GateClosed {
 		t.Fatal("monitor reopened networking after manual pause")
 	}
 }
@@ -139,11 +139,11 @@ func TestMonitorTimingAttributesSlowProbe(t *testing.T) {
 	s, gate := grantedToolUpdateServer(t)
 	s.setJobForTest(Job{})
 	s.safety.VerifiedAt = time.Now().Add(-85 * time.Second)
-	s.monitorSafetyWithProbe(func(context.Context, cage.Config) (string, error) {
+	s.monitorSafetyWithProbe(func(context.Context, eden.Config) (string, error) {
 		time.Sleep(30 * time.Millisecond)
 		return "", errors.New("synthetic probe failed token=private-probe-secret")
 	})
-	if gate.Status().Mode != cage.GateClosed {
+	if gate.Status().Mode != eden.GateClosed {
 		t.Fatal("failed probe retained an open gate")
 	}
 	records := monitorTimingRecords(t, s, "safety")
@@ -177,7 +177,7 @@ func TestMonitorTimingRecordsRenewalAndSkips(t *testing.T) {
 		t.Fatalf("missing renewal timing: %v", records)
 	}
 	remaining, err := strconv.Atoi(records[0]["lease_remaining_end_ms"])
-	if err != nil || remaining < 0 || remaining > int(cage.GateLease.Milliseconds()) {
+	if err != nil || remaining < 0 || remaining > int(eden.GateLease.Milliseconds()) {
 		t.Fatalf("invalid old lease margin: %v", records[0])
 	}
 	s.monitorSafety()
@@ -210,5 +210,46 @@ func TestNetworkMonitorRecordsAllOuterStages(t *testing.T) {
 	duration, err := strconv.Atoi(records[0]["physical_interface_ms"])
 	if err != nil || duration < 30 {
 		t.Fatalf("slow interface check was not attributed: %v", records[0])
+	}
+}
+
+func TestNetworkSamplingDoesNotBlockInitializationOrResources(t *testing.T) {
+	s := testServer(t)
+	previous := physicalProxyInterface
+	t.Cleanup(func() { physicalProxyInterface = previous })
+	started := make(chan struct{})
+	physicalProxyInterface = func(ctx context.Context) (string, error) {
+		close(started)
+		<-ctx.Done()
+		return "", ctx.Err()
+	}
+	ctx, cancel := context.WithCancel(s.lifetimeContext())
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		s.monitorNetwork(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		s.beginClose()
+		select {
+		case <-finished:
+		case <-time.After(3 * time.Second):
+			t.Error("cancelled interface observation did not finish")
+		}
+	})
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("interface observation did not start")
+	}
+	if s.busy() {
+		t.Fatal("passive observation published a workload job")
+	}
+	if w := request(s, "POST", "/api/environment/resources", s.origin, `{"allocation":{"automatic":true}}`, true); w.Code != 200 {
+		t.Errorf("idle resource save during interface observation: %d %s", w.Code, w.Body.String())
+	}
+	if w := initializationRequest(s, "install", true); w.Code != 200 {
+		t.Errorf("idle installation admission during interface observation: %d %s", w.Code, w.Body.String())
 	}
 }

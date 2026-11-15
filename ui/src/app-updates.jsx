@@ -44,16 +44,16 @@ export function useAppUpdates() {
       if (event.detail?.phase) setState(event.detail);
     };
     const check = () => {
-      if (document.visibilityState === "hidden" || window.cageWindowVisible === false) return;
+      if (document.visibilityState === "hidden" || window.edenWindowVisible === false) return;
       const phase = current.current.phase;
       const interval = ["failed", "waiting"].includes(phase) ? retryInterval : checkInterval;
       const deadline = phase === "failed" && Number.isFinite(Date.parse(current.current.retryAt || ""))
         ? Date.parse(current.current.retryAt) : lastCheck.current + interval;
       if (["idle", "current", "failed", "waiting", "available"].includes(phase) && Date.now() >= deadline) void run("check");
     };
-    window.addEventListener("cage-app-update", receive);
+    window.addEventListener("eden-app-update", receive);
     window.addEventListener("focus", check);
-    window.addEventListener("cage-window-visibility", check);
+    window.addEventListener("eden-window-visibility", check);
     document.addEventListener("visibilitychange", check);
     (async () => {
       try {
@@ -70,9 +70,9 @@ export function useAppUpdates() {
     return () => {
       live = false;
       clearInterval(timer);
-      window.removeEventListener("cage-app-update", receive);
+      window.removeEventListener("eden-app-update", receive);
       window.removeEventListener("focus", check);
-      window.removeEventListener("cage-window-visibility", check);
+      window.removeEventListener("eden-window-visibility", check);
       document.removeEventListener("visibilitychange", check);
     };
   }, [available, run]);

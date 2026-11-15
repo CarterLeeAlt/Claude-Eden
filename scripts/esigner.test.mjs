@@ -26,7 +26,7 @@ test('read-only credential diagnosis emits only fixed stage, exit and error clas
 });
 
 test('signing retries only declared server errors without output and remains bounded', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'cage-sign-retry-'));
+  const root = await mkdtemp(join(tmpdir(), 'eden-sign-retry-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const outputPath = join(root, 'signed.exe'), delays = [];
   const failure = () => new Error('CodeSignTool failed (exit 11). Error: {"error":"server_error"}');
@@ -51,10 +51,32 @@ test('signing retries only declared server errors without output and remains bou
 });
 
 test('a real JVM receives quoted Unicode arguments, no secrets in process arguments, and OTP through stdin', async t => {
-  const temp = await mkdtemp(join(tmpdir(), 'cage-esigner-test-'));
+  const temp = await mkdtemp(join(tmpdir(), 'eden-esigner-test-'));
   t.after(() => rm(temp, { recursive: true, force: true }));
   const source = join(temp, 'Signer.java');
   const config = join(temp, 'config.properties');
+  const processProbe = join(temp, 'process-commandline.ps1');
+  if (process.platform === 'win32') await writeFile(processProbe, `\uFEFFparam([int]$ProcessId)
+$ErrorActionPreference = 'Stop'
+[Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
+$process = Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId"
+if (!$process -or !$process.CommandLine) { throw 'Signer command line unavailable.' }
+$process.CommandLine
+`);
+  const assertPrivateCommandLine = async marker => {
+    const pid = Number(await readFile(marker + '.pid', 'utf8'));
+    assert.ok(Number.isSafeInteger(pid) && pid > 0);
+    // ProcessHandle.Info may omit commandLine on Windows. Inspect the live OS
+    // process while the fixture waits for OTP, rather than treating missing data as a leak.
+    const command = process.platform === 'win32'
+      ? execFileSync(join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+        ['-NoProfile', '-NonInteractive', '-File', processProbe, '-ProcessId', String(pid)], { encoding: 'utf8', windowsHide: true })
+      : await readFile(`/proc/${pid}/cmdline`, 'utf8');
+    assert.ok(command.includes('@') && command.includes('java.args'), 'Signer must receive an argument-file path.');
+    assert.ok(!command.includes('password=') && !command.includes('totp_secret='), 'Signer process arguments exposed credentials.');
+  };
   await writeFile(config, 'TEST=true\n');
   await writeFile(source, `
 import java.nio.file.*;
@@ -63,9 +85,8 @@ public class Signer {
   public static void main(String[] args) throws Exception {
     String temp = System.getProperty("user.dir");
     Files.writeString(Path.of(args[0]), temp);
-    String command = ProcessHandle.current().info().commandLine().orElse("");
-    if (!command.contains("@") || command.contains("password=") || command.contains("totp_secret=")) System.exit(13);
-    if (System.getenv("CAGE_ESIGNER_PASSWORD") != null || System.getenv("CAGE_ESIGNER_TOTP_SECRET") != null) System.exit(14);
+    Files.writeString(Path.of(args[0] + ".pid"), Long.toString(ProcessHandle.current().pid()));
+    if (System.getenv("EDEN_ESIGNER_PASSWORD") != null || System.getenv("EDEN_ESIGNER_TOTP_SECRET") != null) System.exit(14);
     if (!Files.readString(Path.of("conf", "code_sign_tool.properties")).contains("TEST=true")) System.exit(15);
     for (int i = 1; i < args.length; i++) System.out.println("ARG[" + i + "]=" + args[i]);
     Files.createDirectories(Path.of("logs"));
@@ -91,11 +112,11 @@ public class Signer {
   for (const fail of [false, true]) {
     const marker = join(temp, fail ? 'failure-marker' : 'success-marker');
     let calls = 0;
-    const previous = process.env.CAGE_ESIGNER_PASSWORD;
-    process.env.CAGE_ESIGNER_PASSWORD = 'dummy-password';
+    const previous = process.env.EDEN_ESIGNER_PASSWORD;
+    process.env.EDEN_ESIGNER_PASSWORD = 'dummy-password';
     try {
       const operation = invokeJava({ jar, config, arguments: [marker, ...values, ...(fail ? ['fail'] : [])],
-        otp: async () => { calls++; return '123456'; }, secrets: ['dummy-password'] });
+        otp: async () => { calls++; await assertPrivateCommandLine(marker); return '123456'; }, secrets: ['dummy-password'] });
       if (fail) {
         await assert.rejects(operation, error => !error.message.includes('dummy-password') && !error.message.includes('123456') && /exit 4/u.test(error.message));
       } else {
@@ -108,15 +129,15 @@ public class Signer {
       await assert.rejects(readFile(join(working, 'java.args')), { code: 'ENOENT' });
       await assert.rejects(readFile(join(working, 'logs/sensitive.log')), { code: 'ENOENT' });
     } finally {
-      if (previous === undefined) delete process.env.CAGE_ESIGNER_PASSWORD;
-      else process.env.CAGE_ESIGNER_PASSWORD = previous;
+      if (previous === undefined) delete process.env.EDEN_ESIGNER_PASSWORD;
+      else process.env.EDEN_ESIGNER_PASSWORD = previous;
     }
   }
   const quotaMarker = join(temp, 'quota-marker');
   let quotaCalls = 0;
   await assert.rejects(invokeSigning({ outputPath: join(temp, 'no-signed-output.exe'), pause: async () => assert.fail('quota cannot cause a second signing request'), invoke: () => {
     quotaCalls++;
-    return invokeJava({ jar, config, arguments: [quotaMarker, 'quota'], otp: async () => '123456', secrets: ['dummy-password'] });
+    return invokeJava({ jar, config, arguments: [quotaMarker, 'quota'], otp: async () => { await assertPrivateCommandLine(quotaMarker); return '123456'; }, secrets: ['dummy-password'] });
   } }), error => {
     assert.equal(error.failureStage, 'malware-scan');
     assert.equal(error.providerCode, 'server_error');
@@ -130,7 +151,7 @@ public class Signer {
 });
 
 test('modified vendor binaries are refused before executing Java', async t => {
-  const temp = await mkdtemp(join(tmpdir(), 'cage-esigner-tampered-'));
+  const temp = await mkdtemp(join(tmpdir(), 'eden-esigner-tampered-'));
   t.after(() => rm(temp, { recursive: true, force: true }));
   const { mkdir } = await import('node:fs/promises');
   await mkdir(join(temp, 'jar'));
@@ -139,7 +160,7 @@ test('modified vendor binaries are refused before executing Java', async t => {
 });
 
 test('NSIS temporary executables without an extension are accepted, unrelated files are refused', async t => {
-  const temp = await mkdtemp(join(tmpdir(), 'cage-esigner-pe-'));
+  const temp = await mkdtemp(join(tmpdir(), 'eden-esigner-pe-'));
   t.after(() => rm(temp, { recursive: true, force: true }));
   const path = join(temp, 'makensis123');
   const bytes = Buffer.alloc(132);
@@ -163,23 +184,21 @@ test('release readiness accepts eSigner without a PFX, requires all secrets and 
   const script = fileURLToPath(new URL('./check-release-readiness.mjs', import.meta.url));
   const env = {
     ...process.env,
-    CAGE_MACOS_P12_BASE64: 'fixture', CAGE_MACOS_P12_PASSWORD: 'fixture', CAGE_MACOS_SIGNING_IDENTITY: 'Developer ID Application: Fixture',
-    CAGE_MACOS_NOTARY_KEY_BASE64: 'fixture', CAGE_MACOS_NOTARY_KEY_ID: 'fixture', CAGE_MACOS_NOTARY_ISSUER_ID: 'fixture',
-    CAGE_WINDOWS_QEMU_SOURCE_URL: 'https://example.invalid/source.zip', CAGE_WINDOWS_QEMU_SOURCE_SHA256: 'a'.repeat(64),
-    CAGE_WINDOWS_SIGNING_PROVIDER: 'esigner', CAGE_ESIGNER_USERNAME: 'fixture', CAGE_ESIGNER_PASSWORD: 'private-fixture-password',
-    CAGE_ESIGNER_CREDENTIAL_ID: '11111111-2222-3333-4444-555555555555', CAGE_ESIGNER_TOTP_SECRET: 'private-fixture-seed',
-    CAGE_ESIGNER_CERTIFICATE_SERIAL: '7'.repeat(32), CAGE_WINDOWS_PFX_BASE64: '', CAGE_WINDOWS_PFX_PASSWORD: '',
+    EDEN_WINDOWS_QEMU_SOURCE_URL: 'https://example.invalid/source.zip', EDEN_WINDOWS_QEMU_SOURCE_SHA256: 'a'.repeat(64),
+    EDEN_WINDOWS_SIGNING_PROVIDER: 'esigner', EDEN_ESIGNER_USERNAME: 'fixture', EDEN_ESIGNER_PASSWORD: 'private-fixture-password',
+    EDEN_ESIGNER_CREDENTIAL_ID: '11111111-2222-3333-4444-555555555555', EDEN_ESIGNER_TOTP_SECRET: 'private-fixture-seed',
+    EDEN_ESIGNER_CERTIFICATE_SERIAL: '7'.repeat(32), EDEN_WINDOWS_PFX_BASE64: '', EDEN_WINDOWS_PFX_PASSWORD: '',
   };
   const run = change => spawnSync(process.execPath, [script], { env: { ...env, ...change }, encoding: 'utf8' });
   assert.equal(run({}).status, 0);
-  for (const name of ['CAGE_ESIGNER_USERNAME', 'CAGE_ESIGNER_PASSWORD', 'CAGE_ESIGNER_CREDENTIAL_ID', 'CAGE_ESIGNER_TOTP_SECRET', 'CAGE_ESIGNER_CERTIFICATE_SERIAL']) {
+  for (const name of ['EDEN_ESIGNER_USERNAME', 'EDEN_ESIGNER_PASSWORD', 'EDEN_ESIGNER_CREDENTIAL_ID', 'EDEN_ESIGNER_TOTP_SECRET', 'EDEN_ESIGNER_CERTIFICATE_SERIAL']) {
     const result = run({ [name]: '' });
     assert.equal(result.status, 1);
     assert.ok(result.stderr.includes(name));
     assert.ok(!result.stderr.includes('private-fixture-password') && !result.stderr.includes('private-fixture-seed'));
   }
-  assert.equal(run({ CAGE_WINDOWS_SIGNING_PROVIDER: 'typo' }).status, 1);
-  assert.equal(run({ CAGE_ESIGNER_CERTIFICATE_SERIAL: 'bad' }).status, 1);
-  assert.equal(run({ CAGE_WINDOWS_SIGNING_PROVIDER: '', CAGE_WINDOWS_PFX_BASE64: 'fixture', CAGE_WINDOWS_PFX_PASSWORD: 'fixture' }).status, 0);
-  assert.equal(run({ CAGE_WINDOWS_SIGNING_PROVIDER: '' }).status, 1);
+  assert.equal(run({ EDEN_WINDOWS_SIGNING_PROVIDER: 'typo' }).status, 1);
+  assert.equal(run({ EDEN_ESIGNER_CERTIFICATE_SERIAL: 'bad' }).status, 1);
+  assert.equal(run({ EDEN_WINDOWS_SIGNING_PROVIDER: '', EDEN_WINDOWS_PFX_BASE64: 'fixture', EDEN_WINDOWS_PFX_PASSWORD: 'fixture' }).status, 0);
+  assert.equal(run({ EDEN_WINDOWS_SIGNING_PROVIDER: '' }).status, 1);
 });

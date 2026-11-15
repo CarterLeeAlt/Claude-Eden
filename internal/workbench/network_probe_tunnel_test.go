@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func TestExitProbeTimeoutKeepsLiveTunnelUntilManualPause(t *testing.T) {
@@ -40,7 +40,7 @@ func TestExitProbeTimeoutKeepsLiveTunnelUntilManualPause(t *testing.T) {
 	if err := writePrivate(s.configPath, cfg); err != nil {
 		t.Fatal(err)
 	}
-	gate, err := cage.NewEgressGate(cfg)
+	gate, err := eden.NewEgressGate(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestExitProbeTimeoutKeepsLiveTunnelUntilManualPause(t *testing.T) {
 	if err := os.MkdirAll(s.instanceDir(), 0700); err != nil {
 		t.Fatal(err)
 	}
-	stop, err := cage.StartGateControl(s.configPath, s.instanceDir(), gate)
+	stop, err := eden.StartGateControl(s.configPath, s.instanceDir(), gate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,8 +78,8 @@ func TestExitProbeTimeoutKeepsLiveTunnelUntilManualPause(t *testing.T) {
 		}
 	}
 	echo("before timeout")
-	s.monitorSafetyWithProbe(func(context.Context, cage.Config) (string, error) { return "", context.DeadlineExceeded })
-	if after := gate.Status(); after.Mode != cage.GateOpen || !after.Until.Equal(before.Until) || after.Epoch != before.Epoch {
+	s.monitorSafetyWithProbe(func(context.Context, eden.Config) (string, error) { return "", context.DeadlineExceeded })
+	if after := gate.Status(); after.Mode != eden.GateOpen || !after.Until.Equal(before.Until) || after.Epoch != before.Epoch {
 		t.Fatalf("sampling timeout changed permission: before=%+v after=%+v", before, after)
 	}
 	echo("after timeout")
@@ -120,7 +120,7 @@ func TestNetworkRenewalRunsWhileOperationLockIsHeld(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("lease renewal waited for the lifecycle operation lock")
 	}
-	if after := gate.Status(); after.Mode != cage.GateOpen || !after.Until.After(before.Until) {
+	if after := gate.Status(); after.Mode != eden.GateOpen || !after.Until.After(before.Until) {
 		t.Fatalf("monitor did not renew its lease: before=%+v after=%+v", before, after)
 	}
 }

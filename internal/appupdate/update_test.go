@@ -16,27 +16,29 @@ import (
 )
 
 func fixtureRelease(v string, pre bool) release {
-	return release{Tag: "v" + v, Prerelease: pre, Assets: []asset{{Name: "Cage-" + v + "-macos-arm64.dmg", URL: "https://github.com/" + repository + "/releases/download/v" + v + "/Cage-" + v + "-macos-arm64.dmg", Size: 3, Digest: "sha256:" + strings.Repeat("a", 64), State: "uploaded"}}}
+	return release{Tag: "v" + v, Prerelease: pre, Assets: []asset{{Name: "Eden-" + v + "-windows-amd64-setup.exe", URL: "https://github.com/" + repository + "/releases/download/v" + v + "/Eden-" + v + "-windows-amd64-setup.exe", Size: 3, Digest: "sha256:" + strings.Repeat("a", 64), State: "uploaded"}}}
 }
 func TestReleaseSelectionPreservesChannelsAndNumericPrereleases(t *testing.T) {
 	rs := []release{fixtureRelease("0.2.0-alpha.9", true), fixtureRelease("0.2.0-alpha.10", true), fixtureRelease("0.1.0", false)}
-	c, err := selectPlatformRelease(rs, "0.2.0-alpha.1", "darwin", "arm64")
+	c, err := selectPlatformRelease(rs, "0.2.0-alpha.1", "windows", "amd64")
 	if err != nil || c == nil || c.Version != "0.2.0-alpha.10" {
 		t.Fatalf("selected %#v: %v", c, err)
 	}
 	rs = append(rs, fixtureRelease("0.2.0", false), fixtureRelease("0.3.0-alpha.1", true))
-	c, err = selectPlatformRelease(rs, "0.1.0", "darwin", "arm64")
+	c, err = selectPlatformRelease(rs, "0.1.0", "windows", "amd64")
 	if err != nil || c == nil || c.Version != "0.2.0" {
 		t.Fatalf("stable channel %#v: %v", c, err)
 	}
-	if c, err = selectPlatformRelease(rs, "0.3.0", "darwin", "arm64"); err != nil || c != nil {
+	if c, err = selectPlatformRelease(rs, "0.3.0", "windows", "amd64"); err != nil || c != nil {
 		t.Fatalf("downgrade: %#v %v", c, err)
 	}
 }
 func TestRejectReleaseAssetOutsideRepositoryOrOversize(t *testing.T) {
 	for _, mutate := range []func(*release){
-		func(r *release) { r.Assets[0].URL = "https://evil.example/Cage.dmg" },
-		func(r *release) { r.Assets[0].URL = "https://github.com/Other/App/releases/download/v0.2.0/Cage.dmg" },
+		func(r *release) { r.Assets[0].URL = "https://evil.example/Eden-setup.exe" },
+		func(r *release) {
+			r.Assets[0].URL = "https://github.com/Other/App/releases/download/v0.2.0/Eden-setup.exe"
+		},
 		func(r *release) { r.Assets[0].Size = maxArchive + 1 },
 		func(r *release) { r.Tag = "v../../malicious" },
 		func(r *release) { r.Draft = true },
@@ -44,13 +46,13 @@ func TestRejectReleaseAssetOutsideRepositoryOrOversize(t *testing.T) {
 	} {
 		r := fixtureRelease("0.2.0", false)
 		mutate(&r)
-		if c, err := selectPlatformRelease([]release{r}, "0.1.0", "darwin", "arm64"); err != nil || c != nil {
+		if c, err := selectPlatformRelease([]release{r}, "0.1.0", "windows", "amd64"); err != nil || c != nil {
 			t.Fatalf("accepted %#v: %v", c, err)
 		}
 	}
 }
 func TestRedirectPolicyRejectsCredentialsAndHostLookalikes(t *testing.T) {
-	for _, raw := range []string{"http://github.com/" + repository + "/releases/download/v1/a", "https://github.com.evil.example/a", "https://github.com@evil.example/a", "https://github.com:8443/" + repository + "/releases/download/v1/a", "https://evil.githubusercontent.com/a", "https://release-assets.githubusercontent.com.evil.example/a", "file:///tmp/Cage.app"} {
+	for _, raw := range []string{"http://github.com/" + repository + "/releases/download/v1/a", "https://github.com.evil.example/a", "https://github.com@evil.example/a", "https://github.com:8443/" + repository + "/releases/download/v1/a", "https://evil.githubusercontent.com/a", "https://release-assets.githubusercontent.com.evil.example/a", "file:///tmp/Eden.exe"} {
 		u, _ := url.Parse(raw)
 		if allowedURL(u, true) {
 			t.Fatal("accepted", raw)
@@ -71,7 +73,7 @@ func responseClient(body string, status int) *http.Client {
 	})}
 }
 func TestDownloadVerifiesSizeDigestAndPrivateFile(t *testing.T) {
-	content := "Cage archive"
+	content := "Eden archive"
 	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(content)))
 	a := fixtureRelease("0.2.0", false).Assets[0]
 	a.Size = int64(len(content))
@@ -80,7 +82,7 @@ func TestDownloadVerifiesSizeDigestAndPrivateFile(t *testing.T) {
 		ok               bool
 	}{{"valid", content, digest, true}, {"hash", content, strings.Repeat("a", 64), false}, {"oversize", content + "x", digest, false}, {"short", content[:3], digest, false}} {
 		t.Run(tc.name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "Cage.dmg")
+			path := filepath.Join(t.TempDir(), "Eden-setup.exe")
 			var received int64
 			err := download(context.Background(), responseClient(tc.body, 200), a, tc.hash, path, func(n int64) { received = n })
 			if tc.ok {

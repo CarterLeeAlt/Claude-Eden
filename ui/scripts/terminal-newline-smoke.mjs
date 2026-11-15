@@ -25,7 +25,7 @@ for (const platform of ["MacIntel", "Win32", "Linux x86_64"]) {
       remote.send(Buffer.from("$ "));
     });
     await page.reload();
-    await page.getByRole("button", { name: "启动 Cage 环境", exact: true }).click();
+    await page.getByRole("button", { name: "启动 Eden 环境", exact: true }).click();
     await page.getByRole("button", { name: "新建终端", exact: true }).first().click();
     await page.getByRole("menuitem", { name: "普通终端", exact: true }).click();
     await page.waitForFunction(() => document.querySelector(".xterm-rows")?.textContent.includes("$"));
@@ -58,8 +58,8 @@ for (const platform of ["MacIntel", "Win32", "Linux x86_64"]) {
     await page.keyboard.press("Shift+Enter");
     await page.keyboard.press("Enter");
     assert.equal(inputs.length, beforePaste, "newline and submission must wait for pending paste");
-    releaseClipboard({ text: "CAGE_PASTE" });
-    await assertInputs(beforePaste, ["\x1b[200~CAGE_PASTE\x1b[201~", "\x1b[200~\n\x1b[201~", "\r"]);
+    releaseClipboard({ text: "WORKBENCH_PASTE" });
+    await assertInputs(beforePaste, ["\x1b[200~WORKBENCH_PASTE\x1b[201~", "\x1b[200~\n\x1b[201~", "\r"]);
     socket.send(Buffer.from("\x1b[?2004lMODE_OFF"));
     await page.locator(".xterm-rows").getByText(/MODE_OFF/).waitFor();
     await press("Shift+Enter", ["\x1b[13;2u"]);

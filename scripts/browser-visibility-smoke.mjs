@@ -3,7 +3,7 @@ import net from "node:net";
 import { once } from "node:events";
 import { createPrivacyController } from "./browser-privacy-fixture.mjs";
 
-// Run in an isolated Linux X display with CAGE_TEST_BROWSER_PATH set.
+// Run in an isolated Linux X display with EDEN_TEST_BROWSER_PATH set.
 const fixture = await createPrivacyController({ headless: false });
 const { api, cdp, evaluate, waitFor, origin } = fixture;
 let legacy, listener, accepted;

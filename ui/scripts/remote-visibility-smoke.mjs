@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
 const { startDisplay } = await import("./rfb-wire-fixture.mjs");
-const display = await startDisplay(process.env.CAGE_UI_URL || "http://127.0.0.1:5199");
+const display = await startDisplay(process.env.EDEN_UI_URL || "http://127.0.0.1:5199");
 const fixture = await createWorkbench({ mockWebSockets: false, url: display.url });
 const { page, state, browser, errors } = fixture;
 const report = display.stats;
@@ -15,8 +15,8 @@ page.on("console", (message) => {
   if (message.type() === "error") browserErrors.push(message.text());
 });
 try {
-  await page.getByRole("button", { name: "启动 Cage 环境", exact: true }).click();
-  await page.getByRole("heading", { name: "Cage 环境已就绪", exact: true }).waitFor();
+  await page.getByRole("button", { name: "启动 Eden 环境", exact: true }).click();
+  await page.getByRole("heading", { name: "Eden 环境已就绪", exact: true }).waitFor();
   await page.getByRole("button", { name: "打开浏览器", exact: true }).click();
   await page.waitForFunction(() => Boolean(document.querySelector(".remote-canvas canvas")));
   await page.getByText("正在连接画面", { exact: true }).waitFor({ state: "hidden" });
@@ -35,7 +35,7 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 1000));
   report.hiddenFrames = report.frames - hiddenStart;
   report.visibleFrames = before;
-  if (!process.env.CAGE_PERF_BASELINE) {
+  if (!process.env.EDEN_PERF_BASELINE) {
     assert.equal(report.hiddenFrames, 0, "hidden workbench continued receiving frames");
     assert.ok(report.closed > 0, "display connection was not closed");
   }
@@ -46,18 +46,18 @@ try {
   const resumed = report.frames;
   await new Promise((resolve) => setTimeout(resolve, 250));
   assert.ok(report.frames > resumed, "display frames did not resume");
-  if (!process.env.CAGE_PERF_BASELINE) {
+  if (!process.env.EDEN_PERF_BASELINE) {
     await page.evaluate(() => {
-      window.cageWindowVisible = false;
-      window.dispatchEvent(new Event("cage-window-visibility"));
+      window.edenWindowVisible = false;
+      window.dispatchEvent(new Event("eden-window-visibility"));
     });
     await new Promise((resolve) => setTimeout(resolve, 300));
     const paused = report.frames;
     await new Promise((resolve) => setTimeout(resolve, 300));
     assert.equal(report.frames, paused, "occluded native window continued receiving frames");
     await page.evaluate(() => {
-      window.cageWindowVisible = true;
-      window.dispatchEvent(new Event("cage-window-visibility"));
+      window.edenWindowVisible = true;
+      window.dispatchEvent(new Event("eden-window-visibility"));
     });
     await page.getByText("正在连接画面", { exact: true }).waitFor({ state: "hidden" });
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -65,8 +65,8 @@ try {
   }
   assert.deepEqual(errors, []);
   report.checks.push("real RFB frames", "tabs preserved", "frames resumed");
-  if (!process.env.CAGE_PERF_BASELINE) report.checks.push("hidden frames stopped", "native occlusion paused");
-  const soakSeconds = Number(process.env.CAGE_PERF_SOAK_SECONDS || 0);
+  if (!process.env.EDEN_PERF_BASELINE) report.checks.push("hidden frames stopped", "native occlusion paused");
+  const soakSeconds = Number(process.env.EDEN_PERF_SOAK_SECONDS || 0);
   if (soakSeconds > 0) {
     const session = await page.context().newCDPSession(page);
     await session.send("Performance.enable");
@@ -74,23 +74,23 @@ try {
     const started = Date.now();
     while ((Date.now() - started) / 1000 < soakSeconds) {
       const beforeResume = report.frames;
-      await page.evaluate(() => { window.cageWindowVisible = true; window.dispatchEvent(new Event("cage-window-visibility")); });
+      await page.evaluate(() => { window.edenWindowVisible = true; window.dispatchEvent(new Event("eden-window-visibility")); });
       await page.getByText("正在连接画面", { exact: true }).waitFor({ state: "hidden" });
       await new Promise((resolve) => setTimeout(resolve, 1000));
       assert.ok(report.frames > beforeResume, "soak: visible display did not resume frames");
-      await page.evaluate(() => { window.cageWindowVisible = false; window.dispatchEvent(new Event("cage-window-visibility")); });
+      await page.evaluate(() => { window.edenWindowVisible = false; window.dispatchEvent(new Event("eden-window-visibility")); });
       await new Promise((resolve) => setTimeout(resolve, 500));
       const hidden = report.frames;
       await new Promise((resolve) => setTimeout(resolve, 8500));
       assert.equal(report.frames, hidden, "soak: frames continued in hidden window");
       const { metrics } = await session.send("Performance.getMetrics");
       report.soak.push({ seconds: (Date.now() - started) / 1000, ...Object.fromEntries(metrics.filter((x) => ["JSHeapUsedSize", "JSHeapTotalSize", "TaskDuration", "Documents", "Nodes"].includes(x.name)).map((x) => [x.name, x.value])) });
-      if (process.env.CAGE_PERF_REPORT) await fs.writeFile(process.env.CAGE_PERF_REPORT, JSON.stringify(report, null, 2));
+      if (process.env.EDEN_PERF_REPORT) await fs.writeFile(process.env.EDEN_PERF_REPORT, JSON.stringify(report, null, 2));
     }
     report.checks.push(`${soakSeconds}s repeated display reconnect soak`);
     await session.detach();
   }
-  const output = process.env.CAGE_PERF_REPORT;
+  const output = process.env.EDEN_PERF_REPORT;
   if (output) await fs.writeFile(output, JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));
 } catch (error) {

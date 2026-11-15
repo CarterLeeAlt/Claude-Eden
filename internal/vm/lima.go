@@ -25,7 +25,6 @@ import (
 
 	"github.com/lima-vm/lima/v2/pkg/driver/external/server"
 	"github.com/lima-vm/lima/v2/pkg/driverutil"
-	"github.com/lima-vm/lima/v2/pkg/guestidentity"
 	"github.com/lima-vm/lima/v2/pkg/instance"
 	"github.com/lima-vm/lima/v2/pkg/limatmpl"
 	"github.com/lima-vm/lima/v2/pkg/limatype"
@@ -33,13 +32,13 @@ import (
 	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
 	"github.com/lima-vm/lima/v2/pkg/limayaml"
 	"github.com/lima-vm/lima/v2/pkg/networks/reconcile"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
 	"github.com/lima-vm/lima/v2/pkg/sshutil"
 	"github.com/lima-vm/lima/v2/pkg/store"
 	"github.com/lima-vm/lima/v2/pkg/yqutil"
 	"github.com/sylvinus/agent-vm/internal/vmname"
+	"workbench.local/guestidentity"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/limaembed"
 	"github.com/sylvinus/agent-vm/internal/paths"
 )
@@ -49,17 +48,18 @@ import (
 // limaembed.Run).
 type Lima struct {
 	stateDir string
+	// Serialize config read-modify-write transactions with other config access.
+	configMu sync.RWMutex
 
 	once  sync.Once
 	share *limaembed.Share
 	err   error
 }
 
-// MaxName is the longest VM name whose sockets fit under the Lima home
-// home (UNIX_PATH_MAX: 104 bytes on macOS), and Lima's 76 at most. Lima
-// resolves the home's symlinks: so does this, as far as it exists.
+// MaxName applies the shared socket-path budget to the Lima home and VM name.
+// Lima resolves the home's symlinks: so does this, as far as it exists.
 func MaxName(home string) int {
-	stable := os.Getenv("CAGE_LOGICAL_LIMA_HOME")
+	stable := os.Getenv("EDEN_LOGICAL_LIMA_HOME")
 	return int(vmname.HomeLimit(home, stable != "" && filepath.Clean(home) == filepath.Clean(stable)))
 }
 
@@ -179,6 +179,13 @@ func (l *Lima) Get(ctx context.Context, name string) (*Instance, error) {
 }
 
 func (l *Lima) inspect(ctx context.Context, name string) (*limatype.Instance, error) {
+	l.configMu.RLock()
+	defer l.configMu.RUnlock()
+	return inspectLima(ctx, name)
+}
+
+// Callers hold configMu while inspecting or replacing a configuration.
+func inspectLima(ctx context.Context, name string) (*limatype.Instance, error) {
 	inst, err := store.Inspect(ctx, name)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("%w: %s", ErrNotFound, name)
@@ -245,9 +252,6 @@ func fromLima(inst *limatype.Instance) *Instance {
 // exprs are the yq expressions of s, as limactl's edit flags make them.
 func exprs(s Settings) ([]string, error) {
 	var e []string
-	if s.macOSTimezone != "" {
-		e = append(e, ".timezone = "+strconv.Quote(s.macOSTimezone))
-	}
 	if s.CPUs > 0 {
 		e = append(e, fmt.Sprintf(".cpus = %d", s.CPUs))
 	}
@@ -296,6 +300,8 @@ func exprs(s Settings) ([]string, error) {
 }
 
 func (l *Lima) Create(ctx context.Context, name, template string, s Settings, log io.Writer) error {
+	l.configMu.Lock()
+	defer l.configMu.Unlock()
 	if _, err := l.prepare(); err != nil {
 		return err
 	}
@@ -327,28 +333,24 @@ func (l *Lima) Create(ctx context.Context, name, template string, s Settings, lo
 			return err
 		}
 		e = append(e, ".guestIdentity = "+string(data))
-		if path := os.Getenv(cage.ConfigEnv); path != "" {
-			cfg, err := cage.Load(path)
+		if path := os.Getenv(eden.ConfigEnv); path != "" {
+			cfg, err := eden.Load(path)
 			if err != nil {
 				return err
 			}
 			if template == "template:debian-13" {
-				images, err := cageDebianImages(tmpl.Config.Images)
+				images, err := edenDebianImages(tmpl.Config.Images)
 				if err != nil {
 					return err
 				}
 				e = append(e, ".images = "+string(images))
 				// cloud-init rewrites Debian's mirror list after bootcmd.
 				// Configure it immediately before Lima installs dependencies.
-				e = append(e, `.provision += [{"mode": "dependency", "script": `+strconv.Quote(cage.DebianPrepareScript)+`}]`)
+				e = append(e, `.provision += [{"mode": "dependency", "script": `+strconv.Quote(eden.DebianPrepareScript)+`}]`)
 			}
 			tz, _ := json.Marshal(cfg.Timezone)
 			e = append(e, ".propagateProxyEnv = false", `.env = {"http_proxy":"","https_proxy":"","ftp_proxy":"","no_proxy":"","HTTP_PROXY":"","HTTPS_PROXY":"","FTP_PROXY":"","NO_PROXY":"","ALL_PROXY":"","all_proxy":""}`, ".timezone = "+string(tz))
-			if tmpl.Config.OS != nil && *tmpl.Config.OS == limatype.DARWIN {
-				e = append(e, `.user.name = "cageprovision"`, `.user.home = "/Users/cageprovision"`, `.user.comment = "Cage Provisioning"`, ".user.uid = 501", `.video.display = "offscreen"`)
-			} else {
-				e = append(e, `.user.name = "cage"`, `.user.home = "/home/cage"`, ".user.uid = 1000")
-			}
+			e = append(e, `.user.name = "developer"`, `.user.comment = "Development user"`, `.user.home = "/home/developer"`, ".user.uid = 1000", `.user.shell = "/bin/bash"`, ".user.passwordlessSudo = true")
 		}
 		if len(e) > 0 {
 			if tmpl.Bytes, err = yqutil.EvaluateExpression(ctx, yqutil.Join(e), tmpl.Bytes); err != nil {
@@ -362,7 +364,7 @@ func (l *Lima) Create(ctx context.Context, name, template string, s Settings, lo
 
 // All three locations must supply the exact release pinned by the embedded
 // template. In particular, never accept an unpinned daily image on fallback.
-func cageDebianImages(images []limatype.Image) ([]byte, error) {
+func edenDebianImages(images []limatype.Image) ([]byte, error) {
 	const upstream = "https://cloud.debian.org/images/cloud/"
 	var candidates []limatype.Image
 	for _, img := range images {
@@ -383,7 +385,9 @@ func cageDebianImages(images []limatype.Image) ([]byte, error) {
 }
 
 func (l *Lima) Clone(ctx context.Context, from, to string) error {
-	inst, err := l.inspect(ctx, from)
+	l.configMu.Lock()
+	defer l.configMu.Unlock()
+	inst, err := inspectLima(ctx, from)
 	if err != nil {
 		return err
 	}
@@ -394,8 +398,8 @@ func (l *Lima) Clone(ctx context.Context, from, to string) error {
 	case err != nil:
 		return err
 	}
-	if sock := filepath.Join(dir, filenames.LongestSock); len(sock) >= osutil.UnixPathMax {
-		return fmt.Errorf("%w: its sockets in %s would need %d characters, at most %d", ErrNameTooLong, filepath.Dir(dir), len(sock), osutil.UnixPathMax-1)
+	if sock := filepath.Join(dir, paths.SSHControlSocketMaxName); len(sock) >= paths.UnixSocketPathMax {
+		return fmt.Errorf("%w: its sockets in %s would need %d characters, at most %d", ErrNameTooLong, filepath.Dir(dir), len(sock), paths.UnixSocketPathMax-1)
 	}
 	_, err = instance.CloneOrRename(ctx, inst, to, false)
 	return err
@@ -404,7 +408,9 @@ func (l *Lima) Clone(ctx context.Context, from, to string) error {
 // Edit applies s as `limactl edit` does: the same checks, and nothing is
 // written when one fails.
 func (l *Lima) Edit(ctx context.Context, name string, s Settings) error {
-	inst, err := l.inspect(ctx, name)
+	l.configMu.Lock()
+	defer l.configMu.Unlock()
+	inst, err := inspectLima(ctx, name)
 	if err != nil {
 		return err
 	}
@@ -534,27 +540,12 @@ func (l *Lima) Start(ctx context.Context, name string, log io.Writer) error {
 	// Here, so that VMs made before it get it too; nothing is written when
 	// it is there already.
 	settings := Settings{noEphemeralPorts: true}
-	if configPath := os.Getenv(cage.ConfigEnv); configPath != "" {
-		allocation, loadErr := cage.LoadResourceAllocation(configPath)
+	if configPath := os.Getenv(eden.ConfigEnv); configPath != "" {
+		allocation, loadErr := eden.LoadResourceAllocation(configPath)
 		if loadErr != nil {
 			return loadErr
 		}
 		settings.MemoryGiB, settings.CPUs, err = allocation.Limits()
-		if *inst.Config.OS == limatype.DARWIN && err == nil {
-			cfg, loadErr := cage.Load(configPath)
-			if loadErr != nil {
-				return loadErr
-			}
-			settings.macOSTimezone = cfg.Timezone
-			requirements, requirementErr := ReadMacOSResourceRequirements(inst.Dir)
-			if requirementErr != nil {
-				return requirementErr
-			}
-			settings.MemoryGiB, settings.CPUs, err = requirements.Limits(allocation)
-			if err == nil {
-				err = saveMacOSResourceRequirements(inst.Dir, requirements)
-			}
-		}
 		if err != nil {
 			return err
 		}
@@ -572,9 +563,8 @@ func (l *Lima) Start(ctx context.Context, name string, log io.Writer) error {
 		return err
 	}
 	var guestAgent string
-	// Lima always needs the Darwin helper for first boot. Windows and FreeBSD
-	// have no guest agent, and Linux plain mode works without one.
-	if *inst.Config.OS == limatype.DARWIN || (*inst.Config.OS == limatype.LINUX && !*inst.Config.Plain) {
+	// Linux plain mode works without a guest agent.
+	if *inst.Config.OS == limatype.LINUX && !*inst.Config.Plain {
 		guestAgent, err = share.GuestAgent(*inst.Config.OS, *inst.Config.Arch)
 		if err != nil {
 			return err
@@ -611,7 +601,9 @@ func (l *Lima) Stop(ctx context.Context, name string) error {
 }
 
 func (l *Lima) Delete(ctx context.Context, name string) error {
-	inst, err := l.inspect(ctx, name)
+	l.configMu.Lock()
+	defer l.configMu.Unlock()
+	inst, err := inspectLima(ctx, name)
 	if err != nil {
 		return err
 	}

@@ -10,13 +10,13 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: cage-windows-signing-check
+  group: eden-windows-signing-check
   cancel-in-progress: false
 jobs:
   verify:
-    if: github.repository == 'Lee-xeo/Claude-Cage' && github.ref == 'refs/heads/main'
+    if: github.repository == 'CarterLeeAlt/Claude-Eden' && github.ref == 'refs/heads/main'
     runs-on: windows-2025
-    environment: cage-release
+    environment: eden-release
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -33,14 +33,14 @@ jobs:
       - name: Run the selected signing verification or read-only diagnosis
         shell: pwsh
         env:
-          CAGE_WINDOWS_SIGNING_PROVIDER: ${{ vars.CAGE_WINDOWS_SIGNING_PROVIDER }}
-          CAGE_ESIGNER_USERNAME: ${{ secrets.CAGE_ESIGNER_USERNAME }}
-          CAGE_ESIGNER_PASSWORD: ${{ secrets.CAGE_ESIGNER_PASSWORD }}
-          CAGE_ESIGNER_CREDENTIAL_ID: ${{ secrets.CAGE_ESIGNER_CREDENTIAL_ID }}
-          CAGE_ESIGNER_CERTIFICATE_SERIAL: ${{ vars.CAGE_ESIGNER_CERTIFICATE_SERIAL }}
-          CAGE_ESIGNER_TOTP_SECRET: ${{ secrets.CAGE_ESIGNER_TOTP_SECRET }}
-          CAGE_SIGNING_CHECK_MODE: ${{ inputs.mode }}
-        run: ./scripts/check-windows-signing.ps1 -Mode $env:CAGE_SIGNING_CHECK_MODE
+          EDEN_WINDOWS_SIGNING_PROVIDER: ${{ vars.EDEN_WINDOWS_SIGNING_PROVIDER }}
+          EDEN_ESIGNER_USERNAME: ${{ secrets.EDEN_ESIGNER_USERNAME }}
+          EDEN_ESIGNER_PASSWORD: ${{ secrets.EDEN_ESIGNER_PASSWORD }}
+          EDEN_ESIGNER_CREDENTIAL_ID: ${{ secrets.EDEN_ESIGNER_CREDENTIAL_ID }}
+          EDEN_ESIGNER_CERTIFICATE_SERIAL: ${{ vars.EDEN_ESIGNER_CERTIFICATE_SERIAL }}
+          EDEN_ESIGNER_TOTP_SECRET: ${{ secrets.EDEN_ESIGNER_TOTP_SECRET }}
+          EDEN_SIGNING_CHECK_MODE: ${{ inputs.mode }}
+        run: node scripts/run-in-workspace.mjs -- pwsh -NoProfile -File scripts/check-windows-signing.ps1 -Mode $env:EDEN_SIGNING_CHECK_MODE
       - name: Preserve verification facts only
         if: always()
         uses: actions/upload-artifact@v4

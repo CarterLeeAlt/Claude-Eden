@@ -32,8 +32,7 @@ func ProjectEnvFile(dir string) string {
 // NoFollow.
 //
 // Inside by its spelling, or by where it leads: the project reached through
-// a link of the user's, the other spelling of a linked folder (/tmp and
-// /private/tmp on macOS), another case where the file system ignores it. So
+// a link of the user's, or another spelling of a linked folder. So
 // target is resolved one component at a time, links followed one hop at a
 // time, and the first step that reaches the project decides, before
 // anything in it is followed. Before that point, every link is outside the

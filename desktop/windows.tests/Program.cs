@@ -1,4 +1,4 @@
-using Cage.Windows;
+using Eden.Windows;
 
 if (args is ["smoke-wait", var smokeRelease])
 {
@@ -10,7 +10,7 @@ if (args is ["smoke-wait", var smokeRelease])
 if (args is ["app-update", "check" or "download"])
 {
     File.AppendAllText(Path.Combine(Backend.Root, "retry-invocations"), "x");
-    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { phase = "failed", message = "limited", retryable = true, retryAt = Environment.GetEnvironmentVariable("CAGE_UPDATE_RETRY_AT") }));
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { phase = "failed", message = "limited", retryable = true, retryAt = Environment.GetEnvironmentVariable("EDEN_UPDATE_RETRY_AT") }));
     Environment.Exit(1);
 }
 
@@ -19,7 +19,7 @@ if (args is ["app-update", "check" or "download"])
 if (args is ["prepare-update", "--json", "--stop"])
 {
     File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "controller-invoked"), Environment.ProcessId.ToString());
-    File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "profile-invoked"), Environment.GetEnvironmentVariable("CLAUDE_CAGE_CONFIG") ?? "missing");
+    File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "profile-invoked"), Environment.GetEnvironmentVariable("EDEN_CONFIG") ?? "missing");
     if (File.Exists(Path.Combine(AppContext.BaseDirectory, "broken-backend")))
     {
         Console.WriteLine("{\"status\":\"failed\"}"); Environment.Exit(7);
@@ -74,20 +74,20 @@ Check(!UpdatePolicy.IsNewer("0.1.0-alpha.1", "0.1.0-alpha.1"), "same version acc
 Check(!UpdatePolicy.IsNewer("0.1.0-alpha.1", "0.1.0"), "downgrade accepted");
 Check(!UpdatePolicy.IsNewer("v0.2.0", "0.1.0"), "noncanonical version accepted");
 Check(!UpdatePolicy.IsNewer("0.2.0+metadata", "0.1.0"), "unmatched backend version accepted");
-var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "cage-update-policy-tests"));
-var good = Path.Combine(root, "download-abc", "Cage-setup.exe");
+var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "eden-update-policy-tests"));
+var good = Path.Combine(root, "download-abc", "Eden-setup.exe");
 Check(UpdatePolicy.DownloadPath(good, root) == good, "private download rejected");
-foreach (var path in new[] { Path.Combine(root + "-other", "download-abc", "Cage-setup.exe"), Path.Combine(root, "verified-abc", "Cage-setup.exe"), Path.Combine(root, "download-abc", "nested", "Cage-setup.exe"), Path.Combine(root, "download-abc", "Cage.exe") })
+foreach (var path in new[] { Path.Combine(root + "-other", "download-abc", "Eden-setup.exe"), Path.Combine(root, "verified-abc", "Eden-setup.exe"), Path.Combine(root, "download-abc", "nested", "Eden-setup.exe"), Path.Combine(root, "download-abc", "Eden.exe") })
     Reject(() => UpdatePolicy.DownloadPath(path, root), "untrusted download path accepted: " + path);
 Console.WriteLine($"Windows update/bridge policy: {assertions} assertions passed.");
 
-var integration = Path.Combine(OperatingSystem.IsMacOS() ? "/private/tmp" : Path.GetTempPath(), "cage-recovery-" + Guid.NewGuid());
+var integration = Path.Combine(Path.GetTempPath(), "eden-recovery-" + Guid.NewGuid());
 Directory.CreateDirectory(integration);
-var savedProfile = Environment.GetEnvironmentVariable("CLAUDE_CAGE_CONFIG");
+var savedProfile = Environment.GetEnvironmentVariable("EDEN_CONFIG");
 try
 {
     var selectedProfile = Path.Combine(integration, "selected profile", "config.json");
-    Environment.SetEnvironmentVariable("CLAUDE_CAGE_CONFIG", Path.GetRelativePath(Environment.CurrentDirectory, selectedProfile));
+    Environment.SetEnvironmentVariable("EDEN_CONFIG", Path.GetRelativePath(Environment.CurrentDirectory, selectedProfile));
     var backup = Path.Combine(integration, "old application");
     var candidate = Path.Combine(integration, "new application");
     void InstallFixture(string app, bool broken)
@@ -95,7 +95,7 @@ try
         var resources = Path.Combine(app, "resources"); Directory.CreateDirectory(resources);
         foreach (var file in Directory.EnumerateFiles(AppContext.BaseDirectory))
             File.Copy(file, Path.Combine(resources, Path.GetFileName(file)));
-        var controller = Path.Combine(resources, "cage.exe");
+        var controller = Path.Combine(resources, "eden.exe");
         File.Copy(Environment.ProcessPath!, controller, true);
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(controller, File.GetUnixFileMode(Environment.ProcessPath!));
         if (broken) File.WriteAllText(Path.Combine(resources, "broken-backend"), "cannot start");
@@ -106,7 +106,7 @@ try
     Directory.CreateDirectory(Path.Combine(snapshotSource, "my-project"));
     File.WriteAllText(Path.Combine(snapshotSource, "program.txt"), "program");
     File.WriteAllText(Path.Combine(snapshotSource, "my-project", "work.txt"), "personal data");
-    File.WriteAllText(Path.Combine(snapshotSource, "Cage.install-files.json"), System.Text.Json.JsonSerializer.Serialize(new {
+    File.WriteAllText(Path.Combine(snapshotSource, "Eden.install-files.json"), System.Text.Json.JsonSerializer.Serialize(new {
         version = 1, files = new[] { new { path = "program.txt", sha256 = new string('a', 64) } },
     }));
     var copyTree = typeof(UpdateInstaller).GetMethod("CopyTree", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
@@ -125,25 +125,25 @@ try
     foreach (var directory in new[] { intactApp, intactBackup })
     {
         Directory.CreateDirectory(Path.Combine(directory, "resources"));
-        File.WriteAllText(Path.Combine(directory, "Cage.exe"), "original launcher");
-        File.WriteAllText(Path.Combine(directory, "Cage.install-id"), "io.github.lee-xeo.claude-cage");
-        File.WriteAllText(Path.Combine(directory, "resources", "cage.exe"), "original backend");
+        File.WriteAllText(Path.Combine(directory, "Eden.exe"), "original launcher");
+        File.WriteAllText(Path.Combine(directory, "Eden.install-id"), "io.github.carterleealt.claude-eden");
+        File.WriteAllText(Path.Combine(directory, "resources", "eden.exe"), "original backend");
     }
     Directory.CreateDirectory(Path.Combine(intactApp, "my-project"));
     File.WriteAllText(Path.Combine(intactApp, "my-project", "work.txt"), "latest personal data");
     Check(UpdateRecovery.OriginalIntact(intactApp, intactBackup), "unchanged original was sent through replacement rollback");
-    File.WriteAllText(Path.Combine(intactApp, "resources", "cage.exe"), "modified backend");
+    File.WriteAllText(Path.Combine(intactApp, "resources", "eden.exe"), "modified backend");
     Check(!UpdateRecovery.OriginalIntact(intactApp, intactBackup), "same launcher hid a changed backend");
-    File.Copy(Path.Combine(intactBackup, "resources", "cage.exe"), Path.Combine(intactApp, "resources", "cage.exe"), true);
-    File.WriteAllText(intactApp + ".cage-installation.json", "unresolved transaction");
+    File.Copy(Path.Combine(intactBackup, "resources", "eden.exe"), Path.Combine(intactApp, "resources", "eden.exe"), true);
+    File.WriteAllText(intactApp + ".eden-installation.json", "unresolved transaction");
     Check(!UpdateRecovery.OriginalIntact(intactApp, intactBackup), "unfinished personal-file transfer was treated as intact");
-    File.Delete(intactApp + ".cage-installation.json");
-    File.Delete(Path.Combine(intactApp, "Cage.exe"));
+    File.Delete(intactApp + ".eden-installation.json");
+    File.Delete(Path.Combine(intactApp, "Eden.exe"));
     Check(!UpdateRecovery.OriginalIntact(intactApp, intactBackup), "missing launcher was treated as intact");
     Check(File.ReadAllText(Path.Combine(intactApp, "my-project", "work.txt")) == "latest personal data", "recovery classification changed personal data");
     var ensureComplete = typeof(UpdateInstaller).GetMethod("EnsureInstallationComplete", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
     ensureComplete.Invoke(null, [snapshotSource]);
-    var recoveryReceipt = snapshotSource + ".cage-installation.json";
+    var recoveryReceipt = snapshotSource + ".eden-installation.json";
     File.WriteAllText(recoveryReceipt, System.Text.Json.JsonSerializer.Serialize(new { stagePath = candidate, backupPath = backup }));
     string? pendingRecovery = null;
     try { ensureComplete.Invoke(null, [snapshotSource]); }
@@ -158,7 +158,7 @@ try
     Check(rejectedMissingInstallation, "updater accepted a missing installation and could restore a program-only snapshot");
     if (!OperatingSystem.IsWindows())
     {
-        File.Delete(Path.Combine(snapshotSource, "Cage.install-files.json"));
+        File.Delete(Path.Combine(snapshotSource, "Eden.install-files.json"));
         Directory.CreateSymbolicLink(Path.Combine(snapshotSource, "external-link"), Path.Combine(snapshotSource, "my-project"));
         var legacySnapshot = Path.Combine(integration, "legacy snapshot");
         copyTree.Invoke(null, [snapshotSource, legacySnapshot]);
@@ -178,7 +178,7 @@ try
     var lockedFile = Path.Combine(garbage, "old.dll"); File.WriteAllText(lockedFile, "old version");
     var download = Path.Combine(integration, "download"); Directory.CreateDirectory(download);
     var marker = Path.Combine(integration, "ack.json"); File.WriteAllText(marker, "confirmed");
-    var liveApp = Path.Combine(candidate, "Cage.exe"); File.WriteAllText(liveApp, "healthy new application");
+    var liveApp = Path.Combine(candidate, "Eden.exe"); File.WriteAllText(liveApp, "healthy new application");
     FileStream? locked = null;
     if (OperatingSystem.IsWindows()) locked = new FileStream(lockedFile, FileMode.Open, FileAccess.Read, FileShare.Read);
     else File.SetUnixFileMode(garbage, UnixFileMode.UserRead | UnixFileMode.UserExecute);
@@ -200,11 +200,11 @@ try
     var nativeResources = Path.Combine(AppContext.BaseDirectory, "resources");
     if (Directory.Exists(nativeResources)) throw new IOException("retry fixture requires an unused test resources directory");
     Directory.CreateDirectory(nativeResources);
-    var savedRetry = Environment.GetEnvironmentVariable("CAGE_UPDATE_RETRY_AT");
+    var savedRetry = Environment.GetEnvironmentVariable("EDEN_UPDATE_RETRY_AT");
     try
     {
         foreach (var file in Directory.EnumerateFiles(AppContext.BaseDirectory)) File.Copy(file, Path.Combine(nativeResources, Path.GetFileName(file)));
-        var executable = Path.Combine(nativeResources, "cage.exe");
+        var executable = Path.Combine(nativeResources, "eden.exe");
         File.Copy(Environment.ProcessPath!, executable, true);
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(executable, File.GetUnixFileMode(Environment.ProcessPath!));
         var release = Path.Combine(integration, "smoke-release");
@@ -239,7 +239,7 @@ try
         Console.WriteLine("Windows smoke shutdown: actual controller handle pinned, foreign executable rejected, process exit observed.");
         var retryAt = DateTimeOffset.UtcNow.AddHours(1).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'");
         Directory.CreateDirectory(Backend.Root);
-        Environment.SetEnvironmentVariable("CAGE_UPDATE_RETRY_AT", retryAt);
+        Environment.SetEnvironmentVariable("EDEN_UPDATE_RETRY_AT", retryAt);
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var failures = 0;
         using var updater = new AppUpdater(state => { if (state.GetValueOrDefault("phase") as string == "failed" && Interlocked.Increment(ref failures) == 2) completion.TrySetResult(); }, () => throw new Exception("unexpected installation"), () => {});
@@ -253,11 +253,11 @@ try
     }
     finally
     {
-        Environment.SetEnvironmentVariable("CAGE_UPDATE_RETRY_AT", savedRetry);
+        Environment.SetEnvironmentVariable("EDEN_UPDATE_RETRY_AT", savedRetry);
         Directory.Delete(nativeResources, true);
     }
 }
 finally {
-    Environment.SetEnvironmentVariable("CLAUDE_CAGE_CONFIG", savedProfile);
+    Environment.SetEnvironmentVariable("EDEN_CONFIG", savedProfile);
     Directory.Delete(integration, true);
 }

@@ -24,9 +24,6 @@ func (s *Server) connectProject(path string, add bool) (string, error) {
 	if path == "" {
 		path = s.workspace()
 	}
-	if isClientMountPath(path) {
-		return s.clientMountWorkspace(path)
-	}
 	path, err := validateWorkspace(path, s.profile)
 	if err != nil {
 		return "", err
@@ -74,7 +71,7 @@ func (s *Server) openProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.op.TryLock() {
-		w.Header().Set("X-Cage-Recovery", "project-operation-busy")
+		w.Header().Set("X-Eden-Recovery", "project-operation-busy")
 		http.Error(w, "另一个操作仍在进行，请稍候", 409)
 		return
 	}
@@ -91,23 +88,13 @@ func (s *Server) openProject(w http.ResponseWriter, r *http.Request) {
 		s.projectConnectionError(w, err, input.Workspace)
 		return
 	}
-	if input.Activate && isClientMountPath(workspace) {
-		s.mu.Lock()
-		if m := s.clientMounts[workspace]; m == nil || !m.live() {
-			s.mu.Unlock()
-			requestError(w, errClientMountGone)
-			return
-		}
-		s.clientWorkspace = workspace
-		s.mu.Unlock()
-	} else if input.Activate {
+	if input.Activate {
 		preferences.Workspace = workspace
 		if err = writePrivate(filepath.Join(s.profile, "workbench.json"), preferences); err != nil {
 			requestError(w, err)
 			return
 		}
 		s.mu.Lock()
-		s.clientWorkspace = ""
 		s.preferences.Workspace = workspace
 		s.mu.Unlock()
 	}
@@ -122,15 +109,12 @@ type projectTransport struct {
 func (p projectTransport) Close() error { _ = p.ReadCloser.Close(); return p.WriteCloser.Close() }
 
 type projectShare struct {
-	cmd            *exec.Cmd
-	transport      projectTransport
-	done           chan struct{}
-	once           sync.Once
-	detach         func()
-	approval       string
-	approvalTimer  *time.Timer
-	windowsProject *windowsProjectBinding
-	stderr         *fileControlStderr
+	cmd       *exec.Cmd
+	transport projectTransport
+	done      chan struct{}
+	once      sync.Once
+	detach    func()
+	stderr    *fileControlStderr
 }
 
 func (p *projectShare) stop() {
@@ -145,9 +129,6 @@ func (p *projectShare) stop() {
 }
 
 func (p *projectShare) close() {
-	if p.approvalTimer != nil {
-		p.approvalTimer.Stop()
-	}
 	p.stop()
 	if p.done != nil {
 		<-p.done
@@ -157,8 +138,8 @@ func (p *projectShare) close() {
 	}
 }
 
-// The local SFTP server owns the host authorization boundary for both macOS
-// and Linux mounts. The remote shell receives only that directory's byte stream.
+// The local SFTP server owns the host authorization boundary for Linux mounts.
+// The remote shell receives only that directory's byte stream.
 func startProjectTransport(cmd *exec.Cmd, path string) (*projectShare, error) {
 	output, err := cmd.StdoutPipe()
 	if err != nil {
@@ -204,12 +185,6 @@ func (s *Server) ensureProjectShare(path string) (returned error) {
 		}
 		s.setProjectError(path, returned)
 	}()
-	if s.windowsGuest != nil {
-		return s.ensureWindowsProjectShare(path)
-	}
-	if s.macosGuest != nil {
-		return s.ensureMacOSProjectShare(path)
-	}
 	if path == s.environmentDir() {
 		return nil
 	}
@@ -231,9 +206,9 @@ func (s *Server) ensureProjectShare(path string) (returned error) {
 	// Stale FUSE mounts can remain after a control-service restart. Only reconnect
 	// this explicitly authorized path, without changing other projects' mounts.
 	if _, err = s.guest(ctx, "if mountpoint -q "+quoted+"; then fusermount3 -uz "+quoted+"; fi; sudo mkdir -p "+quoted+" && sudo chown \"$(id -u):$(id -g)\" "+quoted); err != nil {
-		return errors.New("无法在 Cage 中准备项目目录")
+		return errors.New("无法在 Eden 中准备项目目录")
 	}
-	probe, err := os.CreateTemp(path, ".cage-mount-probe-*")
+	probe, err := os.CreateTemp(path, ".eden-mount-probe-*")
 	if err != nil {
 		return fmt.Errorf("无法验证项目目录的读写权限：%w", err)
 	}
@@ -305,10 +280,6 @@ func projectShareOptions(cache bool) string {
 // files, so that changes made on the host are visible at once. A file some
 // process holds open keeps its cached attributes until they expire.
 func (s *Server) refreshProjectFiles(w http.ResponseWriter, r *http.Request) {
-	if s.windowsGuest != nil || s.macosGuest != nil {
-		http.Error(w, "此环境的项目文件始终直接读取，无需刷新", 409)
-		return
-	}
 	s.mu.Lock()
 	ready, closing := s.ready, s.closing
 	s.mu.Unlock()
@@ -390,15 +361,12 @@ func (s *Server) projectPaths() ([]string, error) {
 			paths = append(paths, path)
 		}
 	}
-	return s.appendClientMounts(paths), nil
+	return paths, nil
 }
 
 func (s *Server) projectWorkspace(path string) (string, error) {
 	if path == "" {
 		path = s.workspace()
-	}
-	if isClientMountPath(path) {
-		return s.clientMountWorkspace(path)
 	}
 	paths, err := s.projectPaths()
 	if err != nil {
@@ -459,7 +427,6 @@ func (s *Server) restoreProjectShares() {
 	s.mu.Unlock()
 }
 func (s *Server) closeProjectShares() {
-	s.closeClientMounts()
 	s.mu.Lock()
 	shares := s.projectShares
 	s.projectShares = nil

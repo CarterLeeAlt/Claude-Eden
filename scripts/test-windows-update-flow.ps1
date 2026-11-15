@@ -5,6 +5,7 @@
 [CmdletBinding()]
 param([switch]$DisposableMachine)
 $ErrorActionPreference = 'Stop'
+& (Join-Path $PSScriptRoot 'assert-workspace.ps1')
 if (!$IsWindows) { throw 'Complete updater transactions require Windows.' }
 if ($env:GITHUB_ACTIONS -ne 'true' -and !$DisposableMachine) { throw 'Use -DisposableMachine only on an isolated Windows test machine.' }
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -12,11 +13,11 @@ try { $administrator = [Security.Principal.WindowsPrincipal]::new($identity).IsI
 finally { $identity.Dispose() }
 if (!$administrator) { throw 'Use an elevated disposable Windows runner for temporary test certificate trust.' }
 $repository = Split-Path $PSScriptRoot -Parent
-$registration = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ClaudeCage'
-if (Test-Path $registration) { throw 'Use a test account without an installed Cage application.' }
-$root = Join-Path ([IO.Path]::GetTempPath()) ('cage-update-flow-' + [guid]::NewGuid().ToString('N'))
+$registration = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ClaudeEden'
+if (Test-Path $registration) { throw 'Use a test account without an installed Claude Eden application.' }
+$root = Join-Path ([IO.Path]::GetTempPath()) ('eden-update-flow-' + [guid]::NewGuid().ToString('N'))
 $reportBase = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
-$reportPath = Join-Path $reportBase ('cage-smoke-update-' + [guid]::NewGuid().ToString('N') + '.json')
+$reportPath = Join-Path $reportBase ('eden-smoke-update-' + [guid]::NewGuid().ToString('N') + '.json')
 $certificate = $null
 $passed = $false
 $results = @()
@@ -55,7 +56,7 @@ function Start-Fixture([string]$Executable, [string]$Profile, [string[]]$Argumen
     $start.UseShellExecute = $false
     $start.WorkingDirectory = $root
     # Test relative-to-absolute profile inheritance through the real launcher.
-    $start.Environment['CLAUDE_CAGE_CONFIG'] = [IO.Path]::GetRelativePath($root, (Join-Path $Profile 'config.json'))
+    $start.Environment['EDEN_CONFIG'] = [IO.Path]::GetRelativePath($root, (Join-Path $Profile 'config.json'))
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
     return [Diagnostics.Process]::Start($start)
 }
@@ -86,20 +87,20 @@ function Build-Package([string]$Version) {
     Run-Tool 'dotnet' @('publish', (Join-Path $repository 'desktop/windows.update-tests/UpdateFlow.csproj'), '-c', 'Release', '-r', 'win-x64',
         '--self-contained', 'true', '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true',
         "-p:Version=$Version", "-p:InformationalVersion=$Version", '-o', $app)
-    Sign (Join-Path $app 'Cage.exe')
+    Sign (Join-Path $app 'Eden.exe')
     [IO.Directory]::CreateDirectory((Join-Path $app 'resources')) | Out-Null
-    Copy-Item -LiteralPath (Join-Path $app 'Cage.exe') -Destination (Join-Path $app 'resources/cage.exe')
-    Write-Text (Join-Path $app 'Cage.install-id') 'io.github.lee-xeo.claude-cage'
+    Copy-Item -LiteralPath (Join-Path $app 'Eden.exe') -Destination (Join-Path $app 'resources/eden.exe')
+    Write-Text (Join-Path $app 'Eden.install-id') 'io.github.carterleealt.claude-eden'
     Write-Text (Join-Path $app 'version.txt') $Version
-    Write-Text (Join-Path $app 'LICENSE.txt') 'Isolated updater transaction fixture; not a Cage distribution.'
+    Write-Text (Join-Path $app 'LICENSE.txt') 'Isolated updater transaction fixture; not a Claude Eden distribution.'
     $files = @(Get-ChildItem -LiteralPath $app -File -Recurse | ForEach-Object {
         @{path = [IO.Path]::GetRelativePath($app, $_.FullName).Replace('\','/'); sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
     })
-    @{version = 1; files = $files} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $app 'Cage.install-files.json')
+    @{version = 1; files = $files} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $app 'Eden.install-files.json')
     $setup = Join-Path $directory 'setup.exe'
     $compiler = (Get-Command makensis.exe -ErrorAction Stop).Source
     Run-Tool $compiler @('/V2', '/INPUTCHARSET', 'UTF8', "/DAPP_DIR=$app", "/DVERSION=$Version", "/DVERSION_NUMERIC=$Version.0",
-        "/DFILE_MANIFEST=$app\Cage.install-files.json", "/DOUTPUT_FILE=$setup", (Join-Path $repository 'packaging/windows/Cage.nsi'))
+        "/DFILE_MANIFEST=$app\Eden.install-files.json", "/DOUTPUT_FILE=$setup", (Join-Path $repository 'packaging/windows/Eden.nsi'))
     Sign $setup
     return @{setup = $setup; app = $app}
 }
@@ -141,28 +142,28 @@ try {
             Write-Text (Join-Path $profile 'fixture.json') (@{mode = $mode; installer = $installer} | ConvertTo-Json)
             Run-Installer $old.setup $target $initialDiagnostic
             Check ((Read-InstallerDiagnostic $initialDiagnostic).status -eq 'success') 'The initial installer did not record success.'
-            $originalHash = (Get-FileHash -LiteralPath (Join-Path $target 'Cage.exe')).Hash
+            $originalHash = (Get-FileHash -LiteralPath (Join-Path $target 'Eden.exe')).Hash
             $personal = @{
                 'account.json' = 'existing-account'; 'favorites.json' = 'existing-favorites';
                 'credentials/private.txt' = 'existing-login'; 'config.json' = 'existing-config'
             }
             foreach ($entry in $personal.GetEnumerator()) { Write-Text (Join-Path $profile $entry.Key) $entry.Value }
             Write-Text (Join-Path $target 'my-project/work.txt') 'original project'
-            Write-Text (Join-Path $target 'CageData/state/persistent.img') 'existing-disk'
+            Write-Text (Join-Path $target 'EdenData/state/persistent.img') 'existing-disk'
             Write-Text (Join-Path $scenario 'outside-project/file.txt') 'outside-project'
             $linkCommand = 'mklink /J "' + (Join-Path $target 'linked-project') + '" "' + (Join-Path $scenario 'outside-project') + '"'
             & cmd.exe /d /c $linkCommand | Out-Null
             Check ($LASTEXITCODE -eq 0) 'Could not create the isolated project junction.'
             if ($mode -eq 'success') {
                 # A registered VM can keep its disk open while the update runs.
-                # CageData stays in place, so the open disk must not block it (#108).
-                $disk = [IO.File]::Open((Join-Path $target 'CageData/state/persistent.img'), 'Open', 'Read', 'Read')
+                # EdenData stays in place, so the open disk must not block it (#108).
+                $disk = [IO.File]::Open((Join-Path $target 'EdenData/state/persistent.img'), 'Open', 'Read', 'Read')
             }
             if ($mode -eq 'installer-failure') {
-                $holder = Start-Fixture (Join-Path $old.app 'Cage.exe') $profile @('--hold-directory', $target)
+                $holder = Start-Fixture (Join-Path $old.app 'Eden.exe') $profile @('--hold-directory', $target)
                 $null = Wait-File (Join-Path $profile 'held.json')
             }
-            $parent = Start-Fixture (Join-Path $target 'Cage.exe') $profile @('--start-update')
+            $parent = Start-Fixture (Join-Path $target 'Eden.exe') $profile @('--start-update')
             $rejected = $mode -in @('signature-failure','digest-failure')
             if ($rejected) {
                 $failure = Wait-File (Join-Path $profile 'parent-failed.json')
@@ -192,21 +193,21 @@ try {
             }
             if ($mode -eq 'success') {
                 $null = Wait-File (Join-Path $profile 'active.json')
-                Check ([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $target 'Cage.exe')).ProductVersion -eq '0.1.8') 'The update did not install the requested version.'
+                Check ([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $target 'Eden.exe')).ProductVersion -eq '0.1.8') 'The update did not install the requested version.'
             } elseif (!$rejected) {
                 $reopened = Wait-File (Join-Path $profile 'reopened.json')
                 Check ($reopened.version -eq '0.1.7' -and $reopened.profile -eq $profile) 'The original application did not reopen with its original profile.'
             }
             if ($mode -ne 'success') {
-                Check ((Get-FileHash -LiteralPath (Join-Path $target 'Cage.exe')).Hash -eq $originalHash) 'The failed update did not retain the original program bytes.'
+                Check ((Get-FileHash -LiteralPath (Join-Path $target 'Eden.exe')).Hash -eq $originalHash) 'The failed update did not retain the original program bytes.'
             }
             $project = if ($mode -eq 'startup-failure') { 'saved by new version' } else { 'original project' }
             Check ((Get-Content -LiteralPath (Join-Path $target 'my-project/work.txt') -Raw) -eq $project) 'Update or rollback lost the latest project contents.'
-            Check ((Get-Content -LiteralPath (Join-Path $target 'CageData/state/persistent.img') -Raw) -eq 'existing-disk') 'Persistent data in the installation directory changed.'
+            Check ((Get-Content -LiteralPath (Join-Path $target 'EdenData/state/persistent.img') -Raw) -eq 'existing-disk') 'Persistent data in the installation directory changed.'
             Check ((Get-Item -LiteralPath (Join-Path $target 'linked-project')).LinkType -eq 'Junction') 'Update or rollback replaced the project junction.'
             Check ((Get-Content -LiteralPath (Join-Path $target 'linked-project/file.txt') -Raw) -eq 'outside-project') 'The project junction target changed.'
             foreach ($entry in $personal.GetEnumerator()) { Check ((Get-Content -LiteralPath (Join-Path $profile $entry.Key) -Raw) -eq $entry.Value) "Personal data changed: $($entry.Key)" }
-            Check (!(Test-Path -LiteralPath ($target + '.cage-installation.json'))) 'A completed failure left a blocking recovery receipt.'
+            Check (!(Test-Path -LiteralPath ($target + '.eden-installation.json'))) 'A completed failure left a blocking recovery receipt.'
             Check (@(Get-ChildItem -LiteralPath (Join-Path $profile 'updates') -Directory -Filter 'previous-*').Count -eq 0) 'A finished transaction retained an unnecessary program backup.'
             if ($mode -eq 'installer-failure') {
                 Check (!(Test-Path -LiteralPath (Join-Path $profile 'handoff-0.1.8.json'))) 'An untouched original was treated as an installed candidate.'
@@ -244,7 +245,7 @@ try {
                 $owned = Get-Process -Id $pidValue -ErrorAction SilentlyContinue
                 if ($owned) {
                     try {
-                        if ($owned.MainModule.FileName -eq (Join-Path $target 'Cage.exe') -and !$owned.WaitForExit(10000)) { $owned.Kill(); $owned.WaitForExit() }
+                        if ($owned.MainModule.FileName -eq (Join-Path $target 'Eden.exe') -and !$owned.WaitForExit(10000)) { $owned.Kill(); $owned.WaitForExit() }
                     } finally { $owned.Dispose() }
                 }
             }

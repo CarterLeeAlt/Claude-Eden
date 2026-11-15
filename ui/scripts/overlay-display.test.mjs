@@ -5,9 +5,9 @@ import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const enabled = process.env.CAGE_BROWSER_TEST_PLAYWRIGHT && process.env.CAGE_BROWSER_TEST_CHROMIUM;
+const enabled = process.env.EDEN_BROWSER_TEST_PLAYWRIGHT && process.env.EDEN_BROWSER_TEST_CHROMIUM;
 (enabled ? test : test.skip)('noVNC overlays preserve alpha, physical coordinates and removal at HiDPI', async t => {
-  const { chromium } = await import(pathToFileURL(process.env.CAGE_BROWSER_TEST_PLAYWRIGHT));
+  const { chromium } = await import(pathToFileURL(process.env.EDEN_BROWSER_TEST_PLAYWRIGHT));
   const root = resolve('ui/vendor/novnc');
   const server = http.createServer(async (req, res) => {
     const path = resolve(root, '.' + new URL(req.url, 'http://localhost').pathname);
@@ -16,7 +16,7 @@ const enabled = process.env.CAGE_BROWSER_TEST_PLAYWRIGHT && process.env.CAGE_BRO
     catch { res.writeHead(404); res.end(); }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const browser = await chromium.launch({ executablePath: process.env.CAGE_BROWSER_TEST_CHROMIUM, headless: true });
+  const browser = await chromium.launch({ executablePath: process.env.EDEN_BROWSER_TEST_CHROMIUM, headless: true });
   t.after(async () => { await browser.close(); await new Promise(resolve => server.close(resolve)); });
   for (const dpr of [1, 1.5, 2]) {
     const context = await browser.newContext({ deviceScaleFactor: dpr });

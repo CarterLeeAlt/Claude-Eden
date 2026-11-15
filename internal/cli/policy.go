@@ -67,8 +67,8 @@ func (s *start) notePolicyChange() {
 	if booted == "" || booted == policyFingerprint(s.state) {
 		return
 	}
-	s.warnf("Note: VM '%s' booted with other network or guarded-files settings than now (%s, %s, AGENT_VM_UNSAFE_OPEN_NETWORK, AGENT_VM_GUARDED_WRITES). The running VM keeps the old ones: 'agent-vm stop', then run again to apply them.",
-		s.name, netguard.FileName, guard.FileName)
+	s.warnf("Note: VM '%s' booted with other network or guarded-files settings than now (%s, %s, AGENT_VM_UNSAFE_OPEN_NETWORK, AGENT_VM_GUARDED_WRITES). The running VM keeps the old ones: '%s stop', then run again to apply them.",
+		s.name, netguard.FileName, guard.FileName, Command)
 }
 
 // warnDomains says, once per start, that the network file's 'domain' lines

@@ -2,7 +2,7 @@ package managedproxy
 
 import "errors"
 
-// Applied is the single source of truth for the private endpoint used by Cage.
+// Applied is the single source of truth for the private endpoint used by Claude Eden.
 func Applied(profile, endpoint, revision string) (Store, error) {
 	p, err := Load(profile)
 	if err != nil {

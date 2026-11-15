@@ -3,7 +3,7 @@
   "type": "module",
   "version": "0.1.8-rc",
   "private": true,
-  "description": "Claude Eden Windows desktop and Linux cloud documentation",
+  "description": "Claude Eden Windows desktop and local Debian 13 documentation",
   "license": "MIT",
   "scripts": {
     "dev": "astro dev",

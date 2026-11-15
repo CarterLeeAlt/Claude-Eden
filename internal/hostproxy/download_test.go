@@ -31,11 +31,11 @@ func TestHostDownloadRedirectProgressAndAccept(t *testing.T) {
 	defer server.Close()
 	file := filepath.Join(t.TempDir(), "archive")
 	var output bytes.Buffer
-	if err := downloadOnce(t.Context(), server.Client(), server.URL+"/release", file, "macos-cli-uv.tar.gz", "application/octet-stream", &output, time.Second, 0); err != nil {
+	if err := downloadOnce(t.Context(), server.Client(), server.URL+"/release", file, "windows-cli-uv.zip", "application/octet-stream", &output, time.Second, 0); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := os.ReadFile(file)
-	if string(got) != "verified by caller" || !strings.Contains(output.String(), "CAGE_HOST_BYTES macos-cli-uv.tar.gz 18 18") {
+	if string(got) != "verified by caller" || !strings.Contains(output.String(), "EDEN_HOST_BYTES windows-cli-uv.zip 18 18") {
 		t.Fatalf("body=%q progress=%s", got, &output)
 	}
 }
@@ -50,12 +50,12 @@ func TestHostDownloadStallAndCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	start := time.Now()
-	err := downloadOnce(ctx, server.Client(), server.URL, filepath.Join(t.TempDir(), "archive"), "chrome.dmg", "", io.Discard, 30*time.Millisecond, 0)
+	err := downloadOnce(ctx, server.Client(), server.URL, filepath.Join(t.TempDir(), "archive"), "chrome.zip", "", io.Discard, 30*time.Millisecond, 0)
 	if err == nil || time.Since(start) >= time.Second {
 		t.Fatalf("stalled body did not stop promptly: %v", err)
 	}
 	cancel()
-	if err := Download(ctx, server.URL, filepath.Join(t.TempDir(), "archive"), "chrome.dmg", "", "", "", io.Discard); err != context.Canceled {
+	if err := Download(ctx, server.URL, filepath.Join(t.TempDir(), "archive"), "chrome.zip", "", "", "", io.Discard); err != context.Canceled {
 		t.Fatalf("cancellation was not preserved: %v", err)
 	}
 }

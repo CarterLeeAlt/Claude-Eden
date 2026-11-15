@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createWorkbench } from "./workbench-fixture.mjs";
 import { startDisplay } from "./rfb-wire-fixture.mjs";
 
-const display = await startDisplay(process.env.CAGE_UI_URL || "http://127.0.0.1:5198", { sharedClipboard: true });
+const display = await startDisplay(process.env.EDEN_UI_URL || "http://127.0.0.1:5198", { sharedClipboard: true });
 let context = "a".repeat(32);
 const { browser, page, errors } = await createWorkbench({
   mockWebSockets: false, url: display.url,
@@ -28,7 +28,7 @@ async function until(predicate) {
 async function delaySync() {
   await page.evaluate(() => {
     window.pendingSync = false;
-    window.cageSyncClipboard = () => new Promise(resolve => {
+    window.edenSyncClipboard = () => new Promise(resolve => {
       window.pendingSync = true;
       window.releaseSync = resolve;
     });
@@ -37,7 +37,7 @@ async function delaySync() {
 try {
   await page.getByRole("button", { name: "Claude Desktop", exact: true }).click();
   await page.getByText("正在连接画面", { exact: true }).waitFor({ state: "hidden" });
-  await page.waitForFunction(() => window.cageSharedClipboardActive === true);
+  await page.waitForFunction(() => window.edenSharedClipboardActive === true);
   await page.locator(".remote-canvas canvas").click({ position: { x: 40, y: 40 } });
   display.stats.keys.length = 0;
   await delaySync();

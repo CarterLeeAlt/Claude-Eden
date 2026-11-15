@@ -9,7 +9,6 @@ import (
 )
 
 var cliStartupEscape = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
-var cliOwnedChannel = regexp.MustCompile(`Channels:server:cage(?:[❯›>]?1\.|Iamusingthisforlocaldevelopment)`)
 
 func cliStartupText(data []byte) string {
 	return strings.Map(func(r rune) rune {
@@ -20,12 +19,12 @@ func cliStartupText(data []byte) string {
 	}, cliStartupEscape.ReplaceAllString(string(data), ""))
 }
 
-// Cage already owns this locally generated channel and the user has granted
+// Eden already owns this locally generated channel and the user has granted
 // access to this project. Only their two startup dialogs can be completed here.
 // Tool approvals, external MCP servers and login dialogs remain untouched.
-func cliStartupDialog(text, workspace string) string {
-	if strings.Contains(text, "WARNING:Loadingdevelopmentchannels") &&
-		cliOwnedChannel.MatchString(text) &&
+func cliStartupDialog(text, workspace, connection string) string {
+	if connection != "" && strings.Contains(text, "WARNING:Loadingdevelopmentchannels") &&
+		regexp.MustCompile(`Channels:server:`+regexp.QuoteMeta(connection)+`(?:[❯›>]?1\.|Iamusingthisforlocaldevelopment)`).MatchString(text) &&
 		strings.Contains(text, "Iamusingthisforlocaldevelopment") {
 		return "channel"
 	}
@@ -47,9 +46,9 @@ func (s *Server) prepareCLIConnection(terminal *terminalSession, id string) {
 		defer terminal.finishCLIStartup()
 		ctx, cancel := context.WithTimeout(s.lifetimeContext(), 45*time.Second)
 		defer cancel()
-		s.mobileCLI.mu.Lock()
-		record, err := s.mobileCLI.record(s.profile, id)
-		s.mobileCLI.mu.Unlock()
+		s.cliSessions.mu.Lock()
+		record, err := s.cliSessions.record(s.profile, id)
+		s.cliSessions.mu.Unlock()
 		if err != nil {
 			return
 		}
@@ -89,7 +88,7 @@ func (s *Server) prepareCLIConnection(terminal *terminalSession, id string) {
 			terminal.mu.Lock()
 			text := cliStartupText(terminal.history)
 			terminal.mu.Unlock()
-			dialog := cliStartupDialog(text, record.GuestWorkspace)
+			dialog := cliStartupDialog(text, record.GuestWorkspace, record.Connection)
 			if dialog == "" || completed[dialog] {
 				continue
 			}

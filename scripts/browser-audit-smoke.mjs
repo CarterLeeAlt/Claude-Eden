@@ -7,13 +7,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { auditBrowser } from "../internal/cage/browser-audit.mjs";
+import { auditBrowser } from "../internal/eden/browser-audit.mjs";
 
 assert.equal(process.platform, "linux", "Run this check in the Linux guest");
 assert.ok(process.env.DISPLAY, "Provide an isolated X display");
-const directory = await mkdtemp(join(tmpdir(), "cage-audit-smoke-"));
+const directory = await mkdtemp(join(tmpdir(), "workbench-audit-smoke-"));
 const chrome = spawn(
-  process.env.CAGE_TEST_CHROMIUM || "/usr/bin/chromium",
+  process.env.EDEN_TEST_CHROMIUM || "/usr/bin/chromium",
   [
     `--user-data-dir=${directory}`,
     "--remote-debugging-pipe",
@@ -87,7 +87,7 @@ try {
     "Runtime.evaluate",
     {
       expression:
-        "document.title = 'Cage test page'; document.body.innerHTML = '<input value=unsaved-text>'; window.cageTestState = 42;",
+        "document.title = 'Workbench test page'; document.body.innerHTML = '<input value=unsaved-text>'; window.workbenchTestState = 42;",
     },
     sessionId,
   );
@@ -97,7 +97,7 @@ try {
         "Runtime.evaluate",
         {
           expression:
-            "JSON.stringify({title:document.title,input:document.querySelector('input').value,state:window.cageTestState,focus:document.hasFocus()})",
+            "JSON.stringify({title:document.title,input:document.querySelector('input').value,state:window.workbenchTestState,focus:document.hasFocus()})",
           returnByValue: true,
         },
         sessionId,

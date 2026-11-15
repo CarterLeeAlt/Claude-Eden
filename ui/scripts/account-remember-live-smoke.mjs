@@ -10,23 +10,23 @@ import { promisify } from "node:util";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
-const cage = process.argv[2];
-assert.ok(path.isAbsolute(cage || ""), "Supply an absolute Cage helper path");
+const eden = process.argv[2];
+assert.ok(path.isAbsolute(eden || ""), "Supply an absolute Eden helper path");
 const run = promisify(execFile);
-const root = await fs.mkdtemp(path.join(os.tmpdir(), "cage-remember-live-"));
-const env = { ...process.env, HOME: root, LOCALAPPDATA: root, CLAUDE_CAGE_CONFIG: path.join(root, "profile", "config.json") };
+const root = await fs.mkdtemp(path.join(os.tmpdir(), "eden-remember-live-"));
+const env = { ...process.env, HOME: root, USERPROFILE: root, LOCALAPPDATA: root, EDEN_CONFIG: path.join(root, "profile", "config.json") };
 const output = new URL("../../docs/test-reports/2026-11-08-remember-device/", import.meta.url);
 await fs.mkdir(output, { recursive: true });
 const require = createRequire(import.meta.url);
-const { chromium, webkit } = require(process.env.CAGE_PLAYWRIGHT_MODULE || "playwright");
-const engine = process.env.CAGE_TEST_BROWSER === "webkit" ? webkit : chromium;
+const { chromium, webkit } = require(process.env.EDEN_PLAYWRIGHT_MODULE || "playwright");
+const engine = process.env.EDEN_TEST_BROWSER === "webkit" ? webkit : chromium;
 const browser = await engine.launch({ headless: true });
 let context, page;
 const errors = [];
-const command = async (...args) => JSON.parse((await run(cage, args, { env, timeout: 60000 })).stdout);
+const command = async (...args) => JSON.parse((await run(eden, args, { env, timeout: 60000 })).stdout);
 const account = () => page.evaluate(async () => {
   const context = await (await fetch("/api/client/context")).json();
-  return (await fetch("/api/account", { headers: { "X-Cage-Connection": context.connection_id } })).json();
+  return (await fetch("/api/account", { headers: { "X-Eden-Connection": context.connection_id } })).json();
 });
 const menu = () => page.getByRole("button", { name: /^账户菜单，/ });
 const remember = () => page.getByRole("checkbox", { name: /^记住我/ });
@@ -44,13 +44,13 @@ const unlock = async (enabled) => {
   await remember().setChecked(enabled);
   await page.getByLabel("账户密码", { exact: true }).fill(password);
   const response = page.waitForResponse(r => r.url().endsWith("/api/client/trusted-login"));
-  await page.getByRole("button", { name: "解锁 Cage", exact: true }).click();
+  await page.getByRole("button", { name: "解锁 Eden", exact: true }).click();
   assert.equal((await response).status(), 200);
   await menu().waitFor();
 };
 try {
   await restart();
-  await page.getByRole("heading", { name: "注册 Cage 账户", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "注册 Eden 账户", exact: true }).waitFor();
   await remember().waitFor();
   assert.equal(await remember().isChecked(), true);
   await remember().uncheck();
@@ -76,8 +76,8 @@ try {
   await menu().waitFor();
   assert.equal((await account()).unlocked, true);
   await menu().click();
-  await page.getByRole("menuitem", { name: /锁定 Cage/ }).click();
-  await page.getByRole("region", { name: "解锁 Cage", exact: true }).waitFor();
+  await page.getByRole("menuitem", { name: /锁定 Eden/ }).click();
+  await page.getByRole("region", { name: "解锁 Eden", exact: true }).waitFor();
   await restart();
   await remember().waitFor();
   assert.equal((await account()).unlocked, false);
@@ -93,7 +93,7 @@ try {
   await menu().click();
   await page.getByRole("menuitem", { name: "退出账户", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "停止环境并退出账户", exact: true }).click();
-  await page.getByRole("region", { name: "解锁 Cage", exact: true }).waitFor();
+  await page.getByRole("region", { name: "解锁 Eden", exact: true }).waitFor();
   assert.equal(Boolean((await account()).trusted_login), false);
   const final = JSON.parse(await fs.readFile(path.join(root, "profile", "account.json"), "utf8"));
   assert.equal(final.sealed_key, record.sealed_key, "workspace password-wrapped key changed");

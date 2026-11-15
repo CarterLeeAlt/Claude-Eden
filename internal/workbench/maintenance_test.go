@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func TestMaintenanceRequiresAuthenticationAndSoftwareSource(t *testing.T) {
@@ -34,7 +34,7 @@ func TestMaintenanceRequiresAuthenticationAndSoftwareSource(t *testing.T) {
 	defer upstream.Close()
 	destination, _ := url.Parse(upstream.URL)
 	dial := func(ctx context.Context, network, address string) (net.Conn, error) {
-		if address != "deb.debian.org:80" && address != "deb.nodesource.com:80" && address != "archive.ubuntu.com:80" && address != "security.ubuntu.com:80" && address != "ports.ubuntu.com:80" {
+		if address != "deb.debian.org:80" && address != "deb.nodesource.com:80" {
 			return nil, errors.New("unexpected destination")
 		}
 		return (&net.Dialer{}).DialContext(ctx, network, destination.Host)
@@ -43,7 +43,7 @@ func TestMaintenanceRequiresAuthenticationAndSoftwareSource(t *testing.T) {
 	server := httptest.NewServer(proxy)
 	defer server.Close()
 	defer proxy.close()
-	gate, err := cage.NewEgressGate(cage.DefaultConfig())
+	gate, err := eden.NewEgressGate(eden.DefaultConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,13 +59,13 @@ func TestMaintenanceRequiresAuthenticationAndSoftwareSource(t *testing.T) {
 		{"http://deb.debian.org/debian/pool/file.deb", "POST", true, 405},
 		{"http://deb.debian.org/debian/pool/file.deb", "GET", true, 200},
 		{"http://deb.nodesource.com/node_24.x/dists/nodistro/InRelease", "GET", true, 200},
-		{"http://archive.ubuntu.com/ubuntu/dists/jammy/InRelease", "GET", true, 200},
-		{"http://security.ubuntu.com/ubuntu/dists/jammy-security/InRelease", "GET", true, 200},
-		{"http://ports.ubuntu.com/ubuntu-ports/dists/jammy/InRelease", "GET", true, 200},
+		{"http://archive.ubuntu.com/ubuntu/dists/jammy/InRelease", "GET", true, 403},
+		{"http://security.ubuntu.com/ubuntu/dists/jammy-security/InRelease", "GET", true, 403},
+		{"http://ports.ubuntu.com/ubuntu-ports/dists/jammy/InRelease", "GET", true, 403},
 	} {
 		proxyURL, _ := url.Parse(server.URL)
 		if test.auth {
-			proxyURL.User = url.UserPassword("cage-install", "fixture-only")
+			proxyURL.User = url.UserPassword("workbench-install", "fixture-only")
 		}
 		transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
 		client := &http.Client{Transport: transport, Timeout: time.Second}
@@ -84,10 +84,10 @@ func TestMaintenanceRequiresAuthenticationAndSoftwareSource(t *testing.T) {
 			t.Fatal("download bytes changed")
 		}
 	}
-	if calls.Load() != 5 {
+	if calls.Load() != 2 {
 		t.Fatal("rejected request reached origin")
 	}
-	if gate.Status().Mode != cage.GateClosed {
+	if gate.Status().Mode != eden.GateClosed {
 		t.Fatal("maintenance changed business gate")
 	}
 }
@@ -109,7 +109,7 @@ func TestMaintenanceClosesTLSConnectionsAndRefusesBusinessHosts(t *testing.T) {
 	}
 	defer connection.Close()
 	_ = connection.SetDeadline(time.Now().Add(3 * time.Second))
-	auth := base64.StdEncoding.EncodeToString([]byte("cage-install:fixture"))
+	auth := base64.StdEncoding.EncodeToString([]byte("workbench-install:fixture"))
 	_, _ = fmt.Fprintf(connection, "CONNECT deb.debian.org:443 HTTP/1.1\r\nHost: deb.debian.org:443\r\nProxy-Authorization: Basic %s\r\n\r\n", auth)
 	reader := bufio.NewReader(connection)
 	response, err := http.ReadResponse(reader, nil)
@@ -125,12 +125,12 @@ func TestMaintenanceClosesTLSConnectionsAndRefusesBusinessHosts(t *testing.T) {
 	if _, err = reader.ReadByte(); err == nil {
 		t.Fatal("maintenance left a live tunnel")
 	}
-	for _, address := range []string{"claude.ai:443", "api.anthropic.com:443", "deb.debian.org:22", "127.0.0.1:443", "github.com.evil.test:443"} {
+	for _, address := range []string{"claude.ai:443", "api.anthropic.com:443", "deb.debian.org:22", "127.0.0.1:443", "github.com.evil.test:443", "archive.ubuntu.com:443", "security.ubuntu.com:443", "ports.ubuntu.com:443", "api.snapcraft.io:443", "storage.snapcraftcontent.com:443", "canonical-lgw01.cdn.snapcraftcontent.com:443", "canonical-lcy01.cdn.snapcraftcontent.com:443", "canonical-lcy02.cdn.snapcraftcontent.com:443", "canonical-bos01.cdn.snapcraftcontent.com:443", "cloudfront.cdn.snapcraftcontent.com:443"} {
 		if maintenanceDestination(address, true) {
 			t.Fatal("business or non-HTTPS destination accepted", address)
 		}
 	}
-	for _, host := range []string{"mirrors.nju.edu.cn", "mirrors.ustc.edu.cn", "cdn.npmmirror.com", "api.snapcraft.io", "storage.snapcraftcontent.com", "canonical-lgw01.cdn.snapcraftcontent.com", "canonical-lcy01.cdn.snapcraftcontent.com", "canonical-lcy02.cdn.snapcraftcontent.com", "canonical-bos01.cdn.snapcraftcontent.com", "cloudfront.cdn.snapcraftcontent.com", "codeload.github.com"} {
+	for _, host := range []string{"mirrors.nju.edu.cn", "mirrors.ustc.edu.cn", "cdn.npmmirror.com", "codeload.github.com"} {
 		if !maintenanceDestination(host+":443", true) || maintenanceDestination(host+":80", false) || maintenanceDestination(host+".evil.test:443", true) {
 			t.Fatalf("unexpected mirror policy for %s", host)
 		}
@@ -146,10 +146,10 @@ func TestMaintenanceScriptUsesPrivateTemporaryConfiguration(t *testing.T) {
 		t.Skip("bash not available")
 	}
 	command := exec.Command(shell, "-se")
-	command.Stdin = strings.NewReader(maintenanceScript(`test -s "$CAGE_APT_CONFIG"
-test "$http_proxy" = "$CAGE_INSTALL_PROXY"
+	command.Stdin = strings.NewReader(maintenanceScript(`test -s "$WORKBENCH_APT_CONFIG"
+test "$http_proxy" = "$WORKBENCH_INSTALL_PROXY"
 test "$(umask)" = 0022
-printf '%s' "$CAGE_APT_CONFIG"
+printf '%s' "$WORKBENCH_APT_CONFIG"
 `, "fixture-token"))
 	output, err := command.Output()
 	if err != nil {

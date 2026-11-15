@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createWorkbench } from "./workbench-fixture.mjs";
 import { startDisplay } from "./rfb-wire-fixture.mjs";
 
-const display = await startDisplay(process.env.CAGE_UI_URL || "http://127.0.0.1:5198", { sharedClipboard: true });
+const display = await startDisplay(process.env.EDEN_UI_URL || "http://127.0.0.1:5198", { sharedClipboard: true });
 let revision = 1, clipboard = { text: "initial host text" };
 const writes = [];
 const { browser, page, state, errors } = await createWorkbench({
@@ -28,7 +28,7 @@ try {
   await page.reload();
   await page.getByRole("button",{ name:"Claude Desktop", exact:true }).click();
   await page.getByText("正在连接画面",{ exact:true }).waitFor({ state:"hidden" });
-  await page.waitForFunction(() => window.cageSharedClipboardActive === true);
+  await page.waitForFunction(() => window.edenSharedClipboardActive === true);
   assert.equal(display.stats.clipboardUpdates.at(-1).text,"initial host text");
 
   for (const content of [{ text:"Claude 消息🙂\n保留换行" },{ png:"fixture-png" },{ files:"10000000-2222-4333-8444-123456789abc" }]) {
@@ -48,7 +48,7 @@ try {
   const png = await page.evaluate(() => document.createElement("canvas").toDataURL("image/png").split(",")[1]);
   clipboard = { png }; revision++;
   display.stats.keys.length = 0;
-  assert.equal(await page.evaluate(() => window.cageEditAction("paste")), true);
+  assert.equal(await page.evaluate(() => window.edenEditAction("paste")), true);
   await waitFor(() => display.stats.keys.length >= 4);
   assert.deepEqual(display.stats.keys, [
     { down:true, symbol:0xffe3 }, { down:true, symbol:118 },
@@ -75,7 +75,7 @@ try {
   display.disconnectClipboard();
   clipboard = { text:"copy during disconnection" }; revision++;
   await waitFor(() => display.stats.clipboardConnections > connections && display.stats.clipboardUpdates.at(-1).text === "copy during disconnection");
-  await page.waitForFunction(() => window.cageSharedClipboardActive === true);
+  await page.waitForFunction(() => window.edenSharedClipboardActive === true);
   assert.deepEqual(errors,[]);
   console.log("PASS: Desktop text/image/files copy, terminal OSC 52 to shared guest clipboard, no echo, native paste, background sharing and reconnect.");
 } finally { await browser.close(); await display.close(); }

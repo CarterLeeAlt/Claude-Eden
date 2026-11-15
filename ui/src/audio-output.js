@@ -58,7 +58,7 @@ export class AudioOutput {
     if (!this.preparing) {
       this.preparing = this.context.audioWorklet.addModule(workletURL).then(() => {
         if (this.disposed) return;
-        this.node = new AudioWorkletNode(this.context, "cage-audio", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
+        this.node = new AudioWorkletNode(this.context, "eden-audio", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
         this.gain = this.context.createGain();
         this.gain.gain.value = this.volume;
         this.node.connect(this.gain).connect(this.context.destination);

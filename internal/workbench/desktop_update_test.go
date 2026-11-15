@@ -15,17 +15,15 @@ import (
 
 func TestUpdaterTrustedStop(t *testing.T) {
 	for _, tc := range []struct {
-		name         string
-		configure    func(*controllerClient, *Server)
-		wantProof    bool
-		stopStatus   int
-		wantOK       bool
-		switchRemote bool
-		replaceJob   bool
+		name       string
+		configure  func(*controllerClient, *Server)
+		wantProof  bool
+		stopStatus int
+		wantOK     bool
+		replaceJob bool
 	}{
 		{name: "trusted unlocked", wantProof: true, stopStatus: http.StatusOK, wantOK: true},
 		{name: "changed stop job", replaceJob: true, wantProof: true, stopStatus: http.StatusOK},
-		{name: "switch to remote after context", switchRemote: true, wantProof: true, stopStatus: http.StatusConflict},
 		{name: "password unlocked", configure: func(_ *controllerClient, s *Server) {
 			s.account.mu.Lock()
 			s.account.trustedSession = false
@@ -42,9 +40,6 @@ func TestUpdaterTrustedStop(t *testing.T) {
 		}, wantProof: true, stopStatus: http.StatusLocked},
 		{name: "gateway", configure: func(c *controllerClient, _ *Server) {
 			c.launch.DesktopGateway = true
-		}, stopStatus: http.StatusLocked},
-		{name: "client only", configure: func(c *controllerClient, _ *Server) {
-			c.launch.ClientOnly = true
 		}, stopStatus: http.StatusLocked},
 		{name: "legacy", configure: func(c *controllerClient, _ *Server) {
 			c.launch.Controller.Protocol = 0
@@ -64,8 +59,8 @@ func TestUpdaterTrustedStop(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s := testServer(t)
 			s.account.trustedSession = true
-			s.remote = newRemoteGateway(s.profile)
-			t.Cleanup(s.remote.close)
+			s.gateway = newClientGateway()
+			t.Cleanup(s.gateway.close)
 			s.identity = ControllerIdentity{Protocol: controlProtocol, PID: os.Getpid(), Build: "previous-version"}
 
 			lock, err := openControllerLock(s.profile, os.O_CREATE|os.O_RDWR)
@@ -88,9 +83,6 @@ func TestUpdaterTrustedStop(t *testing.T) {
 				switch r.URL.Path {
 				case "/api/client/context":
 					handler.ServeHTTP(w, r)
-					if tc.switchRemote {
-						s.remote.setRemote(true)
-					}
 				case "/api/stop", "/api/status":
 					// Apply the real HTTP account and session guards without
 					// allowing this fixture to launch or stop a guest process.
@@ -103,9 +95,6 @@ func TestUpdaterTrustedStop(t *testing.T) {
 						stopStatus = check.Code
 						_, err := r.Cookie(s.cookieName() + "-desktop")
 						stopProof = err == nil
-						if tc.switchRemote && requestConnection(r) != "local" {
-							t.Error("updater stop did not pin the local connection")
-						}
 					}
 					if check.Code != http.StatusOK {
 						w.WriteHeader(check.Code)

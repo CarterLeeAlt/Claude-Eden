@@ -17,15 +17,14 @@ import (
 
 	"al.essio.dev/pkg/shellescape"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
 	"github.com/sylvinus/agent-vm/internal/diagnostics"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 // Only distribution/tool origins are reachable through this temporary channel.
 // Guest business traffic continues through EgressGate without any grant here.
 var maintenanceOrigins = map[string]bool{
 	"deb.debian.org": true, "security.debian.org": true,
-	"archive.ubuntu.com": true, "security.ubuntu.com": true, "ports.ubuntu.com": true,
 	"github.com": true, "objects.githubusercontent.com": true, "release-assets.githubusercontent.com": true,
 	"registry.npmjs.org": true, "downloads.claude.ai": true, "deb.nodesource.com": true,
 }
@@ -53,7 +52,7 @@ func maintenanceDestination(address string, connect bool) bool {
 	}
 	host = strings.ToLower(host)
 	switch host {
-	case "mirrors.nju.edu.cn", "mirrors.ustc.edu.cn", "cdn.npmmirror.com", "api.snapcraft.io", "storage.snapcraftcontent.com", "canonical-lgw01.cdn.snapcraftcontent.com", "canonical-lcy01.cdn.snapcraftcontent.com", "canonical-lcy02.cdn.snapcraftcontent.com", "canonical-bos01.cdn.snapcraftcontent.com", "cloudfront.cdn.snapcraftcontent.com", "codeload.github.com":
+	case "mirrors.nju.edu.cn", "mirrors.ustc.edu.cn", "cdn.npmmirror.com", "codeload.github.com":
 		return connect
 	}
 	return maintenanceOrigins[host]
@@ -78,15 +77,15 @@ func (p *maintenanceProxy) close() {
 	p.transport.CloseIdleConnections()
 }
 func (p *maintenanceProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	expected := "Basic " + base64.StdEncoding.EncodeToString([]byte("cage-install:"+p.token))
+	expected := "Basic " + base64.StdEncoding.EncodeToString([]byte("workbench-install:"+p.token))
 	if subtle.ConstantTimeCompare([]byte(r.Header.Get("Proxy-Authorization")), []byte(expected)) != 1 {
-		w.Header().Set("Proxy-Authenticate", `Basic realm="Cage maintenance"`)
+		w.Header().Set("Proxy-Authenticate", `Basic realm="Workbench maintenance"`)
 		http.Error(w, "Maintenance authentication required", 407)
 		return
 	}
 	if r.Method == http.MethodConnect {
 		if !maintenanceDestination(r.Host, true) {
-			http.Error(w, "Not a Cage software source", 403)
+			http.Error(w, "Not a workbench software source", 403)
 			return
 		}
 		remote, err := p.dial(p.ctx, "tcp", r.Host)
@@ -134,7 +133,7 @@ func (p *maintenanceProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		address = net.JoinHostPort(r.URL.Hostname(), "80")
 	}
 	if r.URL.Scheme != "http" || r.URL.User != nil || !maintenanceDestination(address, false) {
-		http.Error(w, "Not a Cage software source", 403)
+		http.Error(w, "Not a workbench software source", 403)
 		return
 	}
 	request := r.Clone(p.ctx)
@@ -167,13 +166,13 @@ const maintenancePort = 18961
 func maintenanceScript(script, token string) string {
 	return fmt.Sprintf(`set -euo pipefail
 umask 077
-cage_maintenance_dir=$(mktemp -d)
-trap 'rm -rf "$cage_maintenance_dir"' EXIT
-export CAGE_INSTALL_PROXY='http://cage-install:%s@127.0.0.1:%d'
-export CAGE_APT_CONFIG="$cage_maintenance_dir/apt.conf"
-printf 'Acquire::http::Proxy "%%s";\nAcquire::https::Proxy "%%s";\nAcquire::Retries "1";\nAcquire::http::Timeout "15";\nAcquire::https::Timeout "15";\n' "$CAGE_INSTALL_PROXY" "$CAGE_INSTALL_PROXY" > "$CAGE_APT_CONFIG"
+workbench_maintenance_dir=$(mktemp -d)
+trap 'rm -rf "$workbench_maintenance_dir"' EXIT
+export WORKBENCH_INSTALL_PROXY='http://workbench-install:%s@127.0.0.1:%d'
+export WORKBENCH_APT_CONFIG="$workbench_maintenance_dir/apt.conf"
+printf 'Acquire::http::Proxy "%%s";\nAcquire::https::Proxy "%%s";\nAcquire::Retries "1";\nAcquire::http::Timeout "15";\nAcquire::https::Timeout "15";\n' "$WORKBENCH_INSTALL_PROXY" "$WORKBENCH_INSTALL_PROXY" > "$WORKBENCH_APT_CONFIG"
 unset ALL_PROXY all_proxy NO_PROXY no_proxy FTP_PROXY ftp_proxy
-export http_proxy="$CAGE_INSTALL_PROXY" https_proxy="$CAGE_INSTALL_PROXY" HTTP_PROXY="$CAGE_INSTALL_PROXY" HTTPS_PROXY="$CAGE_INSTALL_PROXY"
+export http_proxy="$WORKBENCH_INSTALL_PROXY" https_proxy="$WORKBENCH_INSTALL_PROXY" HTTP_PROXY="$WORKBENCH_INSTALL_PROXY" HTTPS_PROXY="$WORKBENCH_INSTALL_PROXY"
 (
 umask 022
 %s
@@ -183,11 +182,10 @@ umask 022
 
 // Read the workbench preference at service startup so CLI and desktop launches
 // use the same setting without modifying the network configuration.
-func StartGuestServices(ctx context.Context, configPath string, cfg cage.Config, stdout, stderr io.Writer) error {
-	prefs := Preferences{BalancedDisplay: true}
+func StartGuestServices(ctx context.Context, configPath string, cfg eden.Config, stdout, stderr io.Writer) error {
+	var prefs Preferences
 	data, err := os.ReadFile(filepath.Join(filepath.Dir(configPath), "workbench.json"))
 	if err == nil {
-		prefs.BalancedDisplay = false
 		if err = json.Unmarshal(data, &prefs); err != nil {
 			return fmt.Errorf("读取工作台画质设置失败: %w", err)
 		}
@@ -198,11 +196,11 @@ func StartGuestServices(ctx context.Context, configPath string, cfg cage.Config,
 	if prefs.BalancedDisplay {
 		scale = "1.5"
 	}
-	return RunMaintenanceScript(ctx, configPath, "export CAGE_DISPLAY_SCALE="+scale+"\n"+cfg.StartScript(), stdout, stderr)
+	return RunMaintenanceScript(ctx, configPath, "export WORKBENCH_DISPLAY_SCALE="+scale+"\n"+cfg.StartScript(), stdout, stderr)
 }
 
 func RunMaintenanceScript(ctx context.Context, configPath, script string, stdout, stderr io.Writer) error {
-	cfg, err := cage.Load(configPath)
+	cfg, err := eden.Load(configPath)
 	if err != nil {
 		return err
 	}
@@ -210,7 +208,7 @@ func RunMaintenanceScript(ctx context.Context, configPath, script string, stdout
 	if err = cfg.RequireManagedProxy(profile); err != nil {
 		return err
 	}
-	egress, err := cage.NewEgress(cfg)
+	egress, err := eden.NewEgress(cfg)
 	if err != nil {
 		return err
 	}
@@ -232,9 +230,9 @@ func RunMaintenanceScript(ctx context.Context, configPath, script string, stdout
 	defer stop()
 	s := &Server{profile: profile}
 	forward := fmt.Sprintf("127.0.0.1:%d:%s", maintenancePort, listener.Addr().String())
-	command := "sudo systemd-run --quiet --pipe --wait --collect --unit=cage-maintenance-operation --property=User=cage --property=RuntimeMaxSec=infinity --property=KillMode=control-group --setenv=HOME=/home/cage --working-directory=" + shellescape.Quote(guestPath(s.environmentDir())) + " /bin/bash -se"
+	command := "sudo systemd-run --quiet --pipe --wait --collect --unit=workbench-maintenance-operation --property=User=developer --property=RuntimeMaxSec=infinity --property=KillMode=control-group --setenv=HOME=/home/developer --working-directory=" + shellescape.Quote(guestPath(s.environmentDir())) + " /bin/bash -se"
 	cmd := s.sshCommandWithForwarding(ctx, "-o", "ExitOnForwardFailure=yes", "-R", forward, "-T", s.sshTarget(), "--", command)
-	cmd.Stdin = strings.NewReader(maintenanceScript(cage.DebianPrepareScript+"\n"+script, proxy.token))
+	cmd.Stdin = strings.NewReader(maintenanceScript(eden.DebianPrepareScript+"\n"+script, proxy.token))
 	var output failureOutput
 	cmd.Stdout = output.writer(stdout)
 	cmd.Stderr = output.writer(stderr)
@@ -242,7 +240,7 @@ func RunMaintenanceScript(ctx context.Context, configPath, script string, stdout
 		if ctx.Err() != nil {
 			cleanup, finish := context.WithTimeout(context.Background(), 5*time.Second)
 			defer finish()
-			_, _ = s.guest(cleanup, "sudo systemctl stop cage-maintenance-operation.service")
+			_, _ = s.guest(cleanup, "sudo systemctl stop workbench-maintenance-operation.service")
 			return ctx.Err()
 		}
 		diagnostics.Log("error", "maintenance", fmt.Sprintf("software installation error=%v", err))

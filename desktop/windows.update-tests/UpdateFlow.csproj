@@ -4,8 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>Cage</AssemblyName>
-    <Product>Cage</Product>
+    <AssemblyName>Eden</AssemblyName>
+    <Product>Claude Eden</Product>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
   <ItemGroup>
@@ -15,7 +15,7 @@
     <Compile Include="../windows/UpdateInstaller.cs" Link="UpdateInstaller.cs" />
     <Compile Include="../windows/UpdatePolicy.cs" Link="UpdatePolicy.cs" />
     <Compile Include="../windows/UpdateRecovery.cs" Link="UpdateRecovery.cs" />
-    <EmbeddedResource Include="../../packaging/windows/installation-files.ps1" LogicalName="Cage.InstallationFiles.ps1" />
-    <EmbeddedResource Include="../../packaging/windows/verified-file-deletion.cs" LogicalName="Cage.VerifiedFileDeletion.cs" />
+    <EmbeddedResource Include="../../packaging/windows/installation-files.ps1" LogicalName="Eden.InstallationFiles.ps1" />
+    <EmbeddedResource Include="../../packaging/windows/verified-file-deletion.cs" LogicalName="Eden.VerifiedFileDeletion.cs" />
   </ItemGroup>
 </Project>

@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/host"
 )
 
@@ -58,7 +58,7 @@ func DesktopEntry(fullConfig string, opts DesktopOptions) (DesktopResult, error)
 	}
 	profile := filepath.Dir(desktopConfigPath(fullConfig))
 	owner := 0
-	if value := os.Getenv("CAGE_DESKTOP_OWNER_PID"); value != "" {
+	if value := os.Getenv("EDEN_DESKTOP_OWNER_PID"); value != "" {
 		var err error
 		if owner, err = strconv.Atoi(value); err != nil || owner < 2 {
 			return DesktopResult{}, errors.New("桌面窗口进程标识无效")
@@ -74,7 +74,7 @@ func DesktopEntry(fullConfig string, opts DesktopOptions) (DesktopResult, error)
 		}
 		cmd := exec.Command(exe, "serve-desktop")
 		cmd.Dir = profile
-		cmd.Env = append(os.Environ(), cage.ConfigEnv+"="+fullConfig)
+		cmd.Env = append(os.Environ(), eden.ConfigEnv+"="+fullConfig)
 		detachController(cmd)
 		if err := cmd.Start(); err != nil {
 			return err
@@ -127,7 +127,7 @@ func (s *Server) registerDesktopOwner(w http.ResponseWriter, r *http.Request) {
 func (s *Server) watchDesktopOwners(done <-chan struct{}) {
 	// The native process also supplies its PID to a newly launched gateway.
 	// This covers a window killed before it can finish registering via HTTP.
-	initial, _ := strconv.Atoi(os.Getenv("CAGE_DESKTOP_OWNER_PID"))
+	initial, _ := strconv.Atoi(os.Getenv("EDEN_DESKTOP_OWNER_PID"))
 	if initial > 1 {
 		s.mu.Lock()
 		if s.windowOwners == nil {

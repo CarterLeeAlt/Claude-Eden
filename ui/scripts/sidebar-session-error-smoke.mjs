@@ -2,16 +2,16 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
-const output = process.env.CAGE_TEST_CAPTURE || "/tmp/cage-sidebar-session-error";
+const output = process.env.EDEN_TEST_CAPTURE || "../.tmp/guest-neutralization/ui-eden/sidebar-session-error";
 await mkdir(output, { recursive: true });
-const original = "Windows Claude Code 尚未就绪，请检查原生组件、图形登录和官方账号登录";
-const current = "未能连接 Windows 会话服务，请确认 Windows 环境已启动；持续失败时在设置中导出诊断包";
+const original = "Claude Code 尚未就绪，请检查环境组件和官方账号登录";
+const current = "未能连接会话服务，请确认 Linux 环境已启动；持续失败时在设置中导出诊断包";
 const longError = (current + "。").repeat(4);
 const evidence = [];
-for (const [platform, guestSystem] of [["windows", "windows-11"], ["darwin", "macos"], ["linux", "debian-13"]]) {
+for (const [platform, guestSystem] of [["windows", "debian-13"]]) {
   let message = original, httpFailure = false, pending = false, release, requests = 0;
   const fixture = await createWorkbench({
-    url: process.env.CAGE_UI_URL || "http://127.0.0.1:5217",
+    url: process.env.EDEN_UI_URL || "http://127.0.0.1:5217",
     clientContext: { mode: "local", connection_id: "local", client_platform: platform, server_platform: platform, connection: { state: "disconnected" } },
     beforeNavigate: async (_page, state) => {
       state.account.guest_system = state.status.guest_system = guestSystem;
@@ -21,7 +21,7 @@ for (const [platform, guestSystem] of [["windows", "windows-11"], ["darwin", "ma
       requests++;
       if (pending) await new Promise(resolve => { release = resolve; });
       if (httpFailure) return route.fulfill({ status: 503, contentType: "text/plain; charset=utf-8", body: message });
-      return route.fulfill({ json: { sessions: [{ id: "error-history", title: "保留的历史会话", workspace: "/Users/shihao/.claude-cage-workspace" }], notice: message } });
+      return route.fulfill({ json: { sessions: [{ id: "error-history", title: "保留的历史会话", workspace: "C:/Users/developer/.claude-eden-workspace" }], notice: message } });
     },
   });
   const { page, browser, errors } = fixture;

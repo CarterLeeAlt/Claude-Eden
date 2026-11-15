@@ -1,6 +1,6 @@
 using System.Drawing;
 
-namespace Cage.Windows;
+namespace Eden.Windows;
 
 internal sealed record WindowPlacement(int X, int Y, int Width, int Height, int Dpi, bool Maximized);
 

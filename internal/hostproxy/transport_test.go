@@ -132,12 +132,16 @@ func TestHostDownloadSubprocessKeepsCapturedProxyAfterGuestSanitization(t *testi
 	environment.config = nil
 	environment.Unlock()
 	t.Cleanup(func() { environment.Lock(); environment.config = previous; environment.Unlock() })
+	// Windows environment keys are case-insensitive. Clear inherited aliases
+	// before setting the values that the host must capture.
+	t.Setenv("https_proxy", "")
+	t.Setenv("http_proxy", "")
+	t.Setenv("ALL_PROXY", "")
+	t.Setenv("all_proxy", "")
 	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:7896")
 	t.Setenv("HTTP_PROXY", "http://127.0.0.1:7896")
 	t.Setenv("NO_PROXY", "skip.invalid")
 	t.Setenv("no_proxy", "skip.invalid")
-	t.Setenv("https_proxy", "")
-	t.Setenv("http_proxy", "")
 	CaptureEnvironment()
 	t.Setenv("HTTPS_PROXY", "")
 	t.Setenv("HTTP_PROXY", "")
@@ -158,8 +162,8 @@ func TestLiveSystemProxyDownload(t *testing.T) {
 		t.Skip("live check")
 	}
 	// Opt-in keeps ordinary tests independent of the developer's network.
-	if os.Getenv("CAGE_TEST_HOST_PROXY_LIVE") == "" {
-		t.Skip("set CAGE_TEST_HOST_PROXY_LIVE=1")
+	if os.Getenv("EDEN_TEST_HOST_PROXY_LIVE") == "" {
+		t.Skip("set EDEN_TEST_HOST_PROXY_LIVE=1")
 	}
 	for _, name := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy", "NO_PROXY", "no_proxy"} {
 		t.Setenv(name, "")
@@ -190,7 +194,7 @@ func TestLiveSystemProxyDownload(t *testing.T) {
 		t.Fatalf("peer=%s proxy=%s status=%d bytes=%d", peer, proxy.Host, resp.StatusCode, len(line))
 	}
 	t.Logf("system proxy %s, connected peer %s, official Debian checksum HTTP %d (%d-byte first line)", proxy.Redacted(), peer, resp.StatusCode, len(line))
-	if image := os.Getenv("CAGE_TEST_HOST_IMAGE_URL"); image != "" {
+	if image := os.Getenv("EDEN_TEST_HOST_IMAGE_URL"); image != "" {
 		req, _ := http.NewRequest("GET", image, nil)
 		req.Header.Set("Range", "bytes=0-65535")
 		resp, err := (&http.Client{Transport: tr, Timeout: 30 * time.Second}).Do(req)

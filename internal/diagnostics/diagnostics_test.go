@@ -199,25 +199,8 @@ func TestGuestRunnerSharesRedactionAndExitStatus(t *testing.T) {
 		t.Fatalf("guest output missing: %s", out)
 	}
 }
-func TestLegacyImportBoundsAndRemovesOldLogs(t *testing.T) {
-	profile := t.TempDir()
-	path := filepath.Join(profile, "control.log")
-	_ = os.WriteFile(path, []byte(strings.Repeat("discard ", 50000)+"\npassword=old-secret\nsafe legacy\n"), 0600)
-	s := New(profile)
-	if err := s.ImportLegacy(profile); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatal("raw legacy log retained")
-	}
-	events := readEvents(t, s)
-	if len(events) != 2 || strings.Contains(events[0].Message, "old-secret") {
-		t.Fatalf("invalid migration: %+v", events)
-	}
-}
-
 func TestConcurrentProcessesShareOneLog(t *testing.T) {
-	const flag = "CAGE_DIAGNOSTICS_PROCESS_TEST"
+	const flag = "EDEN_DIAGNOSTICS_PROCESS_TEST"
 	if profile := os.Getenv(flag); profile != "" {
 		s := New(profile)
 		for i := 0; i < 20; i++ {

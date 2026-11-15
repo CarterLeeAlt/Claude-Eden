@@ -19,7 +19,7 @@ import (
 // Configuration validation alone accepts legacy fields that the transport ignores.
 // Observe a real local upgrade after importing, saving and reloading each protocol.
 func TestCoreWebSocketAliasesReachHandshake(t *testing.T) {
-	if os.Getenv("CAGE_PROXY_INTEGRATION") != "1" {
+	if os.Getenv("EDEN_PROXY_INTEGRATION") != "1" {
 		t.Skip("requires a test binary beside the bundled Mihomo")
 	}
 	for _, protocol := range []string{"vmess", "vless", "trojan"} {
@@ -57,9 +57,9 @@ func TestCoreWebSocketAliasesReachHandshake(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				pathOptions := `WS_PATH: "/legacy?source=cage", ws-opts: {headers: {HOST: edge.example, X-Modern: retained}}`
+				pathOptions := `WS_PATH: "/legacy?source=eden", ws-opts: {headers: {HOST: edge.example, X-Modern: retained}}`
 				if pathField == "ws-opts.path" {
-					pathOptions = `ws-opts: {path: "/legacy?source=cage", headers: {X-Modern: retained}}`
+					pathOptions = `ws-opts: {path: "/legacy?source=eden", headers: {X-Modern: retained}}`
 				}
 				data := fmt.Sprintf(`proxies: [{name: local, type: %s, server: 127.0.0.1, port: %s, uuid: 00000000-0000-4000-8000-000000000000, password: local-test-password, alterId: 0, cipher: auto, tls: true, skip-cert-verify: true, network: ws, WS_HEADERS: {host: edge.example, X-Legacy: local-token, X_Underscore: preserved}, %s}]`, protocol, port, pathOptions)
 				if err := store.Import("local", "", []byte(data), "local", 0, ""); err != nil {
@@ -135,7 +135,7 @@ func TestCoreWebSocketAliasesReachHandshake(t *testing.T) {
 				_ = API(ctx, profile, "GET", "/proxies/"+store.Selected+"/delay?timeout=2000&url="+url.QueryEscape("http://127.0.0.1:1/"), nil, nil)
 				select {
 				case observed := <-requests:
-					if observed.path != "/legacy?source=cage" || observed.host != "edge.example" || observed.token != "local-token" || observed.underscore != "preserved" || observed.modern != "retained" || !observed.upgraded {
+					if observed.path != "/legacy?source=eden" || observed.host != "edge.example" || observed.token != "local-token" || observed.underscore != "preserved" || observed.modern != "retained" || !observed.upgraded {
 						t.Fatalf("imported WebSocket parameters did not reach the server: %+v", observed)
 					}
 					t.Logf("%s WebSocket upgrade preserved path, Host and both header formats", protocol)

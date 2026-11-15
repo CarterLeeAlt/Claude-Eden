@@ -11,9 +11,9 @@ import { request as httpRequest } from 'node:http';
 import { setTimeout } from 'node:timers/promises';
 
 const binary = process.argv[2];
-assert.ok(binary && isAbsolute(binary), 'Pass an absolute newly built Cage CLI binary path.');
-const { chromium } = createRequire(import.meta.url)(process.env.CAGE_PLAYWRIGHT_MODULE || 'playwright');
-const profile = await mkdtemp(join(tmpdir(), 'cage-agent-native-browser-'));
+assert.ok(binary && isAbsolute(binary), 'Pass an absolute newly built Eden CLI binary path.');
+const { chromium } = createRequire(import.meta.url)(process.env.EDEN_PLAYWRIGHT_MODULE || 'playwright');
+const profile = await mkdtemp(join(tmpdir(), 'eden-agent-native-browser-'));
 const config = join(profile, 'profile', 'config.json');
 let pid, browser;
 const errors = [];
@@ -86,24 +86,24 @@ try {
   await cli(['service.start']);
   pid = JSON.parse(await readFile(join(profile, 'profile', 'control.json'), 'utf8')).pid;
   await cli(['call', 'account.create', '--input', '-'], { username: 'Agent browser acceptance', password: 'Ephemeral-Browser-Password-123!', confirm_password: 'Ephemeral-Browser-Password-123!' });
-  browser = await chromium.launch({ headless: true, executablePath: process.env.CAGE_TEST_BROWSER_PATH });
+  browser = await chromium.launch({ headless: true, executablePath: process.env.EDEN_TEST_BROWSER_PATH });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
   page.on('pageerror', error => errors.push(error.message));
   page.on('response', async response => {
     if (new URL(response.url()).pathname === '/api/agent/native/window' && response.status() === 200) registrations++;
     if (new URL(response.url()).pathname === '/api/agent/native' && response.request().method() === 'GET') {
-      if (!response.request().headers()['x-cage-agent-window']) prooflessClaims++;
+      if (!response.request().headers()['x-eden-agent-window']) prooflessClaims++;
       try {
         const value = await response.json(); if (value.id) claims.push(value.id);
       } catch { /* A reload can end the observation response. */ }
     }
   });
-  await page.exposeFunction('__cageNativeTest', async request => {
+  await page.exposeFunction('__edenNativeTest', async request => {
     operations.push({ action: request.action, operation: request.operation, connection_id: request.connection_id });
     if (request.action === 'accountDevice') {
-      if (request.operation === 'status') return { supported: true, biometric_available: true, device_status: { automatic: 'disabled', biometric: 'disabled' } };
-      throw new Error('请完成 Touch ID 用户验证（操作系统桥验收替身）。');
+      if (request.operation === 'status') return { supported: false };
+      throw new Error('此平台暂不支持快捷登录');
     }
     if (request.action === 'refreshSession') {
       const url = await entry();
@@ -115,7 +115,7 @@ try {
     throw new Error(`Unexpected OS bridge action in this smoke test: ${request.action}`);
   });
   await page.addInitScript(() => {
-    window.cageNativeBridge = { postMessage: request => window.__cageNativeTest(request) };
+    window.edenNativeBridge = { postMessage: request => window.__edenNativeTest(request) };
     // Count real document boots across the consumer's requested reload.
     sessionStorage.setItem('agent-native-browser-boots', String(Number(sessionStorage.getItem('agent-native-browser-boots') || 0) + 1));
   });
@@ -124,29 +124,29 @@ try {
   await page.getByRole('complementary', { name: '项目与终端' }).waitFor();
   const boot = await page.evaluate(() => Number(sessionStorage.getItem('agent-native-browser-boots')));
   const origin = new URL(page.url()).origin;
-  const ordinaryClaim = await context.request.get(`${origin}/api/agent/native?consumer=window`, { headers: { 'X-Cage-Connection': 'local' } });
+  const ordinaryClaim = await context.request.get(`${origin}/api/agent/native?consumer=window`, { headers: { 'X-Eden-Connection': 'local' } });
   assert.equal(ordinaryClaim.status(), 403, 'A browser session without native window proof could claim an OS action.');
   const initial = await cli(['call', 'status']);
   assert.equal(initial.data.vm_running, false);
   assert.equal(initial.data.ready, false);
 
-  const preference = await submit({ action: 'clientPreferences', operation: 'set', values: { 'cage-sidebar-collapsed': 'true', 'cage-browser-tab-layout': '"vertical"', 'cage.audio': '{"muted":true,"volume":0.25}' } });
+  const preference = await submit({ action: 'clientPreferences', operation: 'set', values: { 'eden-sidebar-collapsed': 'true', 'eden-browser-tab-layout': '"vertical"', 'eden.audio': '{"muted":true,"volume":0.25}' } });
   const saved = await completed(preference);
   assert.equal(saved.status, 'completed');
   assert.equal(saved.result.reload_required, true);
   await page.waitForFunction(previous => Number(sessionStorage.getItem('agent-native-browser-boots')) > previous, boot);
   await page.locator('.app.sidebar-collapsed').waitFor();
   assert.equal(await page.getByRole('complementary', { name: '项目与终端' }).count(), 0, 'The real workbench did not apply sidebar state after reload.');
-  assert.deepEqual(await page.evaluate(() => ({ sidebar: localStorage.getItem('cage-sidebar-collapsed'), layout: localStorage.getItem('cage-browser-tab-layout'), audio: localStorage.getItem('cage.audio') })), { sidebar: 'true', layout: '"vertical"', audio: '{"muted":true,"volume":0.25}' });
+  assert.deepEqual(await page.evaluate(() => ({ sidebar: localStorage.getItem('eden-sidebar-collapsed'), layout: localStorage.getItem('eden-browser-tab-layout'), audio: localStorage.getItem('eden.audio') })), { sidebar: 'true', layout: '"vertical"', audio: '{"muted":true,"volume":0.25}' });
 
   const read = await completed(await submit({ action: 'clientPreferences', operation: 'get' }));
   assert.equal(read.status, 'completed');
-  assert.equal(read.result.values['cage-sidebar-collapsed'], 'true');
-  assert.equal(read.result.values['cage-browser-tab-layout'], '"vertical"');
+  assert.equal(read.result.values['eden-sidebar-collapsed'], 'true');
+  assert.equal(read.result.values['eden-browser-tab-layout'], '"vertical"');
 
   const biometric = await completed(await submit({ action: 'accountDevice', operation: 'enable', kind: 'biometric' }));
   assert.equal(biometric.status, 'failed');
-  assert.match(biometric.error, /请完成 Touch ID 用户验证/);
+  assert.match(biometric.error, /此平台暂不支持快捷登录/);
   assert.equal(operations.filter(item => item.action === 'accountDevice' && item.operation === 'enable').length, 1, 'The failed biometric action was repeated.');
 
   const refreshed = await completed(await submit({ action: 'refreshSession' }));
@@ -154,10 +154,10 @@ try {
   assert.deepEqual(refreshed.result, { refreshed: true });
   assert.ok(refreshTickets.size > 0);
   for (const ticket of refreshTickets) assert.ok(!JSON.stringify(refreshed).includes(ticket), 'The native refresh ticket reached Agent output.');
-  const forgedCompletion = await context.request.post(`${origin}/api/agent/native/${refreshed.id}/complete`, { headers: { Origin: origin, 'X-Cage-Connection': 'local' }, data: { result: { forged: true } } });
+  const forgedCompletion = await context.request.post(`${origin}/api/agent/native/${refreshed.id}/complete`, { headers: { Origin: origin, 'X-Eden-Connection': 'local' }, data: { result: { forged: true } } });
   assert.equal(forgedCompletion.status(), 403, 'A browser session without window proof could forge an OS completion.');
 
-  const restored = await completed(await submit({ action: 'clientPreferences', operation: 'set', values: { 'cage-sidebar-collapsed': 'false' } }));
+  const restored = await completed(await submit({ action: 'clientPreferences', operation: 'set', values: { 'eden-sidebar-collapsed': 'false' } }));
   assert.equal(restored.status, 'completed');
   await page.getByRole('complementary', { name: '项目与终端' }).waitFor();
   assert.equal(await page.locator('.app.sidebar-collapsed').count(), 0);
@@ -167,14 +167,14 @@ try {
   await page.locator('.app.sidebar-collapsed').waitFor();
   const userChanged = await completed(await submit({ action: 'clientPreferences', operation: 'get' }));
   assert.equal(userChanged.status, 'completed');
-  assert.equal(userChanged.result.values['cage-sidebar-collapsed'], 'true');
+  assert.equal(userChanged.result.values['eden-sidebar-collapsed'], 'true');
   assert.ok(registrations >= 2, 'Document reload did not establish an independent native window proof.');
   assert.equal(prooflessClaims, 0, 'The real consumer omitted its window proof.');
   const persistedClientState = await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }));
   for (const ticket of refreshTickets) assert.ok(!persistedClientState.includes(ticket), 'A native registration ticket was persisted by the UI.');
   assert.equal(claims.filter(id => id === preference).length, 1, 'A native request was claimed more than once.');
   assert.deepEqual(errors, []);
-  console.log('PASS: real Cage CLI + HTTP + compiled UI native queue, private window registration, ordinary-session claim/completion rejection, single claim, bidirectional sidebar preference, persistence/reload, OS verification failure, private refresh result and no VM startup. OS bridge was a fixture; no physical Touch ID or app installation was tested.');
+  console.log('PASS: real Eden CLI + HTTP + compiled UI native queue, private window registration, ordinary-session claim/completion rejection, single claim, bidirectional sidebar preference, persistence/reload, unsupported OS action failure, private refresh result and no VM startup. OS bridge was a fixture; app installation was not tested.');
 } finally {
   await browser?.close();
   if (pid) {

@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	errTerminalsClosed  = errors.New("后台正在退出，请重新打开 Cage。")
+	errTerminalsClosed  = errors.New("后台正在退出，请重新打开 Eden。")
 	errTerminalBusy     = errors.New("环境正在执行其他操作")
 	errTerminalNotReady = errors.New("环境尚未就绪或正在重启")
 	errTerminalLimit    = errors.New("最多保留 12 个终端，请先关闭不用的会话")
@@ -225,14 +225,11 @@ func (s *Server) createTerminal(input terminalRequest) (*terminalSession, error)
 
 // Caller holds the environment operation lock through PTY publication.
 func (s *Server) createTerminalLocked(input terminalRequest) (*terminalSession, error) {
-	if s.windowsGuest != nil {
-		return s.createWindowsTerminal(input)
-	}
-	var sharedRecord *mobileRecord
+	var sharedRecord *cliSessionRecord
 	if input.sharedID != "" {
-		s.mobileCLI.mu.Lock()
-		record, err := s.mobileCLI.record(s.profile, input.sharedID)
-		s.mobileCLI.mu.Unlock()
+		s.cliSessions.mu.Lock()
+		record, err := s.cliSessions.record(s.profile, input.sharedID)
+		s.cliSessions.mu.Unlock()
 		if err != nil {
 			return nil, err
 		}
@@ -263,17 +260,6 @@ func (s *Server) createTerminalLocked(input terminalRequest) (*terminalSession, 
 	if sharedRecord != nil && (!sharedCLILauncher(command) || sharedRecord.Launcher != "" && sharedRecord.Launcher != command) {
 		return nil, errors.New("主机启动命令与原会话不一致，请恢复原配置后重试")
 	}
-	if s.macosGuest != nil {
-		if input.Kind == "claude" && !sharedCLILauncher(command) {
-			return nil, errors.New("macOS 客机支持 claude 或 ccs 配置名启动命令")
-		}
-		s.mu.Lock()
-		ready := s.ready
-		s.mu.Unlock()
-		if !ready {
-			return nil, errTerminalNotReady
-		}
-	}
 	if !s.vmRunning() || s.busy() {
 		return nil, errTerminalNotReady
 	}
@@ -296,11 +282,7 @@ func (s *Server) createTerminalLocked(input terminalRequest) (*terminalSession, 
 	workspace := s.workspace()
 	var err error
 	if input.Kind != "claude-login" {
-		if s.macOSLegacyWorkspace(sharedRecord) != "" {
-			workspace, err = s.projectWorkspace(sharedRecord.Workspace)
-		} else {
-			workspace, err = s.connectProject(input.Workspace, false)
-		}
+		workspace, err = s.connectProject(input.Workspace, false)
 		if err != nil {
 			return nil, err
 		}
@@ -315,13 +297,7 @@ func (s *Server) createTerminalLocked(input terminalRequest) (*terminalSession, 
 			launchCommand += " --add-dir " + shellescape.Quote(directory)
 		}
 	}
-	script := terminalScript(s.cliWorkspace(workspace), input.Kind, launchCommand)
-	if s.macosGuest != nil {
-		script = `cd -- "$HOME" && exec env TERM=xterm-256color COLORTERM=truecolor /bin/zsh -l`
-		if input.Kind != "claude-login" {
-			script = "exec /usr/local/libexec/cage-macos-terminal " + shellescape.Quote(macOSProjectPath(s.macosGuest.User, workspace))
-		}
-	}
+	script := terminalScript(guestPath(workspace), input.Kind, launchCommand)
 	var selection claudeSelection
 	var finished func()
 	if managed {
@@ -341,25 +317,14 @@ func (s *Server) createTerminalLocked(input terminalRequest) (*terminalSession, 
 			if !validClaudeID(selection.ID) || !validClaudeGuestID(selection.GuestID) || (login && selection.GuestID == "default") {
 				return nil, errors.New("Claude 账号 ID 无效")
 			}
-			if login && s.mobileCLI.activeAccounts()[selection.ID] > 0 {
-				return nil, errors.New("请先结束该账号正在执行的移动 CLI 轮次，再重新登录")
-			}
 			if existing, conflict := s.terminals.existingClaudeLogin(selection.ID, login); existing != nil || conflict != nil {
 				return existing, conflict
 			}
 			if !login && selection.Subject == "" {
 				return nil, errors.New("Claude 账号状态已变化，请重试")
 			}
-			script = managedClaudeTerminalScript(s.cliWorkspace(workspace), launchCommand, selection.GuestID, selection.Subject, login)
+			script = managedClaudeTerminalScript(guestPath(workspace), launchCommand, selection.GuestID, selection.Subject, login)
 			if login {
-				if s.macosGuest != nil {
-					ctx, cancel := context.WithTimeout(s.lifetimeContext(), 20*time.Second)
-					_, browserErr := s.guestAPI(ctx, "", "GET", "/health", nil)
-					cancel()
-					if browserErr != nil {
-						return nil, errors.New("客机登录浏览器尚未就绪，请恢复浏览器连接后重试")
-					}
-				}
 				finished = func() {
 					ctx, cancel := context.WithTimeout(s.lifetimeContext(), 12*time.Second)
 					defer cancel()
@@ -368,7 +333,7 @@ func (s *Server) createTerminalLocked(input terminalRequest) (*terminalSession, 
 			}
 		}
 	}
-	var conversation *mobileRecord
+	var conversation *cliSessionRecord
 	if input.Kind == "claude" && sharedCLILauncher(command) {
 		script, conversation, err = s.prepareTerminalConversation(workspace, selection, input.sharedID)
 		if err != nil {
@@ -378,9 +343,9 @@ func (s *Server) createTerminalLocked(input terminalRequest) (*terminalSession, 
 	cmd := s.sshCommand(s.lifetimeContext(), "-tt", s.sshTarget(), "--", script)
 	if input.requestContext != nil {
 		s.account.mu.Lock()
-		if !s.mobileAuthorized(input.requestContext) {
+		if !s.cliAuthorized(input.requestContext) {
 			s.account.mu.Unlock()
-			return nil, errMobileLocked
+			return nil, errCLILocked
 		}
 	}
 	session, err := s.terminals.startSession(cmd, workspace, input.Kind, selection, finished)
@@ -392,12 +357,12 @@ func (s *Server) createTerminalLocked(input terminalRequest) (*terminalSession, 
 		session.sharedID = conversation.ID
 		session.connectionID = conversation.Connection
 		session.mu.Unlock()
-		s.mobileCLI.mu.Lock()
+		s.cliSessions.mu.Lock()
 		conversation.TerminalID = session.id
-		if saveErr := writePrivate(mobileRecordPath(s.profile, conversation.ID), conversation); saveErr != nil {
+		if saveErr := writePrivate(cliSessionRecordPath(s.profile, conversation.ID), conversation); saveErr != nil {
 			err = saveErr
 		}
-		s.mobileCLI.mu.Unlock()
+		s.cliSessions.mu.Unlock()
 		if err != nil {
 			s.terminals.remove(session.id)
 			return nil, err
@@ -414,10 +379,10 @@ func (s *Server) createTerminalLocked(input terminalRequest) (*terminalSession, 
 func validClaudeGuestID(id string) bool { return id == "default" || validClaudeID(id) }
 
 func (s *Server) selectTerminalClaudeAccount(command, requested string, login bool, workspace string) (claudeSelection, error) {
-	parts, valid := mobileLaunchArgs(command, claudeSelection{})
+	parts, valid := cliLaunchArgs(command, claudeSelection{})
 	if !login && valid == nil && len(parts) == 2 && parts[0] == "ccs" {
 		if requested != "" && requested != "auto" {
-			return claudeSelection{}, errors.New("CCS 使用自己的配置，不能指定 Cage 账号")
+			return claudeSelection{}, errors.New("CCS 使用自己的配置，不能指定 Eden 账号")
 		}
 		return claudeSelection{}, nil
 	}
@@ -425,18 +390,12 @@ func (s *Server) selectTerminalClaudeAccount(command, requested string, login bo
 }
 
 func (s *Server) readClaudeGuestSnapshot(ctx context.Context, id string) (claudeGuestSnapshot, error) {
-	if s.windowsGuest != nil {
-		return s.readWindowsClaudeAccount(ctx, "snapshot", id, "")
-	}
 	return s.readClaudeGuestReport(ctx, id, claudeSnapshotCommand(id))
 }
 
 func (s *Server) readClaudeGuestUsage(ctx context.Context, id, subject string) (claudeGuestSnapshot, error) {
 	if _, err := hex.DecodeString(subject); err != nil || len(subject) != 64 {
 		return claudeGuestSnapshot{}, errors.New("Claude 账号身份无效")
-	}
-	if s.windowsGuest != nil {
-		return s.readWindowsClaudeAccount(ctx, "usage", id, subject)
 	}
 	return s.readClaudeGuestReport(ctx, id, claudeGuestReportCommand(id, subject))
 }
@@ -458,46 +417,46 @@ func claudeSnapshotCommand(id string) string {
 }
 
 func claudeGuestReportCommand(id, subject string) string {
-	command := "exec /usr/local/bin/cage-claude-account snapshot " + id
+	command := "exec /usr/local/bin/workbench-claude-account snapshot " + id
 	if subject != "" {
-		command = "exec /usr/local/bin/cage-claude-account usage " + id + " " + shellescape.Quote(subject)
+		command = "exec /usr/local/bin/workbench-claude-account usage " + id + " " + shellescape.Quote(subject)
 	}
 	if id == "default" {
 		// Use the same login shell a regular terminal opens, including its
 		// configured API/provider environment. Isolate startup banners from
 		// the JSON output and keep the probe outside every shared project.
-		command = `set -o pipefail; cd "$HOME" && env TERM=xterm-256color COLORTERM=truecolor CAGE_WORKBENCH=1 /bin/bash -lic ` +
-			shellescape.Quote(`printf '\nCAGE_CLAUDE_SNAPSHOT '; `+command) +
-			` | sed -n 's/^CAGE_CLAUDE_SNAPSHOT //p'`
+		command = `set -o pipefail; cd "$HOME" && env TERM=xterm-256color COLORTERM=truecolor WORKBENCH_SESSION=1 /bin/bash -lic ` +
+			shellescape.Quote(`printf '\nWORKBENCH_CLAUDE_SNAPSHOT '; `+command) +
+			` | sed -n 's/^WORKBENCH_CLAUDE_SNAPSHOT //p'`
 	}
 	return command
 }
 
 func managedClaudeTerminalScript(workspace, command, accountID, subject string, login bool) string {
 	if login {
-		return "cd \"$HOME\" && exec /usr/local/bin/cage-claude-account login " + shellescape.Quote(accountID)
+		return "cd \"$HOME\" && exec /usr/local/bin/workbench-claude-account login " + shellescape.Quote(accountID)
 	}
 	// The interactive shell still interprets the user's saved command and
 	// remains useful when Claude exits. The shim scopes subsequent invocations
 	// in this shell to the same official CLI profile.
-	env := `export CAGE_CLAUDE_ACCOUNT_ID=` + shellescape.Quote(accountID) +
-		` CAGE_CLAUDE_SUBJECT=` + shellescape.Quote(subject) + "; "
+	env := `export WORKBENCH_CLAUDE_ACCOUNT_ID=` + shellescape.Quote(accountID) +
+		` WORKBENCH_CLAUDE_SUBJECT=` + shellescape.Quote(subject) + "; "
 	if accountID != "default" {
-		env += `export CLAUDE_CONFIG_DIR="$HOME/.local/share/cage/claude-accounts/$CAGE_CLAUDE_ACCOUNT_ID/config"; `
+		env += `export CLAUDE_CONFIG_DIR="$HOME/.local/share/workbench/claude-accounts/$WORKBENCH_CLAUDE_ACCOUNT_ID/config"; `
 	}
-	env += `export PATH="/usr/local/lib/cage-claude-bin:$PATH"; `
-	body := env + `eval "$CAGE_TERMINAL_COMMAND"; unset CAGE_TERMINAL_COMMAND; exec bash -i`
+	env += `export PATH="/usr/local/lib/workbench-claude-bin:$PATH"; `
+	body := env + `eval "$WORKBENCH_TERMINAL_COMMAND"; unset WORKBENCH_TERMINAL_COMMAND; exec bash -i`
 	return "cd " + shellescape.Quote(workspace) +
-		" && exec env TERM=xterm-256color COLORTERM=truecolor CAGE_WORKBENCH=1 CAGE_TERMINAL_COMMAND=" +
+		" && exec env TERM=xterm-256color COLORTERM=truecolor WORKBENCH_SESSION=1 WORKBENCH_TERMINAL_COMMAND=" +
 		shellescape.Quote(command) + " bash -lic " + shellescape.Quote(body)
 }
 
 // The saved command is interpreted only by the guest's interactive shell.
 // Reconnecting a viewer never executes it again; exiting Claude leaves a shell.
 func terminalScript(workspace, kind, command string) string {
-	prefix := "cd " + shellescape.Quote(workspace) + " && exec env TERM=xterm-256color COLORTERM=truecolor CAGE_WORKBENCH=1 "
+	prefix := "cd " + shellescape.Quote(workspace) + " && exec env TERM=xterm-256color COLORTERM=truecolor WORKBENCH_SESSION=1 "
 	if kind != "claude" {
 		return prefix + "bash -l"
 	}
-	return prefix + "CAGE_TERMINAL_COMMAND=" + shellescape.Quote(command) + " bash -lic " + shellescape.Quote("eval \"$CAGE_TERMINAL_COMMAND\"; unset CAGE_TERMINAL_COMMAND; exec bash -il")
+	return prefix + "WORKBENCH_TERMINAL_COMMAND=" + shellescape.Quote(command) + " bash -lic " + shellescape.Quote("eval \"$WORKBENCH_TERMINAL_COMMAND\"; unset WORKBENCH_TERMINAL_COMMAND; exec bash -il")
 }

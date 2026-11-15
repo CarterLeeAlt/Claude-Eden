@@ -1,7 +1,7 @@
-name: Three-platform checks and test packages
+name: Windows desktop and Linux guest checks
 on:
   # The website and user guides have their own workflow (www.yml) and are in
-  # no package, so changes limited to them skip the three-platform builds.
+  # no package, so changes limited to them skip executable builds.
   push:
     branches: ['**', '!codex/release/**']
     paths-ignore: ['README*.md', 'www/**', 'docs/guide/**', 'docs/releases/**']
@@ -10,10 +10,35 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: cage-ci-${{ github.event_name }}-${{ github.ref }}
+  group: eden-ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  workspace-runner:
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Workspace paths, cancellation, real Go cache and telemetry
+        run: node scripts/run-in-workspace.mjs -- node --test scripts/run-in-workspace.test.mjs scripts/prepare-lima-templates.test.mjs
+      - name: Go path checker regressions
+        run: node scripts/run-in-workspace.mjs -- go test ./scripts/check-test-paths
+      - name: Shared guest identity and catalog
+        run: node scripts/run-in-workspace.mjs --cwd shared/guestidentity -- go test ./...
+      - name: Cleanup inventory, payload hashes and Windows helper integration
+        run: node scripts/run-in-workspace.mjs -- node --test scripts/generate-windows-cleanup.test.mjs
   workflow-checks:
+    needs: workspace-runner
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -32,19 +57,12 @@ jobs:
           java-version: '21'
       - name: Version consistency and release safety tests
         run: |
-          node scripts/check-repository-files.mjs
-          node scripts/check-version.mjs
-          node --test scripts/release-version.test.mjs scripts/release-control.test.mjs scripts/prepare-release-assets.test.mjs scripts/esigner.test.mjs scripts/contribution-invite.test.mjs scripts/issue-system-labels.test.mjs
-          pwsh -NoProfile -File scripts/test-windows-signing.ps1
+          node scripts/run-in-workspace.mjs -- node scripts/check-repository-files.mjs
+          node scripts/run-in-workspace.mjs -- node scripts/check-version.mjs
+          node scripts/run-in-workspace.mjs -- node --test scripts/release-version.test.mjs scripts/release-control.test.mjs scripts/prepare-release-assets.test.mjs scripts/esigner.test.mjs scripts/contribution-invite.test.mjs scripts/issue-system-labels.test.mjs
+          node scripts/run-in-workspace.mjs -- pwsh -NoProfile -File scripts/test-windows-signing.ps1
       - name: Validate workflow syntax
-        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.11 -color
-  macos:
-    needs: workflow-checks
-    uses: ./.github/workflows/macos-build.yml
-    with:
-      ref: ${{ github.sha }}
-      release: false
-      artifact_name: cage-macos-arm64-test
+        run: node scripts/run-in-workspace.mjs -- go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.11 -color
   windows-updates:
     needs: workflow-checks
     strategy:
@@ -60,13 +78,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.403
       - name: Install the verified NSIS compiler
-        run: ./scripts/install-nsis.ps1
-      - name: Install the verified WebView2 prerequisite
+        run: node scripts/run-in-workspace.mjs -- pwsh -NoProfile -File scripts/install-nsis.ps1
+      - name: Disposable system integration — install verified WebView2
         run: |
+          node scripts/run-in-workspace.mjs -- pwsh -NoProfile -Command @'
           . ./scripts/windows-common.ps1
           $dependency = (Get-Content packaging/windows/dependencies.json -Raw | ConvertFrom-Json).webview2
           $cache = Join-Path $env:RUNNER_TEMP 'update-dependencies'
@@ -82,13 +104,14 @@ jobs:
             if (!$process.WaitForExit(180000)) { $process.Kill($true); throw 'WebView2 prerequisite installation timed out.' }
             if ($process.ExitCode -ne 0) { throw "WebView2 prerequisite failed: $($process.ExitCode)" }
           } finally { $process.Dispose() }
-      - name: Verify signed update, rejection and rollback transactions
-        run: ./scripts/test-windows-update-flow.ps1
+          '@
+      - name: Disposable system integration — certificates, update and rollback
+        run: node scripts/run-in-workspace.mjs -- pwsh -NoProfile -File scripts/test-windows-update-flow.ps1 -DisposableMachine
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: updater-${{ matrix.os }}-reports
-          path: ${{ runner.temp }}/cage-smoke-update-*.json
+          path: .tmp/eden-smoke-update-*.json
           if-no-files-found: ignore
   windows:
     needs: workflow-checks
@@ -96,12 +119,10 @@ jobs:
     with:
       ref: ${{ github.sha }}
       release: false
-      artifact_name: cage-windows-amd64-test
+      artifact_name: eden-windows-amd64-test
       all_windows_versions: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
-  linux:
+  linux-guest:
     needs: workflow-checks
-    uses: ./.github/workflows/linux-build.yml
+    uses: ./.github/workflows/linux-guest.yml
     with:
       ref: ${{ github.sha }}
-      release: false
-      artifact_name: cage-linux-amd64-test

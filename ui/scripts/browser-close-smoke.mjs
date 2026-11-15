@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createWorkbench, chooseInline } from './workbench-fixture.mjs';
 
-const engine = process.env.CAGE_TEST_BROWSER || 'chromium';
+const engine = process.env.EDEN_TEST_BROWSER || 'chromium';
 const output = new URL(`../../docs/test-reports/2026-11-07-browser-close/${engine}/`, import.meta.url);
 await mkdir(output, { recursive: true });
 const { browser, page, state, errors } = await createWorkbench();
@@ -11,7 +11,7 @@ page.setDefaultTimeout(10000);
 const checks = [];
 const close = page.getByRole('button', { name: '关闭浏览器', exact: true });
 const open = page.getByRole('button', { name: '打开浏览器', exact: true });
-const home = page.getByRole('heading', { name: 'Cage 环境已就绪', exact: true });
+const home = page.getByRole('heading', { name: 'Eden 环境已就绪', exact: true });
 const shot = name => page.screenshot({ path: fileURLToPath(new URL(name + '.png', output)) });
 try {
   await page.addInitScript(() => {

@@ -13,7 +13,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/env"
 	"github.com/sylvinus/agent-vm/internal/guard"
 	"github.com/sylvinus/agent-vm/internal/host"
@@ -97,7 +97,7 @@ func (s *start) applyShares(writable bool) error {
 			lines = append(lines, f.Line())
 		}
 		if err := s.state.Write(state.FileMountsOf+s.name, []byte(strings.Join(lines, "\n")+"\n")); err != nil {
-			s.warnf("Error: could not record the single files of ~/.agent-vm/volumes for VM '%s':\n%v", s.name, err)
+			s.warnf("Error: could not record the single files of %s for VM '%s':\n%v", s.state.Path("volumes"), s.name, err)
 			return errStop
 		}
 	}
@@ -122,7 +122,7 @@ func (s *start) applyResources() error {
 	}
 	if s.opts.Disk > 0 {
 		if err := b.Edit(s.ctx, s.name, vm.Settings{DiskGiB: s.opts.Disk}); err != nil {
-			s.warnf("Warning: cannot set the disk of VM '%s' to %d GiB: it can grow, not shrink ('agent-vm setup --disk %d' for a smaller base).\n%v", s.name, s.opts.Disk, s.opts.Disk, err)
+			s.warnf("Warning: cannot set the disk of VM '%s' to %d GiB: it can grow, not shrink ('%s setup --disk %d' for a smaller base).\n%v", s.name, s.opts.Disk, Command, s.opts.Disk, err)
 		}
 	}
 	return nil
@@ -215,7 +215,7 @@ func (s *start) configErr(inst *vm.Instance) bool {
 	if inst == nil || inst.ConfigErr == nil {
 		return false
 	}
-	s.warnf("Error: Lima cannot read the config of VM '%s':\n  %v\n'agent-vm --reset <command>' re-clones it.", inst.Name, inst.ConfigErr)
+	s.warnf("Error: Lima cannot read the config of VM '%s':\n  %v\n'%s run --reset <command>' re-clones it.", inst.Name, inst.ConfigErr, Command)
 	return true
 }
 
@@ -224,7 +224,7 @@ func (s *start) configErr(inst *vm.Instance) bool {
 func (s *start) limaOverridesOK() bool {
 	found := vm.LimaOverrides(LimaHome(s.state))
 	for _, f := range found {
-		s.warnf("Error: %s adds to every VM's config (shares, mount type...): agent-vm makes and starts no VM while it is there. Move it out of the way.", f)
+		s.warnf("Error: %s adds to every VM's config (shares, mount type...): %s makes and starts no VM while it is there. Move it out of the way.", f, Command)
 	}
 	return len(found) == 0
 }
@@ -364,14 +364,14 @@ func (s *start) ensureRunningLocked() error {
 			}
 			if _, bad := mounts.UnsafeProject(s.dir, others); !bad {
 				if why, self := mounts.UnsafeLocation(s.dir, refs); self {
-					s.warnf("Warning: sharing %s with the VM: it %s. The VM can change the agent-vm this machine runs next.", s.dir, why)
+					s.warnf("Warning: sharing %s with the VM: it %s. The VM can change the %s this machine runs next.", s.dir, why, Command)
 					s.confirmUnsafe()
 				}
 				refs = others
 			}
 		}
 		if why, bad := mounts.UnsafeProject(s.dir, refs); bad {
-			s.warnf("Error: refusing to share %s with a VM: it %s.\nRun agent-vm from a project directory.", s.dir, why)
+			s.warnf("Error: refusing to share %s with a VM: it %s.\nRun %s from a project directory.", s.dir, why, Command)
 			return errStop
 		}
 		if why, bad := mounts.Unmountable(s.dir); bad {
@@ -406,9 +406,9 @@ func (s *start) ensureRunningLocked() error {
 		}
 		if _, merr := os.Stat(s.state.Path(state.BaseVersion)); base == nil || merr != nil {
 			if base != nil {
-				s.warnf("Error: Base VM setup did not complete. Run 'agent-vm setup' again.")
+				s.warnf("Error: Base VM setup did not complete. Run '%s setup' again.", Command)
 			} else {
-				s.warnf("Error: Base VM not found. Run 'agent-vm setup' first.")
+				s.warnf("Error: Base VM not found. Run '%s setup' first.", Command)
 			}
 			return errStop
 		}
@@ -426,7 +426,7 @@ func (s *start) ensureRunningLocked() error {
 	if inst != nil && inst.Orphaned {
 		s.warnf("Warning: VM '%s' was left running without Lima's host agent, cut off: stopping it.", s.name)
 		if !s.stopVM(s.ctx, s.name) {
-			s.warnf("Error: could not stop VM '%s'. See 'agent-vm list'.", s.name)
+			s.warnf("Error: could not stop VM '%s'. See '%s list'.", s.name, Command)
 			return errStop
 		}
 		if inst, err = s.get(s.name); err != nil {
@@ -445,7 +445,7 @@ func (s *start) ensureRunningLocked() error {
 	// 0.1.0 recorded no version for its bases, and their VMs have no sshfs,
 	// which the shares need; 0.2 migrated them in place.
 	if inst != nil && !o.Scratch && !exists(s.state.Marker(state.BuiltByOf, s.name)) && !exists(s.state.Marker(state.SSHFSOf, s.name)) {
-		s.warnf("Error: VM '%s' comes from a base built by agent-vm 0.1.0, without the sshfs its shares need. Run 'agent-vm setup', then 'agent-vm --reset <command>' here.", s.name)
+		s.warnf("Error: VM '%s' comes from a base built by agent-vm 0.1.0, without the sshfs its shares need. Run '%s setup', then '%s run --reset <command>' here.", s.name, Command, Command)
 		return errStop
 	}
 
@@ -467,13 +467,13 @@ func (s *start) ensureRunningLocked() error {
 		}
 		if marks.builtBy != nil {
 			if err := s.state.Write(state.BuiltByOf+s.name, marks.builtBy); err != nil {
-				s.warnf("Error: could not record which agent-vm built the base of VM '%s': %v", s.name, err)
+				s.warnf("Error: could not record which %s built the base of VM '%s': %v", Command, s.name, err)
 				s.dropNew()
 				return errStop
 			}
 		} else if s.protect {
 			// 0.1.0's bases have no sshfs for the protected shares.
-			s.warnf("Error: the base VM was built by agent-vm 0.1.0, without what the shares that keep .git read-only need. Run 'agent-vm setup' to build a new one.")
+			s.warnf("Error: the base VM was built by agent-vm 0.1.0, without what the shares that keep .git read-only need. Run '%s setup' to build a new one.", Command)
 			s.dropNew()
 			return errStop
 		}
@@ -526,13 +526,13 @@ func (s *start) ensureRunningLocked() error {
 		return errStop
 	}
 	want, _ := s.shares(wantWritable)
-	if cageWritableGit() && wasRunning && !s.opts.Scratch {
+	if edenWritableGit() && wasRunning && !s.opts.Scratch {
 		currentRoot := false
 		for _, mount := range inst.Mounts {
 			currentRoot = currentRoot || paths.Equal(paths.Host(mount.Location), paths.Host(s.dir)) && mount.MountPoint == paths.Guest(s.dir)
 		}
 		if !currentRoot {
-			s.warnf("下载目录与运行中的文件共享不一致。请先保存工作，运行 cage stop 后重新启动；项目文件、会话和登录状态会保留。")
+			s.warnf("下载目录与运行中的文件共享不一致。请先保存工作，运行 eden stop 后重新启动；项目文件、会话和登录状态会保留。")
 			return errStop
 		}
 	}
@@ -552,7 +552,7 @@ func (s *start) ensureRunningLocked() error {
 			}
 			wasRunning = false
 		} else if !s.confirmUnsafe() {
-			s.warnf("Aborted. 'agent-vm stop', then run again.")
+			s.warnf("Aborted. '%s stop', then run again.", Command)
 			return errStop
 		}
 	}
@@ -564,8 +564,8 @@ func (s *start) ensureRunningLocked() error {
 		case gitStale && s.protect:
 			fmt.Fprintf(s.io.Stdout, "Making every .git read-only for VM '%s'...\n", s.name)
 		case gitStale:
-			if cageWritableGit() {
-				fmt.Fprintf(s.io.Stdout, "Enabling Git writes in Cage projects for VM '%s'...\n", s.name)
+			if edenWritableGit() {
+				fmt.Fprintf(s.io.Stdout, "Enabling Git writes in Eden projects for VM '%s'...\n", s.name)
 			} else {
 				s.warnf("Making .git writable for VM '%s' (%s)...", s.name, map[bool]string{true: "--unsafe-writable-git", false: "AGENT_VM_UNSAFE_WRITABLE_GIT=1"}[o.UnsafeWritableGit])
 			}
@@ -649,7 +649,7 @@ func (s *start) boot() error {
 	}
 	// Windows: QEMU's folder on PATH (winget does not put it there), for the
 	// hostagent this starts.
-	if !host.WindowsPrereqs(s.io.Stdout, s.io.Stderr) {
+	if !skipPrereqs && !host.WindowsPrereqs(s.io.Stdout, s.io.Stderr) {
 		return errStop
 	}
 	fmt.Fprintf(s.io.Stdout, "Starting VM '%s'...\n", s.name)
@@ -709,7 +709,7 @@ func (s *start) afterBoot(isNew, wasRunning, wantWritable bool) error {
 		case wantWritable && wasRunning && inst != nil && allReadOnly(inst):
 			fmt.Fprintf(s.io.Stdout, "VM '%s' runs read-only (--readonly). It must be restarted to make its shares writable.\n", s.name)
 			if !s.ui.CanAsk() || !s.ui.AskYN("Stop the VM and make it writable? Sessions using it are cut.", false) {
-				s.warnf("Error: not restarted. Pass --readonly to use it as it is, or 'agent-vm stop' it first.")
+				s.warnf("Error: not restarted. Pass --readonly to use it as it is, or '%s stop' it first.", Command)
 				return errStop
 			}
 		case !wantWritable && wasRunning:
@@ -745,7 +745,7 @@ func (s *start) afterBoot(isNew, wasRunning, wantWritable bool) error {
 			case probe.writable == "lost":
 				s.warnf("Error: the project share did not mount in VM '%s':\n  %s\nLima's log: %s", s.name, s.dir, filepath.Join(LimaHome(s.state), s.name, "ha.stderr.log"))
 			case wantWritable:
-				s.warnf("Error: project directory is still not writable inside the VM:\n  %s\nThe host mount failed to attach. Try 'agent-vm --reset <command>'\nto re-clone the VM from the base template.", s.dir)
+				s.warnf("Error: project directory is still not writable inside the VM:\n  %s\nThe host mount failed to attach. Try '%s run --reset <command>'\nto re-clone the VM from the base template.", s.dir, Command)
 			default:
 				s.warnf("Error: failed to mount the project directory read-only:\n  %s", s.dir)
 			}
@@ -781,21 +781,21 @@ func (s *start) afterBoot(isNew, wasRunning, wantWritable bool) error {
 		if probe.runtimeFound {
 			fmt.Fprintln(s.io.Stdout, "Running project runtime setup...")
 			s.shellRun(nil, guest, "zsh", "-lc", `[ -f "$3" ] || exit 0; i="$(awk "$1" "$3")" && awk "$2" "$3" | "$i" -s`,
-				"agent-vm", runscript.ShebangAWK, runscript.StripCRAWK, guestRuntime)
+				Command, runscript.ShebangAWK, runscript.StripCRAWK, guestRuntime)
 		}
 	case projectRuntime != "" && isFile(projectRuntime):
 		fmt.Fprintln(s.io.Stdout, "Running project runtime setup...")
 		s.runHostScript(projectRuntime)
 	}
 	s.bindFiles(isNew)
-	if path := os.Getenv(cage.ConfigEnv); path != "" {
-		cfg, err := cage.Load(path)
+	if path := os.Getenv(eden.ConfigEnv); path != "" {
+		cfg, err := eden.Load(path)
 		if err != nil {
 			return err
 		}
 		code, err := s.shellRun(strings.NewReader(cfg.EnvironmentScript()), paths.Guest(s.dir), "bash", "-s")
 		if err != nil || code != 0 {
-			return fmt.Errorf("cage environment could not be applied (exit %d): %w", code, err)
+			return fmt.Errorf("eden environment could not be applied (exit %d): %w", code, err)
 		}
 	}
 	return nil
@@ -905,9 +905,9 @@ func (s *start) bindFiles(isNew bool) {
         done
       `, "--"}, entries...)...)
 	if err != nil {
-		s.warnf("Warning: could not bind the single files of ~/.agent-vm/volumes in VM '%s': %v", s.name, err)
+		s.warnf("Warning: could not bind the single files of %s in VM '%s': %v", s.state.Path("volumes"), s.name, err)
 	} else if code != 0 {
-		s.warnf("Warning: binding the single files of ~/.agent-vm/volumes in VM '%s' failed (status %d).", s.name, code)
+		s.warnf("Warning: binding the single files of %s in VM '%s' failed (status %d).", s.state.Path("volumes"), s.name, code)
 	}
 }
 

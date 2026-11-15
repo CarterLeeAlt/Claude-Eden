@@ -32,12 +32,12 @@ func TestNetworkConfined(t *testing.T) {
 }
 
 func TestNetworkConfinedRejectsDriversThatBypassNetstack(t *testing.T) {
-	for _, driver := range []limatype.VMType{limatype.WSL2, limatype.HCS, "external"} {
+	for _, driver := range []limatype.VMType{limatype.WSL2, limatype.HCS, limatype.VZ, "external"} {
 		if err := NetworkConfined(&limatype.LimaYAML{VMType: &driver}); !errors.Is(err, ErrNetworkOpen) {
 			t.Fatalf("driver %q without explicit networks bypassed the egress policy: %v", driver, err)
 		}
 	}
-	for _, driver := range []limatype.VMType{limatype.QEMU, limatype.VZ} {
+	for _, driver := range []limatype.VMType{limatype.QEMU} {
 		if err := NetworkConfined(&limatype.LimaYAML{VMType: &driver}); err != nil {
 			t.Fatalf("confined driver %q rejected: %v", driver, err)
 		}

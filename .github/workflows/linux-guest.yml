@@ -1,0 +1,55 @@
+name: Reusable Linux guest and host-side POSIX checks
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Exact 40-character commit SHA to build
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  guest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - name: Verify immutable source
+        env:
+          EDEN_BUILD_REF: ${{ inputs.ref }}
+        run: |
+          [[ "$EDEN_BUILD_REF" =~ ^[0-9a-fA-F]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "${EDEN_BUILD_REF,,}" ]]
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/tailnet/go.mod
+          cache-dependency-path: tools/tailnet/go.sum
+      - id: tailnet
+        name: Record the guest toolchain and test the private network node
+        run: |
+          echo "go=$(command -v go)" >> "$GITHUB_OUTPUT"
+          node scripts/run-in-workspace.mjs --cwd tools/tailnet -- go test -p 2 ./...
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build guest assets and test Linux code paths
+        env:
+          TAILNET_GO: ${{ steps.tailnet.outputs.go }}
+          GOFLAGS: -p=2
+        run: |
+          node scripts/run-in-workspace.mjs -- make assets tailnet-assets GOARCH=amd64
+          node scripts/run-in-workspace.mjs --cwd ui -- npm ci
+          node scripts/run-in-workspace.mjs --cwd ui -- npm run build
+          node scripts/run-in-workspace.mjs -- go test -p 2 . ./internal/... ./cmd/...
+          node scripts/run-in-workspace.mjs -- go vet -p 2 ./internal/workbench ./cmd/eden
+          node scripts/run-in-workspace.mjs -- uv run --no-project --python 3.13 internal/workbench/cache_maintenance_test.py
+          node scripts/run-in-workspace.mjs -- node --test scripts/prepare-lima-templates.test.mjs

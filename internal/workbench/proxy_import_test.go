@@ -104,7 +104,7 @@ func TestProxyImportAPIReportsPartialSuccessAndProtectsRefresh(t *testing.T) {
 }
 
 func TestProxyImportAndRefreshUseBundledCoreValidation(t *testing.T) {
-	if os.Getenv("CAGE_PROXY_INTEGRATION") != "1" {
+	if os.Getenv("EDEN_PROXY_INTEGRATION") != "1" {
 		t.Skip("requires a test binary beside the bundled Mihomo")
 	}
 	s := testServer(t)

@@ -27,7 +27,7 @@ func verifyWebAssets(web fs.FS) error {
 		Version int               `json:"version"`
 		Files   map[string]string `json:"files"`
 	}
-	if json.Unmarshal(data, &manifest) != nil || manifest.Version != 1 || manifest.Files["index.html"] == "" || manifest.Files["mobile.html"] == "" {
+	if json.Unmarshal(data, &manifest) != nil || manifest.Version != 1 || manifest.Files["index.html"] == "" {
 		return fmt.Errorf("前端完整性清单无效，请重新构建界面")
 	}
 	for name, want := range manifest.Files {

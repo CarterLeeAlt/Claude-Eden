@@ -8,7 +8,7 @@ const downloads = [
     id: "report",
     name: "产品需求与界面验收报告.pdf",
     state: "saved",
-    path: "/Users/test/Cage/Downloads/产品需求与界面验收报告.pdf",
+    path: "C:/Users/test/Workbench/Downloads/产品需求与界面验收报告.pdf",
   },
   {
     id: "video",
@@ -24,18 +24,18 @@ const downloads = [
     error: "保存失败，请检查连接后重试。",
     retryable: true,
   },
-  { id: "canceled", name: "installer.dmg", state: "canceled" },
+  { id: "canceled", name: "installer.exe", state: "canceled" },
   ...Array.from({ length: 10 }, (_, index) => ({
     id: `history-${index}`,
     name: `历史文件 ${index + 1}.txt`,
     state: "saved",
-    path: `/Users/test/Cage/Downloads/历史文件 ${index + 1}.txt`,
+    path: `C:/Users/test/Workbench/Downloads/历史文件 ${index + 1}.txt`,
   })),
 ];
 let records = downloads;
-const output = process.env.CAGE_DOWNLOAD_CAPTURE || "/tmp/cage-download-panel";
+const output = process.env.EDEN_DOWNLOAD_CAPTURE || "../.tmp/guest-neutralization/ui-eden/download-panel";
 await fs.mkdir(output, { recursive: true });
-for (const platform of ["darwin", "win32", "linux"]) {
+for (const platform of ["windows"]) {
   const calls = [];
   const { browser, page, state, errors } = await createWorkbench({
     clientContext: {
@@ -135,7 +135,7 @@ for (const platform of ["darwin", "win32", "linux"]) {
         .waitFor({ state: "visible" });
       await panel.getByRole("button", { name: "关闭面板", exact: true }).focus();
       await page.screenshot({ path: `${output}/${platform}-${width}.png` });
-      if (platform === "darwin" && width === 1280) await panel.screenshot({ path: `${output}/panel.png` });
+      if (width === 1280) await panel.screenshot({ path: `${output}/panel.png` });
       await list.evaluate((el) => {
         el.scrollTop = el.scrollHeight;
       });
@@ -161,7 +161,7 @@ for (const platform of ["darwin", "win32", "linux"]) {
       );
     }
     await page.setViewportSize({ width: 1280, height: 850 });
-    if (platform === "darwin") {
+    {
       await page.emulateMedia({ colorScheme: "dark" });
       await page.waitForFunction(
         () => document.documentElement.dataset.theme === "dark",

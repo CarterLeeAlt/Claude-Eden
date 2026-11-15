@@ -1,6 +1,6 @@
 import { api, native, uploadFile } from "./api";
 
-export const shellFilePaths = (paths) => paths.map(path => `'${path.replaceAll("'", /^[A-Za-z]:\\/.test(path) ? "''" : "'\\''")}'`).join(" ") + " ";
+export const shellFilePaths = (paths) => paths.map(path => `'${path.replaceAll("'", "'\\''")}'`).join(" ") + " ";
 
 // Both native selection handles and browser File objects use the same guest
 // upload window. A failed batch is canceled before it can be delivered.

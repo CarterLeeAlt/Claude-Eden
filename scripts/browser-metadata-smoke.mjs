@@ -1,4 +1,4 @@
-// Headless adapter for the production controller. Set CAGE_TEST_BROWSER_PATH
+// Headless adapter for the production controller. Set EDEN_TEST_BROWSER_PATH
 // to a Chromium executable that supports unpacked extensions. All browser data
 // and the authenticated, private-pipe test controller live in a temporary folder.
 import assert from "node:assert/strict";
@@ -11,9 +11,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
-assert.ok(process.env.CAGE_TEST_BROWSER_PATH, "Set CAGE_TEST_BROWSER_PATH to a local Chromium executable");
-const executable = resolve(process.env.CAGE_TEST_BROWSER_PATH);
-const directory = await realpath(await mkdtemp(join(tmpdir(), "cage-browser-metadata-")));
+assert.ok(process.env.EDEN_TEST_BROWSER_PATH, "Set EDEN_TEST_BROWSER_PATH to a local Chromium executable");
+const executable = resolve(process.env.EDEN_TEST_BROWSER_PATH);
+const directory = await realpath(await mkdtemp(join(tmpdir(), "workbench-browser-metadata-")));
 const token = randomBytes(32).toString("hex");
 const iconRequests = [];
 const icons = http.createServer((req, res) => {
@@ -132,7 +132,7 @@ function checkPNG(icon) {
 }
 
 try {
-  const sourceDirectory = new URL("../internal/cage/", import.meta.url);
+  const sourceDirectory = new URL("../internal/eden/", import.meta.url);
   for (const name of await readdir(sourceDirectory))
     if ((name.startsWith("browser-") && name.endsWith(".mjs")) || name === "native-input.mjs")
       await cp(new URL(name, sourceDirectory), join(directory, name));
@@ -151,9 +151,9 @@ try {
       return;
     }`;
   const isolated = source
-    .replaceAll("/home/cage-browser", directory)
-    .replace("/etc/claude-cage/browser-control.json", join(directory, "control.json"))
-    .replace("/usr/local/lib/cage-split", join(directory, "extension"))
+    .replaceAll("/home/browser", directory)
+    .replace("/etc/workbench/browser-control.json", join(directory, "control.json"))
+    .replace("/usr/local/lib/workbench-split", join(directory, "extension"))
     .replace('spawn(browserBinary, flags', `spawn(${JSON.stringify(executable)}, [...flags, "--use-mock-keychain", "--password-store=basic"]`)
     .replace('"--start-fullscreen",', '"--headless=new",')
     .replace(listen, 'server.listen(0, "127.0.0.1", () => console.log("CONTROL_PORT=" + server.address().port));')

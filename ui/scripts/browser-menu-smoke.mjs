@@ -5,7 +5,7 @@ import { createWorkbench } from "./workbench-fixture.mjs";
 // Isolated UI data; no running environment, credentials or personal files.
 const { browser, page, state, errors } = await createWorkbench();
 page.setDefaultTimeout(10000);
-const output = process.env.CAGE_MENU_CAPTURE || `/tmp/cage-browser-menu-${browser.browserType().name()}`;
+const output = process.env.EDEN_MENU_CAPTURE || `../.tmp/guest-neutralization/ui-eden/browser-menu-${browser.browserType().name()}`;
 await fs.mkdir(output, { recursive: true });
 await page.route("**/api/vault/browser", route => route.fulfill({ json: {
   available: true, entries: [], candidates: [], origin: "https://example.test",

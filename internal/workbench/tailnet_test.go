@@ -31,14 +31,6 @@ func TestTailnetBoundaries(t *testing.T) {
 	if w := request(s, "GET", "/api/tailscale", "", "", true); w.Code != 409 {
 		t.Fatal(w.Code)
 	}
-	for _, path := range []string{"/api/tailscale", "/api/tailscale/login", "/api/tailscale/add-key"} {
-		if !macOSWorkbenchRoute(path) || !windowsWorkbenchRoute(path) {
-			t.Fatal(path)
-		}
-	}
-	if !validWindowsBrowserRoute("POST", "/tailnet") || validWindowsBrowserRoute("GET", "/tailnet") {
-		t.Fatal("native guest route method changed")
-	}
 }
 
 func TestTailnetGuestContract(t *testing.T) {
@@ -96,8 +88,5 @@ func TestTailnetServicePortContract(t *testing.T) {
 		if w := request(s, "POST", "/api/tailscale/open-service", s.origin, body, true); w.Code != 400 {
 			t.Fatalf("bad input accepted: %d %s", w.Code, body)
 		}
-	}
-	if !macOSWorkbenchRoute("/api/tailscale/open-service") || !windowsWorkbenchRoute("/api/tailscale/open-service") {
-		t.Fatal("native hosts must expose the same service route")
 	}
 }

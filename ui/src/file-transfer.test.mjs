@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { execFileSync } from "node:child_process";
 
 const source = readFileSync(new URL("./file-transfer.js", import.meta.url), "utf8")
   .replace(/^import .*;\n/, "").replaceAll("export ", "");
@@ -13,9 +14,9 @@ function fixture({ fail, switchAfterUpload = false } = {}) {
     uploadFile: async (path, file) => {
       calls.push([path, file]); if (fail === file.name) throw Error("connection lost");
       if (switchAfterUpload) active = false;
-      return { ok: true, path: "/home/cage/attachments/" + file.name };
+      return { ok: true, path: "/home/developer/attachments/" + file.name };
     },
-    native: async (action, body) => { calls.push([action, body]); return { ok: true, paths: ["/home/cage/attachments/video.mp4"] }; },
+    native: async (action, body) => { calls.push([action, body]); return { ok: true, paths: ["/home/developer/attachments/video.mp4"] }; },
   });
   return { ...functions, calls, valid: () => active };
 }
@@ -46,11 +47,12 @@ test("native copied files consume an opaque selection handle for the original de
   assert.equal(f.calls[1][1].selection, "selected-files");
   assert.equal(f.calls[1][1].target, "terminal");
   assert.equal(f.calls[1][1].id, "upload-id");
-  assert.equal(result.paths[0], "/home/cage/attachments/video.mp4");
+  assert.equal(result.paths[0], "/home/developer/attachments/video.mp4");
 });
 
-test("attachment paths preserve apostrophes in both PowerShell and POSIX shells", () => {
+test("attachment paths preserve their exact bytes as Linux shell arguments", () => {
   const f = fixture();
-  assert.equal(f.shellFilePaths(["C:\\Users\\Cage\\O'Brien.txt"]), "'C:\\Users\\Cage\\O''Brien.txt' ");
-  assert.equal(f.shellFilePaths(["/home/cage/O'Brien.txt"]), "'/home/cage/O'\\''Brien.txt' ");
+  const paths = ["/home/developer/林 间/O'Brien.txt", "C:\\Users\\DOMAIN\\O'Brien.txt", "/home/developer/$(printf injected);*.txt"];
+  const received = execFileSync("bash", ["--noprofile", "--norc", "-c", "printf '%s\\0' " + f.shellFilePaths(paths)], { encoding: "utf8" });
+  assert.deepEqual(received.split("\0").slice(0, -1), paths);
 });

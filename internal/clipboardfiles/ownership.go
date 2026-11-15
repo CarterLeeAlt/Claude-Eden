@@ -104,7 +104,7 @@ func (store CacheStore) register(paths []string, pending bool) (CachedSelection,
 		return empty, err
 	}
 	selection := CachedSelection{ID: hex.EncodeToString(token[:]), Paths: append([]string(nil), paths...)}
-	marker, err := os.CreateTemp(directory, ".cage-clipboard-owner-")
+	marker, err := os.CreateTemp(directory, ".workbench-clipboard-owner-")
 	if err != nil {
 		return empty, err
 	}
@@ -322,5 +322,5 @@ func (store CacheStore) Release(id string) error {
 
 func UserCacheStore() (CacheStore, error) {
 	directory, err := os.UserCacheDir()
-	return CacheStore{Directory: filepath.Join(directory, "cage", "clipboard-ownership")}, err
+	return CacheStore{Directory: filepath.Join(directory, "workbench", "clipboard-ownership")}, err
 }

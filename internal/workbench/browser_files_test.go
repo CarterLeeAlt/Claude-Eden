@@ -101,7 +101,7 @@ func TestSaveDownloadNeverPublishesPartialOrClobbersOnFailure(t *testing.T) {
 	if !bytes.Equal(got, data) {
 		t.Fatal("saved content changed")
 	}
-	files, _ := filepath.Glob(filepath.Join(directory, ".cage-download-*.part"))
+	files, _ := filepath.Glob(filepath.Join(directory, ".eden-download-*.part"))
 	if len(files) != 0 {
 		t.Fatal("partial files retained")
 	}
@@ -168,6 +168,8 @@ func TestCompletedDownloadsRemainAvailableAfterVMStops(t *testing.T) {
 
 func TestNativeSaveUsesAuthenticatedControllerAndPersistsChosenPath(t *testing.T) {
 	s := testServer(t)
+	s.gateway = newClientGateway()
+	t.Cleanup(s.gateway.close)
 	lock, err := openControllerLock(s.profile, os.O_CREATE|os.O_RDWR)
 	if err != nil {
 		t.Fatal(err)

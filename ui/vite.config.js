@@ -6,7 +6,6 @@ export default defineConfig({
   build: {
     outDir: "../internal/workbench/web",
     emptyOutDir: true,
-    rolldownOptions: { input: { desktop: "index.html", mobile: "mobile.html" } },
   },
   server: { proxy: { "/api": { target: "http://localhost:17777", ws: true } } },
 });

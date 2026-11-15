@@ -1,40 +1,31 @@
 package workbench
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/sylvinus/agent-vm/internal/guestos"
 )
 
 func removeProjectRequest(t *testing.T, s *Server, path string, want int) {
 	t.Helper()
 	body, _ := json.Marshal(map[string]string{"workspace": path})
-	response := windowsBrowserRequestForTest(s, "POST", "/api/projects/remove", body)
+	response := request(s, "POST", "/api/projects/remove", s.origin, string(body), true)
 	if response.Code != want {
 		t.Fatalf("remove status=%d want=%d body=%s", response.Code, want, response.Body.String())
 	}
 }
 
 func TestProjectRemovalPersistsRevocationAcrossGuests(t *testing.T) {
-	for _, system := range []string{"linux", "macos", "windows"} {
+	for _, system := range []string{"linux"} {
 		t.Run(system, func(t *testing.T) {
 			s := testServer(t)
-			if system == "macos" {
-				s.macosGuest = &guestos.MacOSProfile{Instance: "mac", User: "guestdev"}
-			}
-			if system == "windows" {
-				s.windowsGuest = &guestos.WindowsProfile{}
-			}
 			root, _ := filepath.EvalSymlinks(t.TempDir())
 			other, _ := filepath.EvalSymlinks(t.TempDir())
 			file := filepath.Join(root, "keep.txt")
@@ -49,11 +40,11 @@ func TestProjectRemovalPersistsRevocationAcrossGuests(t *testing.T) {
 				}
 			}
 			id := uuid.NewString()
-			record := &mobileRecord{mobileSession: mobileSession{mobileSummary: mobileSummary{ID: id, Workspace: root, Title: "saved history"}, Turns: []mobileTurn{}}}
-			if err := writePrivate(mobileRecordPath(s.profile, id), record); err != nil {
+			record := &cliSessionRecord{cliSession: cliSession{cliSessionSummary: cliSessionSummary{ID: id, Workspace: root, Title: "saved history"}, Turns: []cliSessionTurn{}}}
+			if err := writePrivate(cliSessionRecordPath(s.profile, id), record); err != nil {
 				t.Fatal(err)
 			}
-			history, _ := os.ReadFile(mobileRecordPath(s.profile, id))
+			history, _ := os.ReadFile(cliSessionRecordPath(s.profile, id))
 			detached := 0
 			done := make(chan struct{})
 			close(done)
@@ -61,8 +52,8 @@ func TestProjectRemovalPersistsRevocationAcrossGuests(t *testing.T) {
 			s.projectShares = map[string]*projectShare{root: share, other: {}}
 			s.projectErrors = []projectShareError{{Path: root, Message: "old failure"}, {Path: other, Message: "keep failure"}}
 			s.terminals.sessions = map[string]*terminalSession{"other": {id: "other", workspace: other}}
-			s.mobileCLI.running = map[string]bool{id: true}
-			s.mobileCLI.catalog = map[string]mobileSummary{id: {ID: id, Workspace: root}}
+			s.cliSessions.running = map[string]bool{id: true}
+			s.cliSessions.catalog = map[string]cliSessionSummary{id: {ID: id, Workspace: root}}
 			removeProjectRequest(t, s, root, 200)
 			if detached != 1 || s.projectShares[root] != nil || s.projectShares[other] == nil {
 				t.Fatal("wrong share was detached")
@@ -88,7 +79,7 @@ func TestProjectRemovalPersistsRevocationAcrossGuests(t *testing.T) {
 				t.Fatal("removed grant still authorizes new work")
 			}
 			content, _ := os.ReadFile(file)
-			afterHistory, _ := os.ReadFile(mobileRecordPath(s.profile, id))
+			afterHistory, _ := os.ReadFile(cliSessionRecordPath(s.profile, id))
 			if string(content) != "keep project data" || string(afterHistory) != string(history) {
 				t.Fatal("project files or history changed")
 			}
@@ -99,7 +90,7 @@ func TestProjectRemovalPersistsRevocationAcrossGuests(t *testing.T) {
 			if err := s.rememberSharedProject(root); err != nil {
 				t.Fatal(err)
 			}
-			sessions, err := s.mobileCLI.summaries(s.profile, map[string]bool{root: true}, false)
+			sessions, err := s.cliSessions.summaries(s.profile, map[string]bool{root: true}, false)
 			if err != nil || len(sessions) != 1 {
 				t.Fatal("re-adding lost history", err)
 			}
@@ -108,7 +99,7 @@ func TestProjectRemovalPersistsRevocationAcrossGuests(t *testing.T) {
 }
 
 func TestProjectRemovalRejectsActiveUsersAndUntrustedRequests(t *testing.T) {
-	for _, kind := range []string{"terminal", "mobile", "observed-cli", "editor", "browser-failure", "operation", "job", "closing", "locked", "origin", "unauthenticated"} {
+	for _, kind := range []string{"terminal", "observed-cli", "editor", "browser-failure", "operation", "job", "closing", "locked", "origin", "unauthenticated"} {
 		t.Run(kind, func(t *testing.T) {
 			s := testServer(t)
 			root, _ := filepath.EvalSymlinks(t.TempDir())
@@ -120,13 +111,11 @@ func TestProjectRemovalRejectsActiveUsersAndUntrustedRequests(t *testing.T) {
 			switch kind {
 			case "terminal":
 				s.terminals.sessions = map[string]*terminalSession{"live": {workspace: root}}
-			case "mobile":
-				s.mobileCLI.active = map[string]*mobileRun{"live": {record: &mobileRecord{mobileSession: mobileSession{mobileSummary: mobileSummary{Workspace: root}}}}}
 			case "observed-cli":
 				s.ready = true
 				s.preferences.ClaudeTerminalCommand = "custom-shell"
-				s.mobileCLI.running = map[string]bool{"live": true}
-				s.mobileCLI.catalog = map[string]mobileSummary{"live": {Workspace: root}}
+				s.cliSessions.running = map[string]bool{"live": true}
+				s.cliSessions.catalog = map[string]cliSessionSummary{"live": {Workspace: root}}
 			case "editor", "browser-failure":
 				s.ready = true
 				s.preferences.ClaudeTerminalCommand = "custom-shell"
@@ -224,7 +213,7 @@ func TestProjectRemovalRejectsDisconnectedOrUnknownVM(t *testing.T) {
 		if err := s.rememberSharedProject(project); err != nil {
 			t.Fatal(err)
 		}
-		record := filepath.Join(s.profile, "state", "lima", "guest", "cage-running.json")
+		record := filepath.Join(s.profile, "state", "lima", "guest", "eden-running.json")
 		value := any(map[string]int{"pid": os.Getpid()})
 		if malformed {
 			value = map[string]string{"pid": "invalid"}
@@ -254,35 +243,4 @@ func TestAgentProjectRemovalUsesSharedOwner(t *testing.T) {
 	if err != nil || slices.Contains(paths, path) {
 		t.Fatal("agent removal did not revoke grant", err)
 	}
-}
-
-func TestProjectRemovalRejectsRestoredMacOSEditor(t *testing.T) {
-	s := testServer(t)
-	root, _ := filepath.EvalSymlinks(t.TempDir())
-	s.macosGuest = &guestos.MacOSProfile{Instance: "mac", User: "guestdev"}
-	s.ready = true
-	s.preferences.ClaudeTerminalCommand = "custom-shell"
-	if err := s.rememberSharedProject(root); err != nil {
-		t.Fatal(err)
-	}
-	client := fixtureWindowsBrowserClient(t)
-	start := client.start
-	client.start = func(ctx context.Context) (*exec.Cmd, error) {
-		command, err := start(ctx)
-		if err == nil {
-			command.Env = append(command.Env, "CAGE_BROWSER_EDITOR_WORKSPACE="+filepath.Base(macOSProjectPath(s.macosGuest.User, root)))
-		}
-		return command, err
-	}
-	s.windowsBrowserControl = client
-	body, err := s.browserAction(t.Context(), "tabs", nil)
-	var state struct {
-		Tabs []struct {
-			Workspace string `json:"workspace"`
-		} `json:"tabs"`
-	}
-	if err != nil || json.Unmarshal(body, &state) != nil || len(state.Tabs) != 1 || state.Tabs[0].Workspace != root {
-		t.Fatal("restored editor lost host workspace", string(body), err)
-	}
-	removeProjectRequest(t, s, root, 409)
 }

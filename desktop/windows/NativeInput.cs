@@ -2,9 +2,9 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
-namespace Cage.Windows;
+namespace Eden.Windows;
 
-// A real Win32 edit control supplies TSF/IMM the caret while Cage owns no
+// A real Win32 edit control supplies TSF/IMM the caret while Eden owns no
 // remote document text. Only this control's transient composition is read.
 internal sealed class NativeInput : TextBox
 {
@@ -217,7 +217,7 @@ internal sealed class NativeInput : TextBox
             }
             if (message.Msg == End && composing) { composing = false; Emit("compositionend", ""); }
         }
-        // Cage already delivered RESULTSTR. DefWindowProc would turn it into
+        // Eden already delivered RESULTSTR. DefWindowProc would turn it into
         // WM_IME_CHAR/WM_CHAR and send a second copy through OnKeyPress.
         if (committed) { message.Result = IntPtr.Zero; return; }
         // The control participates in native text services but paints no text.

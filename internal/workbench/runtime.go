@@ -14,17 +14,16 @@ import (
 
 	"al.essio.dev/pkg/shellescape"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
-	"github.com/sylvinus/agent-vm/internal/containerenv"
 	"github.com/sylvinus/agent-vm/internal/diagnostics"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/guestos"
 	"github.com/sylvinus/agent-vm/internal/host"
 	"github.com/sylvinus/agent-vm/internal/hostimage"
 	"github.com/sylvinus/agent-vm/internal/managedproxy"
 )
 
-var loadConfig = cage.Load
-var defaultConfig = cage.DefaultConfig
+var loadConfig = eden.Load
+var defaultConfig = eden.DefaultConfig
 
 type guestCredentials struct {
 	Token        string  `json:"token"`
@@ -34,37 +33,15 @@ type guestCredentials struct {
 }
 
 func (s *Server) workspaceLocked() string {
-	if s.clientWorkspace != "" {
-		return s.clientWorkspace
-	}
 	return s.preferences.Workspace
 }
 func (s *Server) workspace() string      { s.mu.Lock(); defer s.mu.Unlock(); return s.workspaceLocked() }
 func (s *Server) environmentDir() string { return environmentWorkspace(s.profile) }
 func (s *Server) sshTarget() string {
-	if s.macosGuest != nil {
-		return "cage-macos"
-	}
-	if containerenv.Configured(s.profile) {
-		return "cage-container"
-	}
-	return "lima-" + cage.InstanceName(s.profile, s.environmentDir())
+	return "lima-" + eden.InstanceName(s.profile, s.environmentDir())
 }
 
 func (s *Server) environmentPrepared() bool {
-	if s.windowsGuest != nil {
-		return true
-	}
-	if containerenv.Configured(s.profile) {
-		environment, err := containerenv.Load(s.profile)
-		if err != nil {
-			return false
-		}
-		ctx, cancel := context.WithTimeout(s.lifetimeContext(), 3*time.Second)
-		defer cancel()
-		state, err := environment.State(ctx)
-		return err == nil && state.Exists
-	}
 	_, err := os.Stat(filepath.Join(s.profile, "state", ".agent-vm-base-version"))
 	return err == nil
 }
@@ -75,12 +52,6 @@ func (s *Server) sshCommandWithForwarding(ctx context.Context, args ...string) *
 	return s.sshCommandOptions(ctx, true, args...)
 }
 func (s *Server) sshCommandOptions(ctx context.Context, maintenance bool, args ...string) *exec.Cmd {
-	if s.windowsGuest != nil {
-		return &exec.Cmd{Err: errors.New("Windows 客机不支持 Linux SSH 控制脚本")}
-	}
-	if s.macosGuest != nil {
-		return s.macOSSSHCommand(ctx, args...)
-	}
 	cfg := filepath.Join(s.instanceDir(), "ssh.config")
 	base := []string{"-q", "-e", "none", "-F", cfg, "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "PermitLocalCommand=no", "-o", "PasswordAuthentication=no", "-o", "KbdInteractiveAuthentication=no", "-o", "ProxyCommand=none", "-o", "ProxyJump=none", "-o", "ConnectTimeout=3", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=2", "-o", "ForwardAgent=no", "-o", "IdentityAgent=none", "-o", "ForwardX11=no", "-o", "ClearAllForwardings=yes", "-o", "ControlPath=none"}
 	if maintenance {
@@ -101,9 +72,6 @@ func (s *Server) guest(ctx context.Context, script string) ([]byte, error) {
 }
 
 func (s *Server) guestControl(ctx context.Context, script, diagnosticSource string) ([]byte, error) {
-	if s.windowsGuest != nil {
-		return nil, errors.New("Windows 客机不支持 Linux 控制脚本")
-	}
 	// SSH enters the user's default shell. Run control scripts in Bash so
 	// zsh initialization cannot change their redirection or error behavior.
 	command := "exec /bin/bash --noprofile --norc -c " + shellescape.Quote(script)
@@ -139,44 +107,12 @@ func (s *Server) attach() error {
 	if err := s.requireStorageReady(); err != nil {
 		return err
 	}
-	if s.windowsGuest != nil {
-		return s.attachWindowsGuest()
-	}
-	if s.macosGuest != nil {
-		return s.attachMacOSGuest()
-	}
 	if err := s.requireCurrentLinuxTransferMount(); err != nil {
 		return err
 	}
 	ctx, cancel := s.controlContext()
 	defer cancel()
-	if containerenv.Configured(s.profile) {
-		environment, err := containerenv.Load(s.profile)
-		if err != nil {
-			return err
-		}
-		state, err := environment.State(ctx)
-		if err != nil {
-			return err
-		}
-		if !state.Running {
-			return errors.New("环境尚未启动")
-		}
-		if !state.Ready {
-			s.mu.Lock()
-			s.ready = false
-			s.mu.Unlock()
-			if !state.MountsReady {
-				failure := &projectShareError{Recovery: "environment-restart", Message: "容器文件共享需要重新连接，请保存工作后完整停止并重新启动环境；文件和登录状态会保留。"}
-				_ = s.closeProxyGate(failure.Message)
-				return failure
-			}
-			if !state.ResourcesVerified {
-				return errors.New("容器资源限制尚未通过核验，请检查服务器资源配置")
-			}
-			return errors.New("容器网络与文件连接尚未就绪，请重试启动")
-		}
-	} else if !s.vmRunning() {
+	if !s.vmRunning() {
 		return errors.New("环境尚未启动")
 	}
 	b, err := s.guest(ctx, guestConnectionSnapshot)
@@ -208,11 +144,6 @@ func (s *Server) attach() error {
 	if err = s.setBrowserHome(ctx, credentials.Token, home); err != nil {
 		return err
 	}
-	if containerenv.Configured(s.profile) {
-		if err := s.recoverClientMounts(ctx); err != nil {
-			return err
-		}
-	}
 	s.mu.Lock()
 	s.credentials = credentials
 	s.ready = true
@@ -235,7 +166,7 @@ func (s *Server) monitor(ctx context.Context) {
 				ready := s.ready
 				token := s.credentials.Token
 				s.mu.Unlock()
-				if !ready || s.macosGuest != nil || s.windowsGuest != nil {
+				if !ready {
 					_ = s.attach()
 				} else {
 					ctx, cancel := s.controlContext()
@@ -248,10 +179,6 @@ func (s *Server) monitor(ctx context.Context) {
 					}
 				}
 				timing.stage("environment_health")
-				if s.macosGuest != nil {
-					s.monitorNetworkTick()
-					timing.stage("network_tick")
-				}
 			} else {
 				timing.result = "job_running"
 			}
@@ -270,7 +197,7 @@ func (s *Server) monitor(ctx context.Context) {
 	}
 }
 
-func (s *Server) runCage(args ...string) error {
+func (s *Server) runEden(args ...string) error {
 	if len(args) > 0 && args[0] == "up" {
 		if err := s.requireCurrentLinuxTransferMount(); err != nil {
 			return err
@@ -294,12 +221,12 @@ func (s *Server) runCage(args ...string) error {
 			cmd.Dir = s.profile
 		}
 	}
-	cmd.Env = append(os.Environ(), cage.ConfigEnv+"="+s.configPath)
+	cmd.Env = append(os.Environ(), eden.ConfigEnv+"="+s.configPath)
 	execution := s.jobs.execution()
 	if len(args) == 1 && args[0] == "setup" {
-		cmd.Env = append(cmd.Env, "CAGE_SETUP_PROGRESS=1")
+		cmd.Env = append(cmd.Env, "EDEN_SETUP_PROGRESS=1")
 	}
-	cmd.Env = append(cmd.Env, cage.JobEnv+"="+execution.id)
+	cmd.Env = append(cmd.Env, eden.JobEnv+"="+execution.id)
 	cmd.Stdout, cmd.Stderr = execution, execution
 	if err := cmd.Run(); err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) {
@@ -333,49 +260,25 @@ func (s *Server) startEnvironment(syncTimezone bool) error {
 	if err := s.requireStorageReady(); err != nil {
 		return err
 	}
-	if s.macosGuest != nil {
-		return s.startMacOSGuest()
-	}
-	if s.windowsGuest != nil {
-		return s.startWindowsGuest()
-	}
 	if err := s.requireCurrentLinuxTransferMount(); err != nil {
 		return err
 	}
 	pending, err := guestos.LoadInstallation(s.profile)
-	if err != nil || (pending != nil && !hostimage.IsLinux(pending.System)) {
-		return errors.New("请从首次安装入口继续原生客户机安装")
+	if err != nil {
+		return err
 	}
-	linuxSystem, err := s.installedLinuxSystem()
+	linuxSystem, err := s.startupLinuxSystem()
 	if err != nil {
 		return err
 	}
 	if pending != nil {
 		prepared, err := hostimage.Load(filepath.Join(s.profile, "state", "guest-media"))
 		if err != nil || pending.Media == "" || prepared != pending.Source {
-			return errors.New("请从首次安装入口完成本机系统材料准备")
+			return errors.New("请从首次安装入口完成 Linux 镜像准备")
 		}
 	}
 	if _, err := validateWorkspace(s.environmentDir(), s.profile); err != nil {
 		return err
-	}
-	if containerenv.Configured(s.profile) {
-		environment, err := containerenv.Load(s.profile)
-		if err != nil {
-			return err
-		}
-		state, err := environment.State(s.operationContext())
-		if err != nil {
-			return err
-		}
-		if state.Running && !state.MountsReady {
-			s.mu.Lock()
-			s.ready = false
-			s.mu.Unlock()
-			failure := &projectShareError{Recovery: "environment-restart", Message: "容器文件共享需要重新连接，请保存工作后完整停止并重新启动环境；文件和登录状态会保留。"}
-			_ = s.closeProxyGate(failure.Message)
-			return failure
-		}
 	}
 	cfg, err := loadConfig(s.configPath)
 	if err != nil {
@@ -420,7 +323,7 @@ func (s *Server) startEnvironment(syncTimezone bool) error {
 		if gateErr == nil {
 			state, e := client.Status(context.Background())
 			if e == nil {
-				if state.Mode == cage.GateOpen && state.Report != nil && state.Report.Authorizes(state.RunID, cfg.Fingerprint(), time.Now()) == nil {
+				if state.Mode == eden.GateOpen && state.Report != nil && state.Report.Authorizes(state.RunID, cfg.Fingerprint(), time.Now()) == nil {
 					s.publishGate(state)
 					return nil
 				}
@@ -460,7 +363,7 @@ func (s *Server) startEnvironment(syncTimezone bool) error {
 		observed := loc.exitLocation()
 		within, _ := cfg.ExitPolicy.Evaluate(loc.IP, &observed)
 		updated := cfg
-		if within == cage.CheckPassed {
+		if within == eden.CheckPassed {
 			updated = autoRegionSettings(cfg, preferences, loc)
 		}
 		if updated != cfg {
@@ -477,18 +380,18 @@ func (s *Server) startEnvironment(syncTimezone bool) error {
 	} else if probeErr != nil {
 		s.setMessage("代理出口无法通过检查，正在启动离线环境…")
 	}
-	if _, err = os.Stat(filepath.Join(s.profile, "state", ".agent-vm-base-version")); !containerenv.Configured(s.profile) && os.IsNotExist(err) {
+	if _, err = os.Stat(filepath.Join(s.profile, "state", ".agent-vm-base-version")); os.IsNotExist(err) {
 		s.setMessage("首次准备 Linux 环境与开发工具，可能需要数分钟…")
 		job := s.jobs.execution()
 		job.setSetupProgress(&SetupProgress{Phase: "image", System: linuxSystem, Label: "正在准备 " + guestProgressName(linuxSystem) + " 镜像"})
-		if err = s.runCage("setup"); err != nil {
+		if err = s.runEden("setup"); err != nil {
 			return err
 		}
 		job.setSetupProgress(&SetupProgress{Phase: "services", Label: "正在启动浏览器和编辑器"})
 		defer job.setSetupProgress(nil)
 	}
 	s.setMessage("正在启动浏览器、编辑器与共享文件…")
-	if err = s.runCage("up"); err != nil {
+	if err = s.runEden("up"); err != nil {
 		return err
 	}
 	for i := 0; i < 8; i++ {
@@ -511,15 +414,9 @@ func (s *Server) stopEnvironment() (returned error) {
 			returned = managedproxy.Stop(s.profile)
 		}
 	}()
-	if s.windowsGuest != nil {
-		return s.stopWindowsGuest()
-	}
-	if s.macosGuest != nil {
-		return s.stopMacOSGuest()
-	}
-	s.setMessage("正在停止 Cage 环境…")
-	if (explicitStop || s.jobs.snapshot().Kind == "storage") && cage.InstanceJobID(filepath.Join(s.profile, "state"), "base-building") != "" {
-		if err := s.runCage("stop", "--keep-proxy", "base-building"); err != nil {
+	s.setMessage("正在停止 Eden 环境…")
+	if (explicitStop || s.jobs.snapshot().Kind == "storage") && eden.InstanceJobID(filepath.Join(s.profile, "state"), "base-building") != "" {
+		if err := s.runEden("stop", "--keep-proxy", "base-building"); err != nil {
 			return err
 		}
 	}
@@ -533,19 +430,17 @@ func (s *Server) stopEnvironment() (returned error) {
 	s.credentials = guestCredentials{}
 	s.guestManifest = nil
 	s.guestUpdateRequired = false
-	s.macComponentsChecked = false
 	s.guestUpdateError = ""
 	s.safety.Error = ""
 	s.mu.Unlock()
 	s.terminals.closeAll()
-	s.mobileCLI.stopAll()
 	s.closeProjectShares()
-	if _, err := os.Stat(filepath.Join(s.instanceDir(), "lima.yaml")); !containerenv.Configured(s.profile) && os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(s.instanceDir(), "lima.yaml")); os.IsNotExist(err) {
 		return nil
 	}
 	// Internal restarts keep the already validated core alive. Explicit stop
 	// releases it above only after the environment has stopped successfully.
-	if err := s.runCage("stop", "--keep-proxy"); err != nil {
+	if err := s.runEden("stop", "--keep-proxy"); err != nil {
 		return err
 	}
 	return nil
@@ -564,11 +459,6 @@ func (s *Server) apply(v savedProfile, validate bool) error {
 		resumeVersion = execution.pauseVersion
 	}
 	wasReady := vmAlive(s.profile, s.environmentDir())
-	if s.windowsGuest != nil {
-		wasReady = s.windowsState.Running
-	} else if s.macosGuest != nil {
-		wasReady = macOSInstanceRunning(s.instanceDir())
-	}
 	s.mu.Unlock()
 	changed := old != v.Config || oldPrefs.AutoTimezone != v.Preferences.AutoTimezone || oldPrefs.AutoLanguage != v.Preferences.AutoLanguage
 	if changed && validate && old.RequireManagedProxy(s.profile) == nil {
@@ -586,22 +476,14 @@ func (s *Server) apply(v savedProfile, validate bool) error {
 		}
 		v.Config.ExitPolicy = v.Config.ExitPolicy.BindMissing(loc.exitLocation())
 		observed := loc.exitLocation()
-		if result, message := v.Config.ExitPolicy.Evaluate(loc.IP, &observed); result != cage.CheckPassed {
-			if result == cage.CheckUnknown && e != nil && !v.Preferences.AutoTimezone && !v.Preferences.AutoLanguage {
+		if result, message := v.Config.ExitPolicy.Evaluate(loc.IP, &observed); result != eden.CheckPassed {
+			if result == eden.CheckUnknown && e != nil && !v.Preferences.AutoTimezone && !v.Preferences.AutoLanguage {
 				return errors.New("时区和语言已选择手动设置，但所有出口仍须确认国家或地区。请重试位置检测或切换节点；静态 IP 和不限地区不能跳过大陆出口检查，原配置保持不变")
 			}
 			return errors.New(message)
 		}
 	}
 	if changed {
-		if s.windowsGuest != nil && wasReady && (old.Timezone != v.Config.Timezone || old.Locale != v.Config.Locale) {
-			if err := s.closeProxyGate("正在应用 Windows 系统设置，外网等待重新检查"); err != nil {
-				return err
-			}
-			if err := s.applyWindowsGuestSettings(s.operationContext(), v.Config); err != nil {
-				return err
-			}
-		}
 		if err := s.resumeNetworkIntentAt(resumeVersion); err != nil {
 			return err
 		}
@@ -668,16 +550,19 @@ func (s *Server) monitorNetworkTick() {
 		timing.result = "storage_recovery_pending"
 		return
 	}
-	if s.macSetupPending() {
-		timing.result = "setup_pending"
-		return
-	}
 	s.monitorProxyInterface()
 	timing.stage("physical_interface")
 	s.checkProxyHealth()
 	timing.stage("proxy_health")
 	s.monitorSafety()
 	timing.stage("safety")
+	// Sampling runs independently of interactive operations. Only admission of
+	// a recovery or subscription job needs the environment mutation lock.
+	if !s.op.TryLock() {
+		timing.result = "operation_lock_busy"
+		return
+	}
+	defer s.op.Unlock()
 	s.recoverNetwork()
 	timing.stage("recovery")
 	s.refreshProxySubscriptions()
@@ -690,9 +575,9 @@ func (s *Server) monitorNetwork(ctx context.Context) {
 	skipped := 0
 	for ctx.Err() == nil {
 		if s.op.TryLock() {
+			s.op.Unlock()
 			skipped = 0
 			s.monitorNetworkTick()
-			s.op.Unlock()
 		} else {
 			skipped++
 			timing := s.startMonitorTiming()
@@ -709,20 +594,10 @@ func (s *Server) monitorNetwork(ctx context.Context) {
 }
 
 func vmAlive(profile, workspace string) bool {
-	if containerenv.Configured(profile) {
-		environment, err := containerenv.Load(profile)
-		if err != nil {
-			return false
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		state, err := environment.State(ctx)
-		return err == nil && state.Running
-	}
 	if workspace == "" {
 		return false
 	}
-	b, e := os.ReadFile(filepath.Join(profile, "state", "lima", cage.InstanceName(profile, workspace), "cage-running.json"))
+	b, e := os.ReadFile(filepath.Join(profile, "state", "lima", eden.InstanceName(profile, workspace), "eden-running.json"))
 	if e != nil {
 		return false
 	}
@@ -733,16 +608,8 @@ func vmAlive(profile, workspace string) bool {
 	if json.Unmarshal(b, &record) != nil || record.PID < 1 {
 		return false
 	}
-	return processExists(record.PID) && cage.ProcessStartMatches(record.PID, record.Started)
+	return processExists(record.PID) && eden.ProcessStartMatches(record.PID, record.Started)
 }
 func (s *Server) vmRunning() bool {
-	if s.windowsGuest != nil {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		return s.windowsState.Running
-	}
-	if s.macosGuest != nil {
-		return macOSInstanceRunning(s.instanceDir())
-	}
 	return vmAlive(s.profile, s.environmentDir())
 }

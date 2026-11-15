@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createWorkbench } from "./workbench-fixture.mjs";
 import { startDisplay } from "./rfb-wire-fixture.mjs";
 
-const display = await startDisplay(process.env.CAGE_UI_URL || "http://127.0.0.1:5198", { frameInterval: 200 });
+const display = await startDisplay(process.env.EDEN_UI_URL || "http://127.0.0.1:5198", { frameInterval: 200 });
 const { browser, page, state, errors } = await createWorkbench({
   url: display.url, mockWebSockets: false, viewport: { width: 1000, height: 740 },
 });

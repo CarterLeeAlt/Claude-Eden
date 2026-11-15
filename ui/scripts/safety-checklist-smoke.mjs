@@ -3,9 +3,9 @@ import { mkdir } from "node:fs/promises";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
 const failure = "联网检查未通过：浏览器语言未通过。语言与已保存的设置不一致。请核对语言设置后重新检测。外网保持关闭。";
-const output = process.env.CAGE_SAFETY_SCREENSHOTS || "/tmp/cage-safety-checklist";
+const output = process.env.EDEN_SAFETY_SCREENSHOTS || "../.tmp/guest-neutralization/ui-eden/safety-checklist";
 await mkdir(output, { recursive: true });
-const platforms = process.env.CAGE_TEST_BROWSER === "webkit" ? ["darwin"] : ["darwin", "windows", "linux"];
+const platforms = ["windows"];
 
 for (const platform of platforms) {
   const { browser, page, state, errors } = await createWorkbench({

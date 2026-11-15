@@ -17,9 +17,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/sylvinus/agent-vm/internal/cage"
 	"github.com/sylvinus/agent-vm/internal/clipboardfiles"
-	"github.com/sylvinus/agent-vm/internal/guestos"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func TestLinuxClipboardCommandFitsWindowsProcessLimit(t *testing.T) {
@@ -54,7 +53,7 @@ func TestLinuxClipboardCommandFitsWindowsProcessLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(script) != cage.SharedClipboardHelper {
+	if string(script) != eden.SharedClipboardHelper {
 		t.Fatal("剪贴板脚本在压缩传输中发生变化")
 	}
 }
@@ -91,25 +90,6 @@ func TestClipboardFileReleaseSupportsLegacyAgents(t *testing.T) {
 	}
 }
 
-func TestClipboardCopyRejectsMissingRevisionAndInvalidPhaseBeforeGuestAccess(t *testing.T) {
-	s := testServer(t)
-	s.macosGuest = &guestos.MacOSProfile{Instance: "mac", User: "guestdev"}
-	for _, body := range []string{
-		`{"phase":"unknown"}`,
-		`{"phase":"read","session":"gui-a"}`,
-		`{"phase":"read","session":"gui-a","revision":-1}`,
-		`{"phase":"read","session":"","revision":1}`,
-	} {
-		response := httptest.NewRecorder()
-		request := httptest.NewRequest(http.MethodPost, "/api/clipboard/copy", strings.NewReader(body))
-		request.Header.Set("Content-Type", "application/json")
-		s.clipboardCopy(response, request)
-		if response.Code != http.StatusBadRequest {
-			t.Fatalf("invalid copy request reached the guest: %d", response.Code)
-		}
-	}
-}
-
 func TestClipboardReceiveRequiresProducerCompletion(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "content")
@@ -125,9 +105,9 @@ func TestClipboardReceiveRequiresProducerCompletion(t *testing.T) {
 			temp := t.TempDir()
 			t.Setenv("TMPDIR", temp)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Trailer", "X-Cage-Clipboard-Status")
+				w.Header().Set("Trailer", "X-Eden-Clipboard-Status")
 				_, _ = w.Write(archive.Bytes())
-				w.Header().Set("X-Cage-Clipboard-Status", status)
+				w.Header().Set("X-Eden-Clipboard-Status", status)
 			}))
 			defer server.Close()
 			response, err := server.Client().Get(server.URL)
@@ -159,7 +139,7 @@ func TestClipboardReceiveRequiresProducerCompletion(t *testing.T) {
 		})
 	}
 	// Losing the connection before all file bytes arrive must not create a file.
-	response := &http.Response{Body: io.NopCloser(bytes.NewReader(archive.Bytes()[:520])), Trailer: http.Header{"X-Cage-Clipboard-Status": {"ok"}}}
+	response := &http.Response{Body: io.NopCloser(bytes.NewReader(archive.Bytes()[:520])), Trailer: http.Header{"X-Eden-Clipboard-Status": {"ok"}}}
 	cache := clipboardfiles.CacheStore{Directory: filepath.Join(t.TempDir(), "records")}
 	if selection, err := receiveClipboardArchive(response, cache); err == nil || len(selection.Paths) != 0 {
 		t.Fatal("truncated archive succeeded")
@@ -219,7 +199,7 @@ func TestSharedClipboardRequiresSessionAndUnlockedAccount(t *testing.T) {
 
 // Opt-in integration: uses disposable real X11 displays in the supplied QA VM.
 func TestSharedClipboardGuestWebSocketAndFileStream(t *testing.T) {
-	config := os.Getenv("CAGE_CLIPBOARD_QA_SSH_CONFIG")
+	config := os.Getenv("EDEN_CLIPBOARD_QA_SSH_CONFIG")
 	if config == "" {
 		t.Skip("isolated clipboard guest not configured")
 	}
@@ -242,7 +222,7 @@ func TestSharedClipboardGuestWebSocketAndFileStream(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(s.instanceDir(), "ssh.config"), []byte(strings.Join(lines, "\n")), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(s.instanceDir(), "cage-running.json"), []byte(fmt.Sprintf(`{"pid":%d}`, os.Getpid())), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(s.instanceDir(), "eden-running.json"), []byte(fmt.Sprintf(`{"pid":%d}`, os.Getpid())), 0600); err != nil {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(s.handler())

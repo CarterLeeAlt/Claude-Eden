@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
@@ -61,13 +62,13 @@ func (d *doctor) section(name string) { fmt.Fprintf(d.e.io.Stdout, "\n%s\n", nam
 // into an issue (names, no secret values). 1 when a check failed.
 func (e *app) doctorCmd(ctx context.Context, args []string) int {
 	if len(args) > 0 {
-		fmt.Fprintln(e.io.Stderr, "Usage: agent-vm doctor")
+		fmt.Fprintf(e.io.Stderr, "Usage: %s doctor\n", Command)
 		return 2
 	}
 	d := &doctor{e: e}
 	w := e.io.Stdout
-	fmt.Fprintln(w, "agent-vm doctor")
-	d.section("agent-vm")
+	fmt.Fprintf(w, "%s doctor\n", Command)
+	d.section(Command)
 	exe, _ := os.Executable()
 	d.line("info", fmt.Sprintf("version %s, from %s", version.Version, exe))
 
@@ -98,11 +99,11 @@ func (e *app) doctorCmd(ctx context.Context, args []string) int {
 	d.section("Lima")
 	d.line("info", fmt.Sprintf("Lima %s, built in; its VMs in %s", strings.TrimPrefix(limaversion.Version, "v"), LimaHome(e.state)))
 	for _, f := range vm.LimaOverrides(LimaHome(e.state)) {
-		d.line("fail", f+" adds to every VM's config: agent-vm makes and starts no VM while it is there", "Move it out of the way.")
+		d.line("fail", f+" adds to every VM's config: "+Command+" makes and starts no VM while it is there", "Move it out of the way.")
 	}
 	protects := !writableGitOptOut(false)
-	if cageWritableGit() {
-		d.line("info", "Cage projects allow Git writes within the shared directories")
+	if edenWritableGit() {
+		d.line("info", "Eden projects allow Git writes within the shared directories")
 	} else if protects {
 		d.line("ok", "every .git is read-only for the VMs (sshfs.readonlyNames)")
 	} else {
@@ -152,19 +153,19 @@ func (e *app) doctorCmd(ctx context.Context, args []string) int {
 		if built, perr := strconv.ParseInt(e.state.Read(state.BaseVersion), 10, 64); perr == nil {
 			d.line("ok", fmt.Sprintf("%s is ready, built %s", vmname.Template, time.Unix(built, 0).Format("2006-01-02")))
 			if time.Since(time.Unix(built, 0)) > 90*24*time.Hour {
-				d.line("warn", "the base template is over 90 days old", "Its agents and packages are as old. 'agent-vm setup' rebuilds it.")
+				d.line("warn", "the base template is over 90 days old", "Its agents and packages are as old. '"+Command+" setup' rebuilds it.")
 			}
 		} else {
 			d.line("ok", vmname.Template+" is ready")
 		}
 		if _, err := os.Stat(e.state.Path(state.BaseBuiltBy)); err != nil {
 			d.line("warn", "the base template was built by agent-vm 0.1.0, without what the shares that keep .git read-only need",
-				"'agent-vm setup' rebuilds it, then '--reset' the VMs made from it.")
+				"'"+Command+" setup' rebuilds it, then '--reset' the VMs made from it.")
 		}
 	case base != nil:
-		d.line("fail", vmname.Template+" exists but its setup did not complete", "Run 'agent-vm setup' again.")
+		d.line("fail", vmname.Template+" exists but its setup did not complete", "Run '"+Command+" setup' again.")
 	default:
-		d.line("fail", "no base template yet", "Run 'agent-vm setup'.")
+		d.line("fail", "no base template yet", "Run '"+Command+" setup'.")
 	}
 
 	d.section(fmt.Sprintf("Settings (%s)", e.state))
@@ -183,7 +184,7 @@ func (e *app) doctorCmd(ctx context.Context, args []string) int {
 			d.line("warn", "env permissions could not be checked", fmt.Sprintf("chmod 600 '%s'", e.state.Path("env")))
 		}
 	} else {
-		d.line("info", "env: none (agent-vm env set KEY VALUE)")
+		d.line("info", "env: none ("+e.state.Path("env")+")")
 	}
 	for _, f := range []string{"volumes", "setup.sh", "runtime.sh", guard.FileName} {
 		if _, err := os.Stat(e.state.Path(f)); err == nil {
@@ -216,17 +217,17 @@ func (e *app) doctorCmd(ctx context.Context, args []string) int {
 			d.line("info", "none running")
 		case mem > 0 && m > mem:
 			d.line("warn", fmt.Sprintf("%d running, %d CPUs and %d GiB in total: more memory than the host has", n, c, m),
-				"'agent-vm list' lists them; 'agent-vm stop <name>' frees one.")
+				"'"+Command+" list' lists them; '"+Command+" stop <name>' frees one.")
 		default:
 			d.line("info", fmt.Sprintf("%d running, %d CPUs and %d GiB in total", n, c, m))
 		}
 	}
 	dead, unknown := e.scratchLeftovers()
 	for _, left := range dead {
-		d.line("warn", "scratch VM "+left+" was left by a run that did not finish", "The next --scratch run deletes it, or: agent-vm rm "+left)
+		d.line("warn", "scratch VM "+left+" was left by a run that did not finish", "The next --scratch run deletes it; retained in "+filepath.Join(LimaHome(e.state), left))
 	}
 	for _, left := range unknown {
-		d.line("warn", "scratch VM "+left+" has a record without a process number: not known whether a run still uses it", "agent-vm rm "+left+" deletes it.")
+		d.line("warn", "scratch VM "+left+" has a record without a process number: not known whether a run still uses it", "Inspect the retained VM before removal: "+filepath.Join(LimaHome(e.state), left))
 	}
 
 	fmt.Fprintln(w)
@@ -253,13 +254,13 @@ func unique(s []string) []string {
 func (d *doctor) directory(ctx context.Context, dir string, protects bool, getVM func(string) (*vm.Instance, error)) {
 	e := d.e
 	if why, bad := mounts.Unmountable(dir); bad {
-		d.line("fail", "the path "+why, "agent-vm refuses to mount it. Rename the directory.")
+		d.line("fail", "the path "+why, Command+" refuses to mount it. Rename the directory.")
 	}
 	if why, bad := mounts.UnsafeProject(dir, e.refs()); bad {
-		d.line("fail", "this directory "+why, "agent-vm refuses to share it with a VM. Run it from a project directory.")
+		d.line("fail", "this directory "+why, Command+" refuses to share it with a VM. Run it from a project directory.")
 	}
 	scan := &gitguard.Result{}
-	if !cageWritableGit() {
+	if !edenWritableGit() {
 		scan = e.scan(ctx, dir)
 	}
 	names := scan.Names()
@@ -269,12 +270,12 @@ func (d *doctor) directory(ctx context.Context, dir string, protects bool, getVM
 	case err != nil:
 		d.line("warn", "could not query Lima")
 	case inst == nil:
-		d.line("info", name+" will be created on the first agent-vm command here")
+		d.line("info", name+" will be created on the first "+Command+" command here")
 	case inst.ConfigErr != nil:
-		d.line("fail", "Lima cannot read the config of "+name, inst.ConfigErr.Error(), "'agent-vm --reset <command>' re-clones it.")
+		d.line("fail", "Lima cannot read the config of "+name, inst.ConfigErr.Error(), "'"+Command+" run --reset <command>' re-clones it.")
 	default:
 		if e.staleState(name) == "1" {
-			d.line("warn", name+" was cloned from an older base template", "'agent-vm --reset <command>' re-clones it.")
+			d.line("warn", name+" was cloned from an older base template", "'"+Command+" run --reset <command>' re-clones it.")
 		} else {
 			d.line("ok", name+" exists")
 		}
@@ -284,9 +285,9 @@ func (d *doctor) directory(ctx context.Context, dir string, protects bool, getVM
 			d.line("ok", "running; the project share is enforced on the host (--readonly works)")
 		case inst.Status == vm.Running:
 			d.line("warn", "running with a share the host does not confine: "+confined.Error(),
-				"The next start (after 'agent-vm stop') sets its shares back.")
+				"The next start (after '"+Command+" stop') sets its shares back.")
 		case inst.Orphaned:
-			d.line("warn", "running without Lima's host agent, cut off", "'agent-vm stop' stops it, and so does the next agent-vm command here that starts a VM.")
+			d.line("warn", "running without Lima's host agent, cut off", "'"+Command+" stop' stops it, and so does the next "+Command+" command here that starts a VM.")
 		case inst.Status == vm.Broken:
 			d.line("warn", "Broken: Lima cannot say whether it runs")
 		default:
@@ -295,17 +296,17 @@ func (d *doctor) directory(ctx context.Context, dir string, protects bool, getVM
 		protected := len(inst.Mounts) > 0 && unprotected(inst, nil) == ""
 		current := unprotected(inst, names) == ""
 		switch {
-		case cageWritableGit() && !protected:
-			d.line("info", "its shares allow Git writes in Cage projects")
+		case edenWritableGit() && !protected:
+			d.line("info", "its shares allow Git writes in Eden projects")
 		case protected && !current:
 			d.line("warn", "its shares keep .git read-only, but not all of "+strings.Join(names, ", "),
-				"The next start (after 'agent-vm stop' if it runs) fixes that.")
+				"The next start (after '"+Command+" stop' if it runs) fixes that.")
 		case protected:
 			d.line("ok", "its shares keep every .git read-only")
 		case !protects:
 			d.line("warn", "its shares leave .git writable (AGENT_VM_UNSAFE_WRITABLE_GIT=1)")
 		default:
-			d.line("warn", "its shares leave .git writable", "The next start (after 'agent-vm stop' if it runs) fixes that.")
+			d.line("warn", "its shares leave .git writable", "The next start (after '"+Command+" stop' if it runs) fixes that.")
 		}
 	}
 	for _, h := range scan.Hooks {
@@ -328,16 +329,16 @@ func (d *doctor) directory(ctx context.Context, dir string, protects bool, getVM
 		switch {
 		case !ok:
 			d.line("warn", what+", which the VM can write",
-				"agent-vm can only keep a folder inside a share read-only, by a name without quotes or backslashes: point core.hooksPath to one.")
+				Command+" can only keep a folder inside a share read-only, by a name without quotes or backslashes: point core.hooksPath to one.")
 		case !protects:
-			d.line("warn", what+", which the VM can write", "agent-vm keeps it read-only when it keeps .git read-only (see above).")
+			d.line("warn", what+", which the VM can write", Command+" keeps it read-only when it keeps .git read-only (see above).")
 		case inst == nil:
 			d.line("info", fmt.Sprintf("%s: every '%s' in the project will be read-only for the VM", what, hn))
 		case current:
 			d.line("ok", fmt.Sprintf("%s: every '%s' in the project is read-only for the VM", what, hn))
 		default:
 			d.line("warn", what+", which the VM can still write",
-				fmt.Sprintf("The next start (after 'agent-vm stop' if it runs) makes every '%s' in the project read-only.", hn))
+				fmt.Sprintf("The next start (after '%s stop' if it runs) makes every '%s' in the project read-only.", Command, hn))
 		}
 	}
 	if risks := scan.Risks(names); len(risks) > 0 {

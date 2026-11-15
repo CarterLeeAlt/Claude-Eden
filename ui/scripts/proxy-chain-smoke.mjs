@@ -1,5 +1,5 @@
 // Real authenticated workbench, bundled Mihomo and local HTTP CONNECT servers.
-// Uses a new private profile. Never touches the user's Cage, VM or subscriptions.
+// Uses a new private profile. Never touches the user's Eden, VM or subscriptions.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import http from 'node:http';
@@ -9,14 +9,15 @@ import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
 const require=createRequire(import.meta.url);
-const {chromium}=require(process.env.CAGE_PLAYWRIGHT_MODULE || 'playwright');
+const {chromium}=require(process.env.EDEN_PLAYWRIGHT_MODULE || 'playwright');
 const run=promisify(execFile);
 const root=path.resolve(import.meta.dirname,'../..');
-const executable=process.env.CAGE_CHAIN_QA_EXECUTABLE || path.join(root,'_output/proxy-chain-20261105/bin/cage');
-const output=path.join(root,'docs/test-reports/2026-11-05-proxy-chain');
+const executable=process.env.EDEN_CHAIN_QA_EXECUTABLE;
+assert.ok(executable, 'Set EDEN_CHAIN_QA_EXECUTABLE to the Eden Windows executable beside mihomo');
+const output=path.join(root,'.tmp/guest-neutralization/ui-eden/proxy-chain');
 await fs.mkdir(output,{recursive:true});
-const profile=await fs.mkdtemp('/private/tmp/cage-chain-qa-');
-const env={...process.env,CLAUDE_CAGE_CONFIG:path.join(profile,'config.json')};
+const profile=await fs.mkdtemp(path.join(output,'profile-'));
+const env={...process.env,EDEN_CONFIG:path.join(profile,'config.json')};
 await run(executable,['init'],{env});
 const sockets=new Set();
 const listen=server=>new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -52,7 +53,7 @@ try{
  const origin=`http://localhost:${control.port}`;
  assert.equal((await fetch(origin+'/api/proxy')).status,401);
  const launch=await fetch(origin+'/api/launch',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({token:control.token})}).then(r=>r.json());
- browser=await chromium.launch({headless:true,executablePath:process.env.CAGE_TEST_BROWSER_PATH});
+ browser=await chromium.launch({headless:true,executablePath:process.env.EDEN_TEST_BROWSER_PATH});
  const page=await browser.newPage({viewport:{width:1280,height:1000}});
  page.on('pageerror',e=>errors.push(e.message));
  await page.goto(launch.url);
@@ -92,7 +93,7 @@ try{
  const applied=await state();assert.equal(applied.active,true);assert.equal(applied.running,true);assert.equal(applied.route.length,2);
  const stored=JSON.parse(await fs.readFile(path.join(profile,'proxy/sources.json')));
  const curlConfig=path.join(profile,'curl.conf');
- await fs.writeFile(curlConfig,`proxy = "socks5h://cage:${stored.auth}@127.0.0.1:${stored.port}"\n`,{mode:0o600});
+ await fs.writeFile(curlConfig,`proxy = "socks5h://eden:${stored.auth}@127.0.0.1:${stored.port}"\n`,{mode:0o600});
  const through=()=>run('curl',['--config',curlConfig,'--noproxy','','--fail','--silent','--show-error','--max-time','6',`http://127.0.0.1:${target.address().port}/probe`]);
  assert.equal((await through()).stdout,'residential-exit-verified');
  assert.deepEqual(entry.destinations,[`127.0.0.1:${exit.port}`]);

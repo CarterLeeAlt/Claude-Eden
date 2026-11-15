@@ -18,7 +18,7 @@
 
 En tant qu'utilisateurs ordinaires qui souhaitent simplement parler et collaborer avec Claude, nous en avons assez de configurer des instances VPS, des profils d'empreintes digitales de navigateur et des contrôles d'environnement, tout en nous inquiétant des interdictions de compte et des pertes financières. Nous présentons **Claude Eden** — **une application de bureau : configurez votre propre proxy réseau et gérez votre environnement isolé, votre fuseau horaire, votre langue et vos contrôles d'environnement en un seul endroit.**
 
-Claude Eden réunit terminal, navigateur, éditeur et Claude Desktop officiel dans un même espace de travail. L’application Windows utilise un invité Linux local ou un environnement cloud Linux par SSH. Partagez les projets de votre choix, gérez le réseau séparément et poursuivez vos tâches depuis votre téléphone. Ses principales fonctions :
+Claude Eden réunit terminal, navigateur, éditeur et Claude Desktop officiel dans un même espace de travail sur Windows 10, avec un invité Debian 13 local. Partagez les projets de votre choix et gérez le réseau séparément. Les capacités de l’hôte et les ressources sont détectées sur chaque ordinateur. Ses principales fonctions :
 
 - Paramètres réseau isolés de l'hôte ; Claude Eden achemine le trafic de son environnement via son propre proxy réseau
 - Paramètres d'empreinte digitale du navigateur isolés de l'hôte, y compris le fuseau horaire et la langue, avec synchronisation automatique avec l'emplacement IP du proxy réseau
@@ -28,13 +28,11 @@ Claude Eden réunit terminal, navigateur, éditeur et Claude Desktop officiel da
 ## Ce que vous pouvez faire avec Claude Eden
 
 - **Travaillez dans une seule fenêtre.** Exécutez Claude Code dans le terminal, examinez les modifications dans l'éditeur et utilisez le navigateur Workbench pour prévisualiser les services et vous connecter.
-- **Développez dans un environnement Linux indépendant.** Choisissez Debian ou Ubuntu, utilisez les outils Linux et partagez uniquement les projets que vous autorisez explicitement. [Choisir le système invité](docs/guide/guest-systems.md)
+- **Développez dans un environnement Linux indépendant.** Utilisez les outils Linux dans l’invité Debian 13 local et partagez uniquement les projets que vous autorisez explicitement. [Invité Debian 13](docs/guide/guest-systems.md)
 - **Contrôlez ce que vous partagez.** Seuls l'espace de travail par défaut et les dossiers de projet explicitement ouverts sont partagés. L'état de connexion Claude de l'hôte, les profils de navigateur et les clés SSH ne sont pas importés automatiquement.
 - **Consultez l'état de votre réseau.** La gestion intégrée du proxy réseau vous permet d'importer des abonnements, de sélectionner des points de terminaison et de vérifier l'adresse IP de sortie. L'environnement reste hors ligne jusqu'à ce que les vérifications critiques soient réussies. Si le proxy réseau n'est pas disponible, il n'est pas possible de recourir à une connexion directe.
 - **Continuez la prochaine fois.** Les outils, les fichiers et l'état de connexion persistent sur le disque virtuel. Les tâches en arrière-plan peuvent continuer à s'exécuter lorsque vous fermez la fenêtre.
 - **Gérez plusieurs comptes Claude Code.** Consultez les quotas, attribuez les comptes aux nouvelles sessions et, avec une autorisation explicite, changez de compte en conservant l’historique. [Claude Code](docs/guide/accounts.md)
-- **Poursuivez depuis votre téléphone.** Associez votre téléphone Android à l’ordinateur par QR code ou code d’association. Retrouvez les mêmes conversations Claude Code, envoyez des messages, approuvez les outils et utilisez le navigateur distant ou la fenêtre Claude Desktop de l’ordinateur.
-- **Exécutez Claude Eden dans le cloud.** Connectez-vous par SSH à un VPS Linux x86_64 compatible, sans KVM. Les données et la sortie réseau restent sur le serveur.
 - **Connectez-vous par un réseau privé.** Connectez Tailscale dans Claude Eden pour accéder par SSH à l’hôte et à l’environnement dans les deux sens. [Tailscale / SSH](docs/guide/tailscale.md)
 
 ## Démarrage rapide
@@ -49,13 +47,13 @@ Tout ce dont vous avez besoin est un point de terminaison proxy réseau fiable. 
 
 ## Téléchargement et installation
 
-L’hôte de bureau est Windows 10 x64 et les systèmes invités locaux sont Debian 13 ou Ubuntu 22.04. Le déploiement cloud et le backend Linux sont également disponibles. Les capacités du système et de virtualisation sont détectées sur chaque ordinateur. [Windows](docs/windows.md) · [Cloud Linux](docs/linux.md).
+L’hôte de bureau est Windows 10 x64 et l’invité local est Debian 13. Les capacités du système et de virtualisation sont détectées sur chaque ordinateur. [Windows](docs/windows.md) · [Invité Debian 13](docs/guide/guest-systems.md).
 
 1. Consultez les paquets Windows réellement disponibles dans [Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases), ou les instructions de construction si aucun paquet n’est publié.
-2. Exécutez l’installateur Windows et ouvrez **Claude Eden**. [Guide d’installation](docs/windows.md#安装并开始工作) · [Cloud Linux](docs/guide/cloud.md).
+2. Exécutez l’installateur Windows et ouvrez **Claude Eden**. [Guide d’installation](docs/windows.md#安装并开始工作).
 3. Suivez les instructions de l'application pour configurer votre propre proxy réseau, démarrer l'environnement et ouvrir un projet.
 
-L’installateur comprend l’espace de travail et le moteur de proxy. Inutile d’installer Go, Node.js, Docker ou Clash au préalable. À la création, choisissez le système invité et son emplacement, puis préparez l’image officielle et les outils. Claude Eden ne fournit ni licence de système, ni service proxy, ni compte Claude.
+L’installateur comprend l’espace de travail et le moteur de proxy. Inutile d’installer Go, Node.js, Docker ou Clash au préalable. À la création, choisissez l’emplacement de stockage de Debian 13, puis préparez l’image officielle et les outils. Vous fournissez votre propre service proxy et votre compte Claude.
 
 Le code source est public. Les paquets publiés, leurs notes et leurs sommes de contrôle figurent dans [Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases).
 
@@ -71,7 +69,7 @@ Sur la page d'accueil, cliquez sur « Configurer le réseau et le proxy », pu
 
 ### 2. Démarrez l'environnement
 
-À la première création, choisissez Debian ou Ubuntu comme système invité et l’emplacement de stockage. Démarrez l’environnement Claude Eden et suivez l’installation et les autorisations. La progression et les erreurs figurent dans les détails de l’opération. Les lancements suivants réutilisent le même environnement.
+À la première création, choisissez l’emplacement de stockage de l’invité Debian 13. Démarrez l’environnement Claude Eden et suivez l’installation et les autorisations. La progression et les erreurs figurent dans les détails de l’opération. Les lancements suivants réutilisent le même environnement.
 
 ### 3. Ouvrez un projet et exécutez Claude
 
@@ -92,7 +90,7 @@ Pour l'index complet, voir [Index des documents](docs/README.md).
 
 | Votre tâche | Commencez ici |
 |---|---|
-| Debian 13 / Ubuntu 22.04 | [Choisir le système invité](docs/guide/guest-systems.md) |
+| Debian 13 | [Invité Debian 13](docs/guide/guest-systems.md) |
 | Installez, configurez un proxy réseau et ouvrez votre premier projet | [Commencer](docs/getting-started.md) |
 | Dépanner les téléchargements, le démarrage, la connectivité et la connexion | [FAQ et récupération](docs/troubleshooting.md) |
 | Apprenez les commandes du clavier, l'apparence, la persistance des données et le comportement de sortie | [Utilisation quotidienne](docs/getting-started.md#日常使用) |

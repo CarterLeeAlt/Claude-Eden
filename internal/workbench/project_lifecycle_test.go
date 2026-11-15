@@ -23,7 +23,7 @@ func (r *observedProjectReader) Read(data []byte) (int, error) {
 }
 
 func TestProjectShareCloseWaitsForTransportAndChild(t *testing.T) {
-	const helper = "CAGE_TEST_PROJECT_SHARE_CHILD"
+	const helper = "EDEN_TEST_PROJECT_SHARE_CHILD"
 	if os.Getenv(helper) == "1" {
 		_, _ = io.Copy(io.Discard, os.Stdin)
 		return

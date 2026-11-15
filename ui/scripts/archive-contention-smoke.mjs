@@ -16,7 +16,7 @@ const forward = async route => {
   return route.fulfill({ status: response.status, contentType: response.headers.get("Content-Type"), body: await response.text() });
 };
 const { page, browser, errors } = await createWorkbench({
-  url: process.env.CAGE_UI_URL || fixture.origin,
+  url: process.env.EDEN_UI_URL || fixture.origin,
   cliRequest: forward,
   beforeNavigate: async (page, state) => {
     state.settings.workspace = fixture.workspace;
@@ -47,7 +47,7 @@ try {
   await reloadedSessions;
   assert.equal(await actions.count(), 0);
   assert.deepEqual(errors, []);
-  console.log(`${process.env.CAGE_TEST_BROWSER}: UI archive waited for the environment operation, submitted once, removed the row, retained history and survived reload`);
+  console.log(`${process.env.EDEN_TEST_BROWSER}: UI archive waited for the environment operation, submitted once, removed the row, retained history and survived reload`);
 } finally {
   await fetch(fixture.origin + "/fixture/release-operation", { method: "POST" });
   await browser.close();

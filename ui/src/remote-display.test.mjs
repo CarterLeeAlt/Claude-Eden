@@ -139,11 +139,3 @@ test("native desktop honors its actual DPI instead of silently doubling 100% and
       { width: 1200 * density, height: 800 * density });
   }
 });
-
-test("automatic desktop fits the window at native readable scale and bounds large allocations", () => {
-  assert.deepEqual(displayGeometry({ width: 1200, height: 800 }, { desktop: true, zoom: "auto", density: 1 }),
-    { width: 1200, height: 800 });
-  const large = displayGeometry({ width: 6000, height: 4000 }, { desktop: true, zoom: "auto", density: 3 });
-  assert.ok(large.width * large.height <= 12_000_000);
-  assert.ok(Math.abs(large.width / large.height - 1.5) < 0.002);
-});

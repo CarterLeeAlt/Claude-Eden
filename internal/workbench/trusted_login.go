@@ -60,9 +60,9 @@ func (d *desktopGateway) trustedLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	d.change.Lock()
 	defer d.change.Unlock()
-	session, remote, err := d.acquire(in.ConnectionID)
+	session, err := d.acquire(in.ConnectionID)
 	local, ok := d.local.(*desktopLocal)
-	if err != nil || remote || !ok {
+	if err != nil || !ok {
 		http.Error(w, "请返回当前本机工作台", 409)
 		return
 	}
@@ -80,7 +80,7 @@ func (d *desktopGateway) trustedLogin(w http.ResponseWriter, r *http.Request) {
 	var reply trustedLoginReply
 	status, err := c.callContext(r.Context(), "POST", "/api/desktop-local/trusted-login", in, &reply)
 	if err != nil || status != http.StatusOK {
-		http.Error(w, "本机后台未接受登录请求，请确认已更新 Cage", 409)
+		http.Error(w, "本机后台未接受登录请求，请确认已更新 Eden", 409)
 		return
 	}
 	if reply.Error != "" {
@@ -106,7 +106,7 @@ func (s *Server) localTrustedLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	defer finish()
 	if in.Action == "create" {
-		jsonReply(w, trustedLoginReply{Error: "请先注册 Cage 用户名和密码，再开始安装"})
+		jsonReply(w, trustedLoginReply{Error: "请先注册 Eden 用户名和密码，再开始安装"})
 		return
 	}
 	base, err := os.UserConfigDir()
@@ -117,7 +117,7 @@ func (s *Server) localTrustedLogin(w http.ResponseWriter, r *http.Request) {
 		err = errors.New("无法确定本机系统用户配置目录")
 	}
 	if err == nil {
-		err = s.account.trustedLogin(in.Action, in.Password, filepath.Join(base, "Cage", "trusted-local"))
+		err = s.account.trustedLogin(in.Action, in.Password, filepath.Join(base, "Eden", "trusted-local"))
 	}
 	reply := trustedLoginReply{}
 	if err != nil {
@@ -188,7 +188,7 @@ func (a *localAccount) trustedLogin(action, password, devices string) error {
 		device.SealedKey = aead.Seal(nil, device.Nonce, key, []byte("trusted:"+device.ID))
 		record := *a.record
 		record.TrustedUnlock = &device
-		// The shared desktop grant replaces the older macOS automatic grant.
+		// A desktop grant is bound to the current authentication record.
 		// Keep biometric unlock independent, and revoke both automatic paths
 		// when the user turns off Remember me.
 		record.Devices = maps.Clone(record.Devices)
@@ -208,7 +208,7 @@ func (a *localAccount) trustedLogin(action, password, devices string) error {
 		}
 	case "disable":
 		if a.record == nil || len(a.key) != 32 {
-			return errors.New("请先解锁 Cage")
+			return errors.New("请先解锁 Eden")
 		}
 		if a.record.TrustedUnlock == nil && a.record.Devices["automatic"].ID == "" {
 			return nil

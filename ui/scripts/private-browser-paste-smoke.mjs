@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createWorkbench } from "./workbench-fixture.mjs";
 import { startDisplay } from "./rfb-wire-fixture.mjs";
 
-const display = await startDisplay(process.env.CAGE_UI_URL || "http://127.0.0.1:5198", { sharedClipboard: true });
+const display = await startDisplay(process.env.EDEN_UI_URL || "http://127.0.0.1:5198", { sharedClipboard: true });
 const reads = [], prepared = [], cancelled = [], delivered = [];
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
 const { browser, page, state, errors } = await createWorkbench({
@@ -15,7 +15,7 @@ const { browser, page, state, errors } = await createWorkbench({
   },
   async beforeNavigate(page, state) {
     state.status.ready = state.status.vm_running = true;
-    state.status.guest_system = state.account.guest_system = "macos";
+    state.status.guest_system = state.account.guest_system = "debian-13";
     state.tabs = [
       { id: "input-one", kind: "web", title: "输入测试一", url: "https://one.example.test" },
       { id: "input-two", kind: "web", title: "输入测试二", url: "https://two.example.test" },
@@ -52,7 +52,7 @@ async function until(predicate) {
 try {
   await page.getByRole("button", { name: "打开浏览器", exact: true }).click();
   await page.getByText("正在连接画面", { exact: true }).waitFor({ state: "hidden" });
-  await page.waitForFunction(() => window.cageSharedClipboardActive === true);
+  await page.waitForFunction(() => window.edenSharedClipboardActive === true);
   const canvas = page.locator(".browser-lane .remote-canvas canvas");
   await canvas.click({ position: { x: 40, y: 40 } });
   display.stats.keys.length = 0;
@@ -69,7 +69,7 @@ try {
       if (String(args[0]).endsWith("/input/paste/start")) window.pasteIntent.push("prepare");
       return fetch(...args);
     };
-    const bridge = window.webkit.messageHandlers.cage, post = bridge.postMessage.bind(bridge);
+    const bridge = window.edenNativeBridge, post = bridge.postMessage.bind(bridge);
     bridge.postMessage = body => {
       if (body.action === "clipboardReadContent") window.pasteIntent.push("read");
       return post(body);
@@ -101,7 +101,7 @@ try {
   assert.equal(delivered.length, 1, "an old tab must reject the delayed PNG");
 
   await canvas.click({ position: { x: 50, y: 50 } });
-  assert.deepEqual(await page.evaluate(() => [window.cageEditAction("paste"), window.cageEditAction("paste")]), [true, true]);
+  assert.deepEqual(await page.evaluate(() => [window.edenEditAction("paste"), window.edenEditAction("paste")]), [true, true]);
   await until(() => reads.length === 4 && prepared.length === 4);
   reads[3]({ text: "second queued paste" });
   await page.waitForTimeout(80);
@@ -112,7 +112,7 @@ try {
   assert(delivered.slice(1).every(item => item.body.id === "input-two"));
 
   await page.evaluate(() => { window.pasteIntent.length = 0; });
-  await page.getByLabel("Cage 网页输入").evaluate((element, encoded) => {
+  await page.getByLabel("Eden 网页输入").evaluate((element, encoded) => {
     const data = new DataTransfer();
     data.items.add(new File([Uint8Array.from(atob(encoded), value => value.charCodeAt(0))], "screenshot.png", { type: "image/png" }));
     element.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data }));

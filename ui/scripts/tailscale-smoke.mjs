@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { createWorkbench } from "./workbench-fixture.mjs";
-const engine = process.env.CAGE_TEST_BROWSER || "chromium";
-const output = new URL(`../../docs/test-reports/2026-11-09-tailscale-redesign/${engine}/`, import.meta.url);
-await mkdir(output, { recursive: true });
+import { smokeCaptureDirectory } from "./smoke-captures.mjs";
+const engine = process.env.EDEN_TEST_BROWSER || "chromium";
+const output = await smokeCaptureDirectory("tailscale");
 let copied = "", fail = false, delayed = false, failKey = false, failService = false, failBrowser = true;
-let tail = { installed: true, version: "1.104.5", enabled: false, backend: "Stopped", ips: [], peers: [], keys: [], forwards: [], user: "cage", ssh_port: 22 };
+let tail = { installed: true, version: "1.104.5", enabled: false, backend: "Stopped", ips: [], peers: [], keys: [], forwards: [], user: "developer", ssh_port: 22 };
 const { browser, page, state, errors } = await createWorkbench({ beforeNavigate: (_page, fixture) => { fixture.status.ready = fixture.status.vm_running = true; }, nativeRequest: body => { if (body.action === "clipboardWrite") { copied = body.text; return true; } } });
 const checks = [];
 const open = page.getByRole("button", { name: "打开 Tailscale", exact: true });
@@ -39,15 +39,15 @@ try {
   assert.equal(await page.getByRole("dialog").count(), 0);
   assert.equal(await panel.locator("textarea").count(), 0);
   await panel.getByText("连接后查看你的设备", { exact: true }).waitFor();
-  await page.screenshot({ animations: "disabled", path: fileURLToPath(new URL("disconnected.png", output)) });
+  await page.screenshot({ animations: "disabled", path: join(output, "disconnected.png") });
   await panel.getByRole("button", { name: "连接并登录", exact: true }).click();
   await panel.getByRole("alert").filter({ hasText: "登录页面未能打开" }).waitFor();
   failBrowser = false;
   await panel.getByRole("button", { name: "打开登录页面", exact: true }).click();
   await panel.waitFor({ state: "hidden" });
   assert.ok(state.requests.some(r => r.path === "/browser/new" && r.body.url === "https://login.tailscale.com/a/fixture-login" && r.body.incognito === false));
-  checks.push("keyboard entry; enrollment precedes SSH; browser launch failure keeps login retry; official login opens in regular Cage browser");
-  const connected = { ...tail, enabled: true, backend: "Running", tailnet: "林间私网", account: "owner@example.invalid", name: "cage-workbench.test.ts.net", hostname: "cage-workbench", os: "macOS", auth_url: "", ips: ["100.88.2.3"], proxy_url: "http://cage:fixture-credential@127.0.0.1:32100", peers: [{ name: "offline-server.test.ts.net", hostname: "offline-server", os: "linux", ip: "100.88.2.5", online: false }, { name: "my-computer.test.ts.net", hostname: "my-computer", os: "macOS", ip: "100.88.2.4", online: true }] };
+  checks.push("keyboard entry; enrollment precedes SSH; browser launch failure keeps login retry; official login opens in regular Eden browser");
+  const connected = { ...tail, enabled: true, backend: "Running", tailnet: "林间私网", account: "owner@example.invalid", name: "workbench.test.ts.net", hostname: "workbench", os: "linux", auth_url: "", ips: ["100.88.2.3"], proxy_url: "http://workbench:fixture-credential@127.0.0.1:32100", peers: [{ name: "offline-server.test.ts.net", hostname: "offline-server", os: "linux", ip: "100.88.2.5", online: false }, { name: "my-computer.test.ts.net", hostname: "my-computer", os: "windows", ip: "100.88.2.4", online: true }] };
   tail = structuredClone(connected);
   await panel.getByText("已连接", { exact: true }).waitFor();
   await panel.getByText("林间私网", { exact: true }).waitFor();
@@ -56,14 +56,30 @@ try {
   await panel.getByLabel("搜索设备").fill("100.88.2.5"); assert.equal(await panel.locator(".tailscale-peer").count(), 1);
   await panel.getByLabel("搜索设备").fill("missing"); await panel.getByText("没有匹配的设备，请尝试其他名称或地址。", { exact: true }).waitFor();
   await panel.getByLabel("搜索设备").fill("");
-  await page.screenshot({ animations: "disabled", path: fileURLToPath(new URL("connected.png", output)) });
+  await page.screenshot({ animations: "disabled", path: join(output, "connected.png") });
   await panel.getByRole("button", { name: "复制地址", exact: true }).click(); assert.equal(copied, "100.88.2.3");
   await panel.getByRole("button", { name: "复制 my-computer 的地址", exact: true }).click(); assert.equal(copied, "100.88.2.4");
   checks.push("network/account/self identity; online-first device list; name and IP search with empty feedback; address copy");
   const peer = panel.locator(".tailscale-peer").first();
   await peer.getByRole("button", { name: "使用设备", exact: true }).focus(); await page.keyboard.press("Enter");
-  await peer.getByLabel("SSH 连接", { exact: true }).fill("local-user");
-  await peer.getByRole("button", { name: "复制 SSH 命令", exact: true }).click(); assert.equal(copied, "ssh -l 'local-user' 100.88.2.4");
+  const sshUser = peer.getByLabel("SSH 连接", { exact: true });
+  const copySSH = peer.getByRole("button", { name: "复制 SSH 命令", exact: true });
+  for (const [user, command] of [
+    ["local-user", "ssh -l 'local-user' 100.88.2.4"],
+    ["DOMAIN\\CaseUser", "ssh -l 'DOMAIN\\CaseUser' 100.88.2.4"],
+    ["DOMAIN\\林 间", "ssh -l 'DOMAIN\\林 间' 100.88.2.4"],
+    ["O'Brien", "ssh -l 'O'\\''Brien' 100.88.2.4"],
+    ["user$(printf injected);*", "ssh -l 'user$(printf injected);*' 100.88.2.4"],
+  ]) {
+    await sshUser.fill(user);
+    assert.equal(await copySSH.isEnabled(), true, `valid remote username rejected: ${user}`);
+    await copySSH.click(); assert.equal(copied, command);
+  }
+  for (const user of ["", "   ", "bad\u007fuser"]) {
+    await sshUser.fill(user); assert.equal(await copySSH.isDisabled(), true);
+  }
+  await sshUser.fill("DOMAIN\\林 间");
+  await page.screenshot({ animations: "disabled", path: join(output, "ssh-identity.png") });
   await peer.getByLabel("服务端口", { exact: true }).fill("8080");
   failService = true;
   await peer.getByRole("button", { name: "创建连接地址", exact: true }).click(); await panel.getByRole("alert").waitFor();
@@ -79,14 +95,14 @@ try {
   await panel.getByRole("button", { name: "应用访问私网", exact: true }).click();
   await panel.getByRole("button", { name: "复制私网代理地址", exact: true }).click(); assert.equal(copied, tail.proxy_url);
   assert.equal(await panel.getByText(tail.proxy_url, { exact: true }).count(), 0);
-  await panel.getByRole("button", { name: "从其他设备 SSH 到 Cage", exact: true }).focus(); await page.keyboard.press("Enter");
-  await panel.getByRole("button", { name: "复制连接 Cage 命令" }).click(); assert.equal(copied, "ssh cage@100.88.2.3");
+  await panel.getByRole("button", { name: "从其他设备 SSH 到 Eden", exact: true }).focus(); await page.keyboard.press("Enter");
+  await panel.getByRole("button", { name: "复制连接 Eden 命令" }).click(); assert.equal(copied, "ssh developer@100.88.2.3");
   await panel.getByLabel("连接设备的 SSH 公钥", { exact: true }).fill("ssh-ed25519 AAAAFixture local");
   failKey = true; await panel.getByRole("button", { name: "添加公钥", exact: true }).click(); await panel.getByRole("alert").waitFor();
   assert.equal(await panel.getByLabel("连接设备的 SSH 公钥").inputValue(), "ssh-ed25519 AAAAFixture local");
   failKey = false; await panel.getByRole("button", { name: "添加公钥", exact: true }).click(); await panel.locator(".tailscale-key").waitFor();
   await page.reload(); await open.click(); await panel.getByText("已连接", { exact: true }).waitFor();
-  await panel.getByRole("button", { name: "从其他设备 SSH 到 Cage", exact: true }).click();
+  await panel.getByRole("button", { name: "从其他设备 SSH 到 Eden", exact: true }).click();
   await panel.locator(".tailscale-key").waitFor();
   await panel.getByRole("button", { name: "移除 SSH 公钥" }).click(); await panel.locator(".tailscale-key").waitFor({ state: "hidden" });
   checks.push("application proxy credential copied without rendering; SSH opt-in keyboard disclosure; failed key keeps input; saved key survives refresh and can be revoked");
@@ -109,16 +125,16 @@ try {
   fail = true; await refresh(); await panel.getByRole("alert").waitFor(); fail = false; await refresh(); await panel.getByRole("alert").waitFor({ state: "hidden" });
   tail = structuredClone(connected); await refresh();
   await page.setViewportSize({ width: 820, height: 600 });
-  await page.screenshot({ animations: "disabled", path: fileURLToPath(new URL("compact.png", output)) });
+  await page.screenshot({ animations: "disabled", path: join(output, "compact.png") });
   assert.ok(await panel.evaluate(node => node.scrollWidth <= node.clientWidth + 1));
   await page.setViewportSize({ width: 520, height: 700 });
   await open.click();
   await panel.getByRole("button", { name: "展开侧栏" }).waitFor();
   await panel.locator(".tailscale-peer").first().getByRole("button", { name: "使用设备", exact: true }).click();
-  await page.screenshot({ animations: "disabled", path: fileURLToPath(new URL("narrow.png", output)) });
+  await page.screenshot({ animations: "disabled", path: join(output, "narrow.png") });
   assert.ok(await panel.evaluate(node => node.scrollWidth <= node.clientWidth + 1));
   assert.deepEqual(errors, []);
   checks.push("connected empty list guides adding device; API error refresh recovery; compact and narrow layouts have no horizontal overflow; no browser exceptions");
-  await writeFile(new URL("result.json", output), JSON.stringify({ engine, checks, errors }, null, 2));
+  await writeFile(join(output, "result.json"), JSON.stringify({ engine, checks, errors }, null, 2));
   console.log(JSON.stringify({ engine, checks, errors }, null, 2));
 } finally { await browser.close(); }

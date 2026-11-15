@@ -20,7 +20,6 @@ import (
 	"unicode"
 
 	"github.com/lima-vm/sshocker/pkg/reversesshfs"
-	"github.com/sylvinus/agent-vm/internal/desktop"
 )
 
 // FileName is the list's file in agent-vm's state folder: one path a line,
@@ -125,8 +124,8 @@ type Guard struct {
 	// compared as sshocker folds read-only names (case, normalization, ignorable
 	// characters): each with why it matters ("" for one the user added).
 	Paths map[string]string
-	// Ask shows the question and returns the answer (desktop.Ask). ok false
-	// when no one could be asked.
+	// Ask returns an explicitly supplied answer. ok is false when no one
+	// could be asked; the default host policy refuses without interaction.
 	Ask func(ctx context.Context, title, msg string) (allow, ok bool)
 	// Tell says something without waiting (a refusal no one was asked).
 	Tell func(title, msg string)
@@ -153,7 +152,8 @@ type rule struct {
 
 // Load is the guard of the VM vm: Defaults and the user's list.
 func Load(stateDir, vm string) (*Guard, error) {
-	g := &Guard{VM: vm, Paths: map[string]string{}, Ask: desktop.Ask, Tell: desktop.Notify}
+	g := &Guard{VM: vm, Paths: map[string]string{},
+		Ask: func(context.Context, string, string) (bool, bool) { return false, false }}
 	// No one to ask (a server, CI): refused without a dialog.
 	if os.Getenv("AGENT_VM_GUARDED_WRITES") == "deny" {
 		g.Ask = func(context.Context, string, string) (bool, bool) { return false, true }

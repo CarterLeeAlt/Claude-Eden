@@ -16,13 +16,12 @@ import {
   X,
 } from "lucide-react";
 import { api, normalizeURL, native, nativeAvailable } from "./api";
-import { clientKeyboard, clientStorageKey, getClientContext, isRemoteClient, runtimeURL, runtimeSocketURL } from "./client-context.mjs";
+import { getClientContext, runtimeURL, runtimeSocketURL } from "./client-context.mjs";
 import { shareClipboard } from "./shared-clipboard.mjs";
 import { RemoteView, TerminalView, Modal } from "./views";
 import { usePasswordVault } from "./password-vault";
 import { SettingsPanel } from "./settings";
 import { SetupProgress } from "./setup-progress";
-import { GuestSystemPicker, validGuestChoice } from "./guest-system-picker";
 import { AppearanceProvider } from "./appearance";
 import { EnvironmentShield } from "./environment-shield";
 import { TailscalePanel } from "./tailscale";
@@ -30,8 +29,6 @@ import { WorkspaceSidebar } from "./workspace-sidebar";
 import { useCLISessions, sessionsChanged } from "./cli-sessions";
 import { TerminalMenu } from "./terminal-menu";
 import { InitializationGate } from "./initialization";
-import { MacOSLogin } from "./macos-login";
-import { MacOSAppWindow } from "./macos-claude-window";
 import { ProjectRecovery } from "./project-recovery";
 import { ClaudeDesktop } from "./claude-desktop";
 import { ClaudeAccountsPanel, useClaudeAccounts } from "./claude-accounts";
@@ -67,8 +64,8 @@ function App() {
   const [, refreshClientPreferences] = useState(0);
   useEffect(() => {
     const refresh = () => refreshClientPreferences((value) => value + 1);
-    window.addEventListener("cage-client-preferences", refresh);
-    return () => window.removeEventListener("cage-client-preferences", refresh);
+    window.addEventListener("eden-client-preferences", refresh);
+    return () => window.removeEventListener("eden-client-preferences", refresh);
   }, []);
   const claudeProfiles = useClaudeAccounts();
   const [managementPage, setManagementPage] = useState("");
@@ -93,22 +90,21 @@ function App() {
     [settings, setSettings] = useState(null),
     [proxy, setProxy] = useState(null),
     [tabs, setTabs] = useState([]),
-    [layout, setLayout] = useState(() => ({ active: localStorage.getItem(clientStorageKey("cage-active")) || "" })),
+    [layout, setLayout] = useState(() => ({ active: localStorage.getItem("eden-active") || "" })),
     [browser, setBrowser] = useState({ tabs: [] }),
     [browserSettingsRevision, setBrowserSettingsRevision] = useState(0),
     [settingsOpen, setSettingsOpen] = useState(false),
-    [guestSystem, setGuestSystem] = useState(undefined),
     [startRequest, setStartRequest] = useState(null),
     [settingsSection, setSettingsSection] = useState("keyboard"),
     [home, setHome] = useState(true),
     [sidebarCollapsed, setSidebarCollapsed] = useState(
-      readLocal(clientStorageKey("cage-sidebar-collapsed"), false),
+      readLocal("eden-sidebar-collapsed", false),
     ),
     [browserTabLayout, setBrowserTabLayout] = useState(
-      readLocal(clientStorageKey("cage-browser-tab-layout"), "horizontal"),
+      readLocal("eden-browser-tab-layout", "horizontal"),
     ),
     [selectedProject, setSelectedProject] = useState(""),
-    [savedTabs, setSavedTabs] = useState(readLocal(clientStorageKey("cage-tab-layout"), {})),
+    [savedTabs, setSavedTabs] = useState(readLocal("eden-tab-layout", {})),
     [privateTabMetadata, setPrivateTabMetadata] = useState({}),
     [projectDialog, setProjectDialog] = useState(null),
     [rename, setRename] = useState(null),
@@ -123,13 +119,10 @@ function App() {
     [safetyOpen, setSafetyOpen] = useState(false),
     [quitting, setQuitting] = useState(null);
   // Keep feedback continuous until polling observes the accepted start job.
-  const clientStatus = serverStatus && { ...serverStatus, keyboard: clientKeyboard(serverStatus.keyboard) };
+  const clientStatus = serverStatus;
   const status = clientStatus && startRequest
-    ? { ...clientStatus, job: { running: true, kind: "start", message: "正在启动 Cage 环境…" } }
+    ? { ...clientStatus, job: { running: true, kind: "start", message: "正在启动 Eden 环境…" } }
     : clientStatus;
-  const system = status?.guest_system || account?.guest_system;
-  const macGuest = system === "macos";
-  const nativeGuestLabel = {macos: "macOS", "windows-11": "Windows"}[system];
   const { active } = layout;
   const setActive = id => setLayout(previous => focusTab(previous, id));
   const workspaceBox = useRef(null);
@@ -168,7 +161,7 @@ function App() {
   const panes = !split ? [current].filter(Boolean)
     : layout.side === "left" ? [current, other] : [other, current];
   const webPanes = panes.filter(tab => tab.kind !== "terminal");
-  const passwordVault = usePasswordVault(Boolean(status?.ready && !macGuest), browser.active);
+  const passwordVault = usePasswordVault(Boolean(status?.ready), browser.active);
   const dualBrowser = split && webPanes.length === 2;
   const leftId = dualBrowser ? panes[0].id : "";
   const rightId = dualBrowser ? panes[1].id : "";
@@ -267,7 +260,7 @@ function App() {
   const workspace = groups.find(group => group.folders.includes(selectedWorkspace))?.workspace || selectedWorkspace;
   const contentWorkspace =
     terminal && !showHome ? current.workspace : workspace;
-  const setupProxy = !nativeGuestLabel && needsProxySetup(settings, status, proxy);
+  const setupProxy = needsProxySetup(settings, status, proxy);
   const network = connectionError
     ? { mode: "unknown", label: "外网状态待确认" }
     : networkState(status);
@@ -290,8 +283,7 @@ function App() {
           : "已停止";
   const notify = (text) => setToast(text);
   // A Linux environment keeps what it learned about project files for a while.
-  const projectFilesCached = settings?.project_file_cache === true &&
-    !/^(windows|macos)/.test(account?.guest_system || status?.guest_system || "");
+  const projectFilesCached = settings?.project_file_cache === true;
   const refreshProjectFiles = async () => {
     setProjectRefreshing(true);
     try {
@@ -309,10 +301,10 @@ function App() {
     const clipboard = shareClipboard({
       connect: () => new WebSocket(runtimeSocketURL("/clipboard")), native,
       onStatus: setToast,
-      setActive: active => { window.cageSharedClipboardActive = active; },
+      setActive: active => { window.edenSharedClipboardActive = active; },
     });
-    window.cageSyncClipboard = () => clipboard.sync();
-    return () => { clipboard.dispose(); delete window.cageSyncClipboard; };
+    window.edenSyncClipboard = () => clipboard.sync();
+    return () => { clipboard.dispose(); delete window.edenSyncClipboard; };
   }, [status?.ready, clipboardConnection]);
   const desktopFiles = useDesktopFiles(Boolean(status?.ready), notify, desktopOpen && !settingsOpen && !storageRecovery && windowVisible);
   const downloads = [...(browser.downloads || []), ...desktopFiles.downloads];
@@ -340,7 +332,7 @@ function App() {
     setHome(false);
     if (tab?.kind === "browser-settings") setLayout({ active: id });
     else setActive(id);
-    if (!tab?.incognito) localStorage.setItem(clientStorageKey("cage-active"), id);
+    if (!tab?.incognito) localStorage.setItem("eden-active", id);
     if (tab?.kind === "terminal") setSelectedProject(tab.workspace);
     if (tab && tab.kind !== "terminal") {
       try {
@@ -571,7 +563,6 @@ function App() {
     }
   };
   const closeTab = async (tab, anchor) => {
-    if (macGuest && tab.native_window) { closeBrowser(); return; }
     if (tab.cli_session_id) return archiveSession({id:tab.cli_session_id, title:tab.title}, anchor);
     if (tab.kind === "terminal") {
       if (
@@ -628,7 +619,7 @@ function App() {
   };
   const navigate = async (id, address) => {
     try {
-      const internal = /^cage:\/\/settings(?:#(general|appearance|privacy|extensions|about))?\/?$/.exec(address.trim());
+      const internal = /^workbench:\/\/settings(?:#(general|appearance|privacy|extensions|about))?\/?$/.exec(address.trim());
       if (internal) { await openBrowserSettings(internal[1] || "general"); return; }
       const url = normalizeURL(address);
       if (network.mode !== "open" && !isGuestLocalURL(url)) {
@@ -698,10 +689,6 @@ function App() {
         ) {
           lastJob.current = next.job.id;
           await refreshSettings();
-          if (next.job.kind === "guest-install" && !next.job.error) {
-            const install = await api("/environment/guest-systems");
-            if (live && install.activate) setGuestSystem(previous => ({ ...previous, activate:true }));
-          }
           if (next.job.error) notify(next.job.error);
         }
         if (next.ready) {
@@ -713,14 +700,14 @@ function App() {
               if (live) setBrowserError("");
               return result;
             }).catch(error => {
-              if (live) setBrowserError(next.guest_system === "macos" ? "请在环境设置中同步 macOS 组件，并确认已登录客机图形账户。" : error.message);
+              if (live) setBrowserError(error.message);
               return null;
             }) : null,
             api("/terminals"),
           ]);
           if (!live) return;
           const b = browserResult || browserSnapshot.current;
-          const legacyMetadata = readLocal(clientStorageKey("cage-tab-layout"), {})[next.environment_identity_directory || next.environment_directory || next.workspace] || {};
+          const legacyMetadata = readLocal("eden-tab-layout", {})[next.environment_identity_directory || next.environment_directory || next.workspace] || {};
           for (const item of t) {
             const saved = legacyMetadata["terminal:" + item.id];
             if (!item.cli_session_id || item.metadata_set || !saved || (!saved.title && !saved.pinned)) continue;
@@ -791,7 +778,7 @@ function App() {
           history.replaceState(null, "", location.pathname);
         }
         const config = await api("/settings");
-        window.dispatchEvent(new Event("cage-session-ready"));
+        window.dispatchEvent(new Event("eden-session-ready"));
         if (!live) return;
         setSettings(config);
         try {
@@ -886,8 +873,8 @@ function App() {
     document.title =
       (current?.title && current.title !== "新标签页"
         ? current.title + " · "
-        : "") + "Cage";
-    if (active && !current?.incognito) localStorage.setItem(clientStorageKey("cage-active"), active);
+        : "") + "Claude Eden";
+    if (active && !current?.incognito) localStorage.setItem("eden-active", active);
   }, [current?.url, current?.title, current?.incognito, active]);
   useEffect(() => {
     if (!toast) return;
@@ -925,20 +912,20 @@ function App() {
     const close = () => {
       if (!document.querySelector('[role="dialog"], .settings-page')) setManagementPage("");
     };
-    document.addEventListener("cage-close-modal", close);
-    return () => document.removeEventListener("cage-close-modal", close);
+    document.addEventListener("eden-close-modal", close);
+    return () => document.removeEventListener("eden-close-modal", close);
   }, [managementPage]);
   useEffect(() => {
     const key = (event) => {
       // Workbench shortcuts can stop the event before remote input sees it.
-      window.dispatchEvent(new Event("cage-input-interrupted"));
+      window.dispatchEvent(new Event("eden-input-interrupted"));
       if (document.querySelector("[data-environment-dialog]") || !primaryModifier(event)) return;
       const k = event.key.toLowerCase();
       if (document.querySelector("[data-browser-dialog], .mac-login-fullscreen")) {
         if (k === "w") {
           event.preventDefault();
           event.stopImmediatePropagation();
-          document.dispatchEvent(new Event("cage-close-modal"));
+          document.dispatchEvent(new Event("eden-close-modal"));
         }
         return;
       }
@@ -969,18 +956,17 @@ function App() {
         if (k === "w") {
           event.preventDefault();
           event.stopImmediatePropagation();
-          document.dispatchEvent(new Event("cage-close-modal"));
+          document.dispatchEvent(new Event("eden-close-modal"));
         }
         return;
       }
       // The guest owns Chrome's address bar, tabs and browser shortcuts.
-      if (macGuest && !showHome && !desktopOpen && !terminal && event.target.closest?.(".mac-claude-frame")) return;
       let handle;
       if (k === "o") {
         event.preventDefault();
         event.stopImmediatePropagation();
         if (event.shiftKey) {
-          document.dispatchEvent(new Event("cage-show-favorites"));
+          document.dispatchEvent(new Event("eden-show-favorites"));
           return;
         }
         if (!busy && running) setProjectDialog({ path: "" });
@@ -988,7 +974,7 @@ function App() {
       }
       if (k === "t" && !event.shiftKey) handle = newPage;
       if (k === "n" && event.shiftKey) handle = () => openBrowserPage(undefined, true);
-      if (k === "d") handle = () => document.dispatchEvent(new Event("cage-add-favorite"));
+      if (k === "d") handle = () => document.dispatchEvent(new Event("eden-add-favorite"));
       if (k === "enter" && event.shiftKey) handle = newTerminalHere;
       if (k === "l")
         handle = () => {
@@ -1023,7 +1009,7 @@ function App() {
       }
     };
     window.addEventListener("keydown", key, true);
-    window.cageEditAction = (command) => {
+    window.edenEditAction = (command) => {
       if (document.querySelector(".mac-login-fullscreen")) return false;
       if (
         settingsOpen ||
@@ -1042,14 +1028,14 @@ function App() {
         return terminalControls.current.get(current.id)?.edit(command) || false;
       return remote.current?.edit(command) || false;
     };
-    window.cageWorkbenchAction = async (command) => {
-      window.dispatchEvent(new Event("cage-input-interrupted"));
+    window.edenWorkbenchAction = async (command) => {
+      window.dispatchEvent(new Event("eden-input-interrupted"));
       if (document.querySelector(".mac-login-fullscreen")) {
-        if (command === "closeTab" || command === "quit") document.dispatchEvent(new Event("cage-close-modal"));
+        if (command === "closeTab" || command === "quit") document.dispatchEvent(new Event("eden-close-modal"));
         if (command !== "quit") return;
       }
       if (document.querySelector("[data-environment-dialog]")) {
-        if (command === "closeTab") document.dispatchEvent(new Event("cage-close-modal"));
+        if (command === "closeTab") document.dispatchEvent(new Event("eden-close-modal"));
         return;
       }
       if (command === "settings") {
@@ -1083,7 +1069,7 @@ function App() {
         await newTerminalHere();
       if (command === "closeTab") {
         if (document.querySelector("[data-browser-dialog], .mac-login-fullscreen")) {
-          document.dispatchEvent(new Event("cage-close-modal"));
+          document.dispatchEvent(new Event("eden-close-modal"));
           return;
         }
         if (dialog) {
@@ -1098,24 +1084,19 @@ function App() {
           terminalChoice ||
           rename
         )
-          document.dispatchEvent(new Event("cage-close-modal"));
+          document.dispatchEvent(new Event("eden-close-modal"));
         else if (desktopOpen) setDesktopOpen(false);
-        else if (macGuest && current && !terminal && !showHome) remote.current?.closeNativeTab?.();
         else if (current) await closeTab(current);
       }
       if (command === "quit") {
         if (quitAfterStop.current) return;
-        if (isRemoteClient()) {
-          await native("quitNow");
-          return;
-        }
         if (status && !connectionError && !status.vm_running && !busy) {
           await native("quitNow");
           return;
         }
         if (connectionError || fatal) {
           setDialog({
-            title: "退出 Cage",
+            title: "退出 Eden",
             body: "工作台连接已中断，暂时无法确认环境状态。仍在运行的后台任务会继续。",
             confirm: "仅退出桌面应用",
             resolve: (confirmed) => confirmed && native("quitNow"),
@@ -1123,7 +1104,7 @@ function App() {
           return;
         }
         setDialog({
-          title: "退出 Cage",
+          title: "退出 Eden",
           body: "退出前请保存文件和设置。可以保留环境，让后台任务继续运行；下次打开会重新连接。",
           confirm: "停止环境并退出",
           secondary: "保留运行并退出",
@@ -1139,8 +1120,8 @@ function App() {
     };
     return () => {
       window.removeEventListener("keydown", key, true);
-      delete window.cageWorkbenchAction;
-      delete window.cageEditAction;
+      delete window.edenWorkbenchAction;
+      delete window.edenEditAction;
     };
   }, [
     status,
@@ -1161,7 +1142,6 @@ function App() {
     showHome,
     savedTabs,
     selectedProject,
-    macGuest,
     desktopOpen,
     terminalChoice,
   ]);
@@ -1209,7 +1189,7 @@ function App() {
   };
   const persist = (key, value, setter) => {
     try {
-      localStorage.setItem(clientStorageKey(key), JSON.stringify(value));
+      localStorage.setItem(key, JSON.stringify(value));
       setter(value);
     } catch {
       notify("未能保存界面偏好，请检查本地存储空间。");
@@ -1225,7 +1205,7 @@ function App() {
       ...(next.order ? { order: next.order } : {}),
     } }));
     persist(
-      "cage-tab-layout",
+      "eden-tab-layout",
       { ...savedTabs, [tabLayoutKey]: persistent },
       setSavedTabs,
     );
@@ -1268,7 +1248,7 @@ function App() {
     resolve(value);
   };
   const sidebarButton = side => sidebarCollapsed && side !== "right" &&
-    <ExpandSidebar onClick={() => persist("cage-sidebar-collapsed", false, setSidebarCollapsed)} />;
+    <ExpandSidebar onClick={() => persist("eden-sidebar-collapsed", false, setSidebarCollapsed)} />;
   const expandButton = tab => split && tab && <ExpandPane onClick={() => {
     setLayout({ active: tab.id });
     void select(tab.id);
@@ -1350,7 +1330,7 @@ function App() {
           footer={
             <>
               <button onClick={cancelAutomaticExit}>
-                {quitting.error ? "留在 Cage" : "取消自动退出"}
+                {quitting.error ? "留在 Eden" : "取消自动退出"}
               </button>
               {quitting.error && (
                 <button className="primary" onClick={stopAndQuit}>
@@ -1368,7 +1348,7 @@ function App() {
               {quitting.error ||
                 (connectionError
                   ? "正在恢复工作台连接，恢复后会继续确认停止结果。"
-                  : "停止完成后 Cage 会自动退出。取消自动退出只保留窗口，环境仍会停止。")}
+                  : "停止完成后 Eden 会自动退出。取消自动退出只保留窗口，环境仍会停止。")}
             </p>
             {!quitting.error && (
               <p>
@@ -1388,10 +1368,10 @@ function App() {
       <>
         <div className="boot-screen">
           <Shield size={36} />
-          <h1>连接 Cage 工作台</h1>
+          <h1>连接 Eden 工作台</h1>
           <p>{fatal}</p>
           <p className="muted">
-            请从 Cage 应用打开，或在终端运行 <code>cage desktop</code>。
+            请从 Eden 应用打开，或在终端运行 <code>eden desktop</code>。
           </p>
           <button
             className="primary"
@@ -1410,7 +1390,7 @@ function App() {
       <>
         <div className="boot-screen">
           <div className="brand-mark">C</div>
-          <h1>Cage</h1>
+          <h1>Claude Eden</h1>
           <p>
             <LoaderCircle size={16} className="spin" />
             正在连接工作区…
@@ -1433,7 +1413,7 @@ function App() {
             tailscaleOpen={managementPage === "tailscale"}
             updateAction={<AppUpdateButton updates={appUpdates} />}
             workspace={selectedProject || status.workspace}
-            guestSystem={account?.guest_system || status.guest_system || guestSystem?.guest_system || "debian-13"}
+            guestSystem="debian-13"
             projects={projects}
             projectGroups={groups}
             tabs={displayTabs}
@@ -1485,7 +1465,7 @@ function App() {
             onAccountStatus={notify}
             onSafety={() => setSafetyOpen(true)}
             onCollapse={() =>
-              persist("cage-sidebar-collapsed", true, setSidebarCollapsed)
+              persist("eden-sidebar-collapsed", true, setSidebarCollapsed)
             }
           />
         )}
@@ -1522,9 +1502,7 @@ function App() {
                     return Boolean(tab?.id);
                   }}
                   onConfirm={confirm} onInstall={async () => {
-                    const nativeGuest = ["macos", "windows-11"].includes(status.guest_system);
-                    if (nativeGuest && !await confirm({ title: "更新环境组件？", body: "更新会重新连接浏览器和显示组件，请先保存工作。设备身份、公钥和个人数据保留。", confirm: "更新组件" })) return;
-                    await action(nativeGuest ? "/environment/update" : "/tailscale/install", {});
+                    await action("/tailscale/install", {});
                   }} /> : <ClaudeAccountsPanel store={claudeProfiles} tabs={tabs} onConfirm={confirm}
                   running={status.vm_running} environmentBusy={busy || storageRecovery}
                   login={(id) => createTerminal(workspace, "claude-login", id)} />}
@@ -1534,17 +1512,14 @@ function App() {
           <main className={`workspace ${split ? "workspace-split" : ""}`} ref={workspaceBox} hidden={Boolean(managementPage)}
             style={{ "--split-left": `${100 * (dualBrowser && nativeSplit?.fraction || 0.5)}%` }}>
             {dropSide && <div aria-hidden="true" className={`split-drop split-${dropSide}`}>{dropSide === "left" ? "放到左侧" : "放到右侧"}</div>}
-            {!storageRecovery && desktopOpen && macGuest && <MacOSAppWindow key="claude-desktop" uploads={desktopFiles.uploads} keyboard={status.keyboard} remoteRef={remote}
-              onStatus={notify} onFallback={(text, message) => setTransfer({ text, message })} visible={!settingsOpen && !managementPage} onConfirm={confirm}
-              sidebarCollapsed={sidebarCollapsed} onExpand={() => persist("cage-sidebar-collapsed", false, setSidebarCollapsed)} />}
-            {!storageRecovery && desktopOpen && !macGuest && <ClaudeDesktop
+            {!storageRecovery && desktopOpen && <ClaudeDesktop
               uploads={desktopFiles.uploads}
               onProjectOpened={() => refreshStatus.current?.()}
               status={status} visible={!settingsOpen && !managementPage} remoteRef={remote}
               onStatus={notify} onFallback={(text, message) => setTransfer({ text, message })}
               onConfirm={confirm} onDetails={() => setDetails(true)}
               sidebarCollapsed={sidebarCollapsed}
-              onExpand={() => persist("cage-sidebar-collapsed", false, setSidebarCollapsed)}
+              onExpand={() => persist("eden-sidebar-collapsed", false, setSidebarCollapsed)}
             />}
             {status.environment_update_required && !busy && (
               <div className="environment-update-banner" role="status">
@@ -1554,15 +1529,7 @@ function App() {
             )}
             {!storageRecovery && (status.vm_running || terminal) && (
               <>
-                {macGuest && !desktopOpen && !showHome && webPanes.length > 0 && (
-                  <section className={`pane-lane browser-lane split-${paneSide(webPanes[0].id)}`}>
-                    {status.ready && <MacOSAppWindow key="chrome" browser onOpenPage={openBrowserPage} visible={!settingsOpen} uploads={desktopFiles.uploads}
-                      keyboard={status.keyboard} remoteRef={remote} onStatus={notify}
-                      sidebarCollapsed={sidebarCollapsed} onExpand={() => persist("cage-sidebar-collapsed", false, setSidebarCollapsed)}
-                      onFallback={(text, message) => setTransfer({ text, message })} />}
-                  </section>
-                )}
-                {!macGuest && !desktopOpen && !showHome && webPanes.length > 0 && (
+                {!desktopOpen && !showHome && webPanes.length > 0 && (
                   <section className={`pane-lane browser-lane ${browserTabLayout === "vertical" ? "vertical-browser" : ""} ${dualBrowser ? "" : "split-" + paneSide(webPanes[0].id)}`}>
                     {browserTabLayout === "vertical" && <BrowserTabRail tabs={browserTabs} metadata={metadata}
                       active={liveBrowser?.id} ready={status.ready} busy={busy} splitDrag={splitDrag}
@@ -1580,14 +1547,14 @@ function App() {
                       {status.ready && liveBrowser?.kind === "browser-settings" && <BrowserSettingsPage
                         key={`${liveBrowser.id}:${browserSettingsRevision}`} tab={liveBrowser} tabs={tabs}
                         currentHome={settings.browser_home_url} layout={browserTabLayout}
-                        onLayoutChange={value => persist("cage-browser-tab-layout", value, setBrowserTabLayout)}
+                        onLayoutChange={value => persist("eden-browser-tab-layout", value, setBrowserTabLayout)}
                         onSectionChange={openBrowserSettings}
                         onSaved={next => setSettings(previous => ({ ...previous, ...next }))}
                         onInternal={openInternalPage} onOpenPage={openSettingsPageResult} onConfirm={confirm} />}
                       {status.ready && <RemoteView ref={remote} visible={Boolean(liveBrowserVisible && !settingsOpen && liveBrowser?.kind !== "browser-settings")}
                         copyScope={webPanes.map(tab => `${tab.id}:${tab.document || ""}`).join("|")}
                         focused={dualBrowser || liveBrowser?.id === active} keyboard={status.keyboard}
-                        guestPlatform={status.guest_system} systemClipboard={browser.capabilities?.systemClipboard !== false}
+                        systemClipboard={browser.capabilities?.systemClipboard !== false}
                         tabId={liveBrowser?.id} onStatus={notify}
                         onFallback={(text, message) => setTransfer({ text, message })} />}
                       {!status.ready && <div className="view-overlay">
@@ -1627,33 +1594,33 @@ function App() {
             {showHome && (
               <div className="welcome">
                 <div className="welcome-content">
-                  <img className="welcome-logo" src={logo} alt="Cage" />
+                  <img className="welcome-logo" src={logo} alt="Claude Eden" />
                   {storageRecovery ? <>
                     <h1>环境存储需要恢复</h1>
                     <p className="welcome-subtitle"><SafetyMessage message={status.storage_recovery.error} /></p>
                     <p className="field-help">在设置中恢复环境存储后，再启动浏览器和终端。诊断包可以从同一页面导出。</p>
                     <button className="primary" onClick={() => openSettings("project")}>恢复环境存储</button>
                   </> : setupProgress ? <>
-                    <h1>{status.job.error ? "环境安装未完成" : "正在安装 Cage 环境"}</h1>
+                    <h1>{status.job.error ? "环境安装未完成" : "正在安装 Eden 环境"}</h1>
                     <SetupProgress job={status.job} onDetails={() => setDetails(true)}
-                      onStop={stop} onRetry={() => startEnvironment(status.job.kind === "guest-install" ? { guest_system: status.job.setup_progress.system } : {})} disconnected={Boolean(connectionError)} />
+                      onStop={stop} onRetry={() => startEnvironment({ guest_system: "debian-13" })} disconnected={Boolean(connectionError)} />
                   </> : <>
                   <h1>
                     {busy
                       ? status.job.kind === "stop"
-                        ? "正在停止 Cage 环境"
+                        ? "正在停止 Eden 环境"
                         : status.job.kind === "storage"
                           ? "正在调整环境存储"
                         : status.job.kind === "project"
                           ? "正在打开项目"
-                          : "正在准备 Cage 环境"
+                          : "正在准备 Eden 环境"
                       : running
                         ? !status.ready
-                          ? "Cage 环境正在连接"
-                          : "Cage 环境已就绪"
+                          ? "Eden 环境正在连接"
+                          : "Eden 环境已就绪"
                         : setupProxy
                           ? "为 Claude 准备独立工作区"
-                          : "先启动 Cage 环境"}
+                          : "先启动 Eden 环境"}
                   </h1>
                   <p className="welcome-subtitle">
                     <SafetyMessage message={busy
@@ -1668,8 +1635,8 @@ function App() {
                           ? "先连接你的代理，再启动浏览器、终端和编辑器。无需安装额外的代理软件。"
                           : "准备独立的浏览器和终端，完成网络检查后开始工作。"} />
                   </p>
-                  {!running && !nativeGuestLabel && (
-                    <ol className="onboarding-steps" aria-label="开始使用 Cage">
+                  {!running && (
+                    <ol className="onboarding-steps" aria-label="开始使用 Eden">
                       {["配置代理", "启动环境", "开始工作"].map(
                         (label, index) => (
                           <li
@@ -1694,18 +1661,17 @@ function App() {
                         size={24}
                       />
                       <span>
-                        <strong>Cage 隔离环境</strong>
+                        <strong>Eden 隔离环境</strong>
                         <small>
                           {running
                             ? runtimeLabel
                             : setupProxy
                               ? "自备代理订阅、YAML 配置或节点"
-                              : nativeGuestLabel ? `${nativeGuestLabel} 客机已安装` : "代理已配置，首次启动会下载开发环境"}
+                              : "代理已配置，首次启动会下载开发环境"}
                         </small>
                       </span>
                     </div>
-                    {!busy && !running && !account?.guest_system && status.local_vm_storage && !isRemoteClient() && <GuestSystemPicker system={guestSystem} onChange={setGuestSystem} />}
-                    {!running && !nativeGuestLabel && status.local_vm_storage && !isRemoteClient() && <button className="storage-entry text-button" disabled={busy} onClick={() => openSettings("project")}>选择环境存储位置</button>}
+                    {!running && status.local_vm_storage && <button className="storage-entry text-button" disabled={busy} onClick={() => openSettings("project")}>选择环境存储位置</button>}
                     <div className="start-project-footer">
                       <span>
                         <i className={`status-dot ${network.mode}`} />
@@ -1720,18 +1686,11 @@ function App() {
                       <button
                         className="primary"
                         data-terminal-location="start"
-                        disabled={busy || Boolean(connectionError) || (!running && !setupProxy &&
-                          ((!account?.guest_system && status.local_vm_storage && !isRemoteClient() && guestSystem === undefined) || !validGuestChoice(guestSystem)))}
+                        disabled={busy || Boolean(connectionError)}
                         onClick={(event) => {
-                          if (!running && guestSystem?.activate) {
-                            api("/environment/guest-systems/activate", {}).then(() => native("reconnect")).catch((e) => setToast(e.message));
-                          } else if (!running && setupProxy) openSettings("network");
+                          if (!running && setupProxy) openSettings("network");
                           else if (!running || !status.ready)
-                            startEnvironment(!running && guestSystem?.guest_system === "debian-13" && !guestSystem.clone ? { guest_system: "debian-13" } : !running && guestSystem ? {
-                              guest_system: guestSystem.guest_system, media: guestSystem.media, sha256: guestSystem.sha256,
-                              clone_key: guestSystem.clone_key,
-                              editor_terms: guestSystem.editor_terms,
-                            } : {});
+                            startEnvironment({ guest_system: "debian-13" });
                           else if (!workspace)
                             setProjectDialog({ path: "" });
                           else newTerminal(workspace, event.currentTarget);
@@ -1755,8 +1714,7 @@ function App() {
                           : !running
                             ? setupProxy
                               ? "配置网络与代理"
-                              : guestSystem?.activate ? "打开工作台" : guestSystem?.pending ? "继续安装" :
-                                guestSystem && guestSystem.guest_system !== "debian-13" ? "安装客户机" : "启动 Cage 环境"
+                              : "启动 Eden 环境"
                             : !status.ready
                               ? "恢复浏览器"
                               : !workspace
@@ -1768,7 +1726,6 @@ function App() {
                   </div>
                   {running && (
                     <div className="welcome-shortcuts">
-                      {macGuest && <MacOSLogin disabled={!status.ready || busy} />}
                       <button onClick={newTerminalHere} data-terminal-location="shortcuts" aria-haspopup="menu" disabled={busy}>
                         <TerminalSquare size={16} />
                         新建终端
@@ -1783,10 +1740,10 @@ function App() {
                     </div>
                   )}
                   {terminalMenuAt("shortcuts")}
-                  {!running && !nativeGuestLabel && (
+                  {!running && (
                     <p className="welcome-hint">
                       {setupProxy
-                        ? "Cage 不提供代理或 Claude 账户。连接后，在 Cage 内完成 Claude 登录。"
+                        ? "Eden 不提供代理或 Claude 账户。连接后，在 Eden 内完成 Claude 登录。"
                         : "首次安装时可在操作详情中查看下载和配置进度；中断后可以继续安装。"}
                     </p>
                   )}
@@ -1795,7 +1752,7 @@ function App() {
                       打开项目后，在终端输入 <code>claude</code>
                       ，按提示登录你的账户。
                       <br />
-                      {isRemoteClient() ? "打开的项目位于云端，编辑和删除会直接影响云端文件。" : "打开的项目与本机共享，编辑和删除文件会同步。"}
+                      打开的项目与本机共享，编辑和删除文件会同步。
                     </p>
                   )}
                   </>}
@@ -1890,7 +1847,7 @@ function App() {
                   ? status.job.message
                   : running
                     ? status.ready
-                      ? isRemoteClient() ? "文件保存在云端" : "文件与本机同步"
+                      ? "文件与本机同步"
                       : "环境运行中 · 浏览器待恢复"
                     : "")} />
             </span>
@@ -2016,7 +1973,7 @@ function App() {
                   setTransfer(null);
                 }}
               >
-                粘贴到 Cage
+                粘贴到 Eden
               </button>
             </>
           }

@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace Cage.Windows;
+namespace Eden.Windows;
 
 internal sealed class WindowChrome(Color background, Color foreground, bool dark)
 {
@@ -15,14 +15,6 @@ internal sealed class WindowChrome(Color background, Color foreground, bool dark
         bool accessible = SystemInformation.HighContrast;
         int darkFrame = dark && !accessible ? 1 : 0;
         DwmSetWindowAttribute(window, 20, ref darkFrame, sizeof(int)); // DWMWA_USE_IMMERSIVE_DARK_MODE
-        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
-        {
-            int caption = accessible ? -1 : ColorTranslator.ToWin32(background);
-            int text = accessible ? -1 : ColorTranslator.ToWin32(foreground);
-            DwmSetWindowAttribute(window, 35, ref caption, sizeof(int)); // DWMWA_CAPTION_COLOR
-            DwmSetWindowAttribute(window, 36, ref text, sizeof(int));    // DWMWA_TEXT_COLOR
-        }
-
         if (menus != null) ApplyMenu(menus);
     }
 

@@ -64,7 +64,7 @@ func TestHandoffRequiresLauncherSecretAndIdleEnvironment(t *testing.T) {
 			case "terminal":
 				s.terminals.sessions = map[string]*terminalSession{"live": {}}
 			case "vm":
-				path := filepath.Join(s.profile, "state", "lima", "base-building", "cage-running.json")
+				path := filepath.Join(s.profile, "state", "lima", "base-building", "eden-running.json")
 				if err := writePrivate(path, map[string]int{"pid": os.Getpid()}); err != nil {
 					t.Fatal(err)
 				}

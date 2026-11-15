@@ -1,6 +1,6 @@
 """Isolated real-X11 clipboard check; never connects to the user's VM.
 
-Run with CAGE_CLIPBOARD_QA_SSH_CONFIG and CAGE_CLIPBOARD_QA_SSH_TARGET.
+Run with EDEN_CLIPBOARD_QA_SSH_CONFIG and EDEN_CLIPBOARD_QA_SSH_TARGET.
 The supplied guest must have disposable :77 and :78 displays and the helper.
 """
 import base64
@@ -12,8 +12,8 @@ import subprocess
 import threading
 import time
 
-ssh = ['ssh', '-F', os.environ['CAGE_CLIPBOARD_QA_SSH_CONFIG'], os.environ['CAGE_CLIPBOARD_QA_SSH_TARGET']]
-directory = '/tmp/cage-clipboard-ui-qa'
+ssh = ['ssh', '-F', os.environ['EDEN_CLIPBOARD_QA_SSH_CONFIG'], os.environ['EDEN_CLIPBOARD_QA_SSH_TARGET']]
+directory = '/tmp/workbench-clipboard-ui-qa'
 helper = directory + '/shared-clipboard.py'
 bridge = subprocess.Popen(ssh + ['sudo python3 ' + helper], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 events = queue.Queue()
@@ -95,7 +95,7 @@ window.show_all()
     assert json.loads(remote(imports + "image=clipboard.wait_for_image(); print(json.dumps([image.get_width(),image.get_height()]))", ':77')) == [12, 9]
 
     paths = [directory + '/中文.bin', directory + '/folder']
-    remote("from pathlib import Path\np=Path('/tmp/cage-clipboard-ui-qa'); (p/'中文.bin').write_bytes(bytes([0,255,128])); (p/'folder').mkdir(exist_ok=True); (p/'folder'/'blank').write_bytes(b'')")
+    remote("from pathlib import Path\np=Path('/tmp/workbench-clipboard-ui-qa'); (p/'中文.bin').write_bytes(bytes([0,255,128])); (p/'folder').mkdir(exist_ok=True); (p/'folder'/'blank').write_bytes(b'')")
     send({'files': paths}, 3)
     print('files acknowledged', flush=True)
     for display in (':77', ':78'):
@@ -121,12 +121,12 @@ def clear(_clipboard,_data): pass
 targets=(Target*1)(Target(b'text/uri-list',0,0))
 assert gtk.gtk_clipboard_set_with_data(hash(clipboard),targets,1,provide,clear,None)
 """
-    owner("from pathlib import Path\np=Path.home()/'.cache/clipboard-private-qa'; p.mkdir(parents=True,exist_ok=True,mode=0o700); p.chmod(0o700); file=p/'private.bin'; file.write_bytes(bytes([0,255,128])); uri=file.as_uri()\n" + file_owner, ':77', 'cage-browser')
+    owner("from pathlib import Path\np=Path.home()/'.cache/clipboard-private-qa'; p.mkdir(parents=True,exist_ok=True,mode=0o700); p.chmod(0o700); file=p/'private.bin'; file.write_bytes(bytes([0,255,128])); uri=file.as_uri()\n" + file_owner, ':77', 'browser')
     copied = expect(lambda event: 'files' in event)
-    assert copied['source'] == 'cage' and copied['files'][0].startswith('/tmp/cage-clipboard-')
+    assert copied['source'] == 'developer' and copied['files'][0].startswith('/tmp/workbench-clipboard-')
     actual = json.loads(remote(imports + 'from pathlib import Path\nfrom urllib.parse import urlsplit,unquote\nuris=clipboard.wait_for_uris(); print(json.dumps(list(Path(unquote(urlsplit(uris[0]).path)).read_bytes())))'))
     assert actual == [0,255,128], 'private files must be materialized for the other application UID'
-    owner("uri='file:///etc/shadow'\n" + file_owner, ':77', 'cage-browser')
+    owner("uri='file:///etc/shadow'\n" + file_owner, ':77', 'browser')
     expect(lambda event: 'error' in event)
 
     # Ordinary drag-selection PRIMARY changes must not replace the clipboard.

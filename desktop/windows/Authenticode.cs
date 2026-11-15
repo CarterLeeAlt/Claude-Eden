@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
-namespace Cage.Windows;
+namespace Eden.Windows;
 
 internal static class Authenticode
 {
@@ -18,7 +18,7 @@ internal static class Authenticode
                 Size = (uint)Marshal.SizeOf<TrustData>(), UiChoice = 2, UnionChoice = 1,
                 File = memory, StateAction = 1,
                 // Verification must not make a direct network request around the
-                // selected Cage proxy. Windows uses its existing trust cache.
+                // selected Eden proxy. Windows uses its existing trust cache.
                 ProviderFlags = 0x1000,
             };
             var action = new Guid("00AAC56B-CD44-11D0-8CC2-00C04FC295EE");
@@ -37,7 +37,7 @@ internal static class Authenticode
     public static void SamePublisher(string path, string expected)
     {
         if (!string.Equals(Publisher(path), expected, StringComparison.Ordinal))
-            throw new IOException("更新包的发布者签名与当前 Cage 不一致");
+            throw new IOException("更新包的发布者签名与当前 Claude Eden 不一致");
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]

@@ -308,7 +308,7 @@ function ThemeCard({ variant, value, active, onChange, codeFonts }) {
             }}
             aria-label={label + "终端预览"}
           >
-            <span style={{ color: terminal.green }}>~/cage</span> ${" "}
+            <span style={{ color: terminal.green }}>~/workspace</span> ${" "}
             <span style={{ color: terminal.blue }}>echo</span> hello
             <i style={{ background: terminal.cursor }} />
           </div>
@@ -481,7 +481,7 @@ function ThemeLibrary({ appearance, update, saving, onError }) {
         title
           .replace(/[<>:"/\\|?*\x00-\x1f]/g, "_")
           .replace(/[. ]+$/, "")
-          .slice(0, 80) + ".cage-theme.json";
+          .slice(0, 80) + ".eden-theme.json";
       if (nativeAvailable()) {
         if (await native("exportTheme", { text, filename }))
           setNotice("主题已导出");
@@ -734,7 +734,7 @@ export function AppearanceSettings() {
               fontSize: appearance.codeFontSize,
             }}
           >
-            const workspace = "Cage";
+            const workspace = "Eden";
           </code>
         </div>
         <h4>显示与交互</h4>

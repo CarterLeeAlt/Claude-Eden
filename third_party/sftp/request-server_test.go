@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 var _ = fmt.Print
 
 type csPair struct {
+	socket    string
 	cli       *Client
 	svr       *RequestServer
 	svrResult chan error
@@ -28,23 +30,25 @@ type csPair struct {
 func (cs csPair) Close() {
 	cs.svr.Close()
 	cs.cli.Close()
-	os.Remove(sock)
+	os.Remove(cs.socket)
 }
 
 func (cs csPair) testHandler() *root {
 	return cs.svr.Handlers.FileGet.(*root)
 }
 
-const sock = "/tmp/rstest.sock"
-
 func clientRequestServerPairWithHandlers(t *testing.T, handlers Handlers, options ...RequestServerOption) *csPair {
 	skipIfWindows(t)
 	skipIfPlan9(t)
 
+	directory, err := ioutil.TempDir("", "sftp-")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, os.RemoveAll(directory)) })
+	sock := filepath.Join(directory, "request.sock")
 	ready := make(chan struct{})
 	canReturn := make(chan struct{})
-	os.Remove(sock) // either this or signal handling
 	pair := &csPair{
+		socket:    sock,
 		svrResult: make(chan error, 1),
 	}
 

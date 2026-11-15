@@ -6,54 +6,65 @@
 #   scripts/licenses            rewrite THIRD_PARTY_LICENSES
 #   scripts/licenses --check    fail when it is out of date
 #
-# The modules are those of `go list -deps` for the binary on Linux, macOS and
-# Windows and for the guest agent embedded in it, with the Makefile's tags.
-# Needs go and a module cache (go mod download). Run it again after a change
-# of go.mod or third_party/.
+# Enumerate the Windows desktop and Linux guest-agent/Tailscale entry points.
+# Use the workspace Go toolchain and
+# module cache; run through scripts/run-in-workspace.mjs.
 
 set -euo pipefail
+export GOTOOLCHAIN=local
 
 ROOT="$(CDPATH= cd -P -- "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null && pwd)"
 OUT="$ROOT/THIRD_PARTY_LICENSES"
 cd "$ROOT"
 
 check=""
+[[ $# -le 1 ]] || { echo 'Usage: bash scripts/licenses [--check]' >&2; exit 2; }
 case "${1:-}" in
   "") ;;
   --check) check=1 ;;
-  *) sed -n '5,6p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  *) echo 'Usage: bash scripts/licenses [--check]' >&2; exit 2 ;;
 esac
 
-tags="$(awk '$1 == "TAGS" && $2 == ":=" { print $3 }' Makefile)"
-[ -n "$tags" ] || { echo "licenses: no TAGS in the Makefile" >&2; exit 1; }
+windows_tags="$(awk -F "'" '$1 ~ /^[[:space:]]*[$]tags = / { print $2 }' scripts/build-windows.ps1)"
+[ -n "$windows_tags" ] || { echo 'licenses: no tags in scripts/build-windows.ps1' >&2; exit 1; }
 
-# <path> <version> <dir> per module, for one target.
-modules() {  # <goos> <goarch> <cgo> <package>
-  GOOS="$1" GOARCH="$2" CGO_ENABLED="$3" GOWORK=off go list -deps -tags "$tags" \
-    -f '{{with .Module}}{{if not .Main}}{{.Path}}{{"\t"}}{{with .Replace}}{{.Path}}{{else}}{{.Version}}{{end}}{{"\t"}}{{.Dir}}{{end}}{{end}}' "$4"
+host_os="$(go env GOHOSTOS)"
+workspace_root="$ROOT"
+if [[ "$host_os" == windows ]]; then workspace_root="$(cygpath -m "$ROOT")"; fi
+workspace_directory() {
+  local directory="$1"
+  if [[ "$host_os" == windows ]]; then directory="$(cygpath -u "$directory")"; fi
+  directory="$(cd "$directory" && pwd -P)"
+  # Git Bash mounts the inherited TMP directory at /tmp, so one workspace can
+  # have both /d/... and /tmp aliases. Compare their absolute Windows paths.
+  if [[ "$host_os" == windows ]]; then directory="$(cygpath -m "$directory")"; fi
+  case "$directory" in
+    "$workspace_root"|"$workspace_root"/*) printf '%s\n' "$directory" ;;
+    *) echo "licenses: toolchain and dependency sources must be inside the workspace: $directory" >&2; return 1 ;;
+  esac
 }
+workspace_directory "$(dirname "$(command -v go)")" >/dev/null
+go_root="$(workspace_directory "$(go env GOROOT)")"
+workspace_directory "$(go env GOMODCACHE)" >/dev/null
 
-# Modules only the macOS or Windows builds use are not in a cache filled by a
-# Linux build.
-GOWORK=off go mod download
+# Different entry modules can select different versions; retain both license
+# records instead of deduplicating by module path alone.
+modules() ( # <module-directory> <goos> <goarch> <cgo> <tags> <package>
+  cd "$ROOT/$1"
+  echo "licenses: $1 $2/$3 $6" >&2
+  GOOS="$2" GOARCH="$3" CGO_ENABLED="$4" GOWORK=off GOFLAGS= go list -mod=readonly -deps -tags "$5" \
+    -f '{{with .Module}}{{if not .Main}}{{.Path}}{{"\t"}}{{if .Replace}}{{if .Replace.Version}}{{.Replace.Version}}{{else}}(local){{end}}{{else}}{{if .Version}}{{.Version}}{{else}}(local){{end}}{{end}}{{"\t"}}{{.Dir}}{{end}}{{end}}' "$6"
+)
 
 list="$(mktemp)"
 trap 'rm -f "$list"' EXIT
 {
-  modules linux amd64 0 ./cmd/agent-vm
-  modules linux arm64 0 ./cmd/agent-vm
-  modules linux amd64 0 ./cmd/cage
-  modules linux arm64 0 ./cmd/cage
-  modules darwin arm64 1 ./cmd/agent-vm
-  modules darwin arm64 1 ./cmd/cage
-  modules darwin amd64 1 ./cmd/agent-vm
-  modules windows amd64 0 ./cmd/agent-vm
-  modules windows amd64 0 ./cmd/cage
-  modules windows arm64 0 ./cmd/agent-vm
-  modules linux arm64 0 github.com/lima-vm/lima/v2/cmd/lima-guestagent
-  modules linux amd64 0 github.com/lima-vm/lima/v2/cmd/lima-guestagent
-  modules darwin arm64 0 github.com/lima-vm/lima/v2/cmd/lima-guestagent
-} | awk -F '\t' 'NF == 3 && !seen[$1]++' | LC_ALL=C sort > "$list"
+  modules . windows amd64 0 "$windows_tags" ./cmd/eden
+  for arch in amd64 arm64; do
+    modules . linux "$arch" 0 '' github.com/lima-vm/lima/v2/cmd/lima-guestagent
+    modules tools/tailnet linux "$arch" 0 '' .
+  done
+} | tr -d '\r' | awk -F '\t' 'NF == 3 && !seen[$1 FS $2]++' | LC_ALL=C sort > "$list"
 
 [ -s "$list" ] || { echo "licenses: go list found no module" >&2; exit 1; }
 
@@ -61,11 +72,12 @@ render() {
   cat <<'EOF'
 Third-party licenses
 
-agent-vm is MIT licensed (LICENSE). The binary is built from the modules
-below and from Go's standard library. Each section gives a module, its
-version and the license and notice files at the root of its source, verbatim.
+Claude Eden is MIT licensed (LICENSE), with upstream notices in NOTICE.
+Its Windows desktop, Linux guest agent and guest Tailscale component
+use the modules below and Go's standard library. Each section gives a
+module, its version and the license and notice files at its source root, verbatim.
 third_party/ holds the bundled Lima, sshocker, pkg/sftp and gvisor-tap-vsock
-source compiled into Cage (see NOTICE).
+source compiled into Claude Eden (see NOTICE).
 
 Generated by scripts/licenses.
 
@@ -78,12 +90,10 @@ EOF
   printf '================================================================================\n'
   printf 'Go standard library (BSD-3-Clause)\n'
   printf '================================================================================\n\n'
-  go_license="$(go env GOROOT)/LICENSE"
-  # Homebrew keeps the Go license beside libexec rather than inside GOROOT.
-  if [ ! -f "$go_license" ]; then go_license="$(go env GOROOT)/../LICENSE"; fi
-  cat "$go_license"
+  cat "$go_root/LICENSE"
   printf '\n'
   while IFS=$'\t' read -r path version dir; do
+    dir="$(workspace_directory "$dir")"
     found=0
     # LICENSE, LICENCE, COPYING, NOTICE, UNLICENSE, PATENTS, with any suffix.
     while IFS= read -r f; do
@@ -102,14 +112,14 @@ EOF
   tailnet_version="$(awk '$1 == "tailscale.com" { sub(/^v/, "", $2); print $2 }' tools/tailnet/go.mod)"
   cat <<EOF
 
-Cage guest Tailscale component
------------------------------
+Workbench guest Tailscale component
+----------------------------------
 Tailscale $tailnet_version (https://github.com/tailscale/tailscale), BSD-3-Clause.
 The guest-only executable also uses gliderlabs/ssh (BSD-3-Clause), pkg/sftp
-(BSD-2-Clause), creack/pty (MIT), UserExistsError/conpty (MIT), and the
+(BSD-2-Clause), creack/pty (MIT), and the
 transitive modules pinned in tools/tailnet/go.mod and tools/tailnet/go.sum.
-Full license notices for the modules linked on Linux, macOS and Windows
-are distributed in the application licenses/tailnet-go directory.
+Full license notices for the Linux amd64/arm64 payloads are included above
+and distributed in the application licenses/tailnet-go directory.
 EOF
 }
 
@@ -126,6 +136,7 @@ if [ -n "$check" ]; then
     exit 1
   fi
 else
-  cat "$tmp" > "$OUT"
+  chmod 0644 "$tmp"
+  mv "$tmp" "$OUT"
   echo "THIRD_PARTY_LICENSES: $(wc -l < "$list" | tr -d ' ') modules"
 fi

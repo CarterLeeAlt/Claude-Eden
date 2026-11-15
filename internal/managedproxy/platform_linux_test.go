@@ -19,10 +19,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// Run from beside the bundled mihomo with CAGE_LINUX_INTEGRATION=1. A local
+// Run from beside the bundled mihomo with EDEN_LINUX_INTEGRATION=1. A local
 // upstream proxy proves routing and fail-closed behavior without external I/O.
 func TestLinuxBundledProxyLifecycle(t *testing.T) {
-	if os.Getenv("CAGE_LINUX_INTEGRATION") != "1" {
+	if os.Getenv("EDEN_LINUX_INTEGRATION") != "1" {
 		t.Skip("requires a bundled Linux mihomo and host network interfaces")
 	}
 	profile := t.TempDir()
@@ -105,11 +105,11 @@ func TestLinuxBundledProxyLifecycle(t *testing.T) {
 		t.Fatal("idempotent start replaced the running core")
 	}
 	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", s.Port))
-	proxyURL.User = url.UserPassword("cage", s.Auth)
+	proxyURL.User = url.UserPassword("eden", s.Auth)
 	transport := &http.Transport{Proxy: http.ProxyURL(proxyURL), DisableKeepAlives: true}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: 5 * time.Second}
-	res, err := client.Get(target.URL + "/cage-linux-smoke")
+	res, err := client.Get(target.URL + "/eden-linux-smoke")
 	if err != nil {
 		t.Fatal("selected proxy did not carry the request", err)
 	}
@@ -119,7 +119,7 @@ func TestLinuxBundledProxyLifecycle(t *testing.T) {
 		t.Fatal("request bypassed the selected proxy", err)
 	}
 	upstream.Close()
-	res, err = client.Get(target.URL + "/cage-linux-smoke")
+	res, err = client.Get(target.URL + "/eden-linux-smoke")
 	if err == nil {
 		body, _ = io.ReadAll(res.Body)
 		res.Body.Close()

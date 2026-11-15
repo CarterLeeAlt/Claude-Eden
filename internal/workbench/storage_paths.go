@@ -5,14 +5,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
-	"github.com/sylvinus/agent-vm/internal/guestos"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/mounts"
 	"github.com/sylvinus/agent-vm/internal/paths"
 )
 
 func (s *Server) validateStoragePlacement(directory string) error {
-	target, err := cage.StoragePhysicalPath(directory)
+	target, err := eden.StoragePhysicalPath(directory)
 	if err != nil {
 		return err
 	}
@@ -21,11 +20,11 @@ func (s *Server) validateStoragePlacement(directory string) error {
 		return err
 	}
 	for _, project := range projects {
-		physical, err := cage.StoragePhysicalPath(project)
+		physical, err := eden.StoragePhysicalPath(project)
 		if err != nil {
 			return err
 		}
-		if cage.StoragePathsOverlap(physical, target) {
+		if eden.StoragePathsOverlap(physical, target) {
 			return errors.New("环境存储目录与已共享的项目重叠，请选择项目以外的专用文件夹")
 		}
 	}
@@ -36,14 +35,13 @@ func (s *Server) validateStoragePlacement(directory string) error {
 // can be reached through a Windows junction even if its saved path looks
 // unrelated to the requested project.
 func privateProjectDirectories(profile string) ([]string, error) {
-	directories, err := cage.StoragePrivatePaths(profile)
+	directories, err := eden.StoragePrivatePaths(profile)
 	if err != nil {
 		return nil, err
 	}
 	directories = append(directories, profile)
-	directories = append(directories, guestos.WindowsPrivateStoragePaths()...)
 	for _, directory := range directories {
-		physical, err := cage.StoragePhysicalPath(directory)
+		physical, err := eden.StoragePhysicalPath(directory)
 		if os.IsNotExist(err) {
 			// A detached backup drive still reserves its recorded location.
 			continue
@@ -63,7 +61,7 @@ func validateHostProjectData(root, profile string) error {
 	if err != nil {
 		return err
 	}
-	defaultProfile := filepath.Join(home, ".claude-cage")
+	defaultProfile := filepath.Join(home, ".eden")
 	// Independent profiles also protect disks and backups of the default workload.
 	if !paths.Equal(profile, defaultProfile) {
 		private, err := privateProjectDirectories(defaultProfile)
@@ -71,8 +69,8 @@ func validateHostProjectData(root, profile string) error {
 			return err
 		}
 		for _, dir := range private {
-			if cage.StoragePathsOverlap(root, dir) {
-				return errors.New("Cage 配置、环境存储及备份不能共享")
+			if eden.StoragePathsOverlap(root, dir) {
+				return errors.New("Eden 配置、环境存储及备份不能共享")
 			}
 		}
 	}

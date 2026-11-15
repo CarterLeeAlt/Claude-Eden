@@ -54,7 +54,6 @@ export async function publicManifestRelease(tag, fetchImpl = fetch) {
   const allowed = name => [
     `Eden-${version}-windows-amd64-setup.exe`,
     `Eden-${version}-windows-amd64-setup-unsigned.exe`,
-    `Eden-${version}-android-arm64.apk`,
   ].includes(name) || sourceArchive(name);
   if ([...names.keys()].some(name => !allowed(name))) throw new Error('Unexpected public release asset');
   const assets = [{ name: 'SHA256SUMS', state: 'uploaded', size: Buffer.byteLength(text), browser_download_url: `${base}SHA256SUMS` }];
@@ -91,8 +90,7 @@ export function releaseAssets(release) {
     }
   }
   if (assets[1].size > 64 * 1024) throw new Error('Checksum file is too large');
-  const android = optionalAsset(release, `Eden-${version}-android-arm64.apk`);
-  return { version, archive: assets[0], checksums: assets[1], source, windows: assets[0], android };
+  return { version, archive: assets[0], checksums: assets[1], source, windows: assets[0] };
 }
 
 function optionalAsset(release, name) {
@@ -123,11 +121,10 @@ export function releaseMetadata(release, text) {
 }
 
 const platformSuffixes = {
-  windows: 'windows-amd64-setup.exe', android: 'android-arm64.apk',
+  windows: 'windows-amd64-setup.exe',
 };
 
-// Each platform keeps its own version and release notes, including when a
-// newer release contains packages for only some platforms.
+// Incomplete uploads do not displace the latest verified Windows package.
 export function platformMetadata(release, text) {
   if (release.draft || !/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(release.tag_name)) return {};
   const version = release.tag_name.slice(1);
@@ -236,7 +233,7 @@ async function main() {
   if (values.tag) {
     release = await (await request(`${apiURL}/tags/${encodeURIComponent(values.tag)}`)).json();
     // Keep explicit-tag artifact verification independent of release discovery.
-    // Website builds still retain older packages for missing platforms.
+    // Website builds retain the latest complete Windows package.
     releases = values['archive-directory'] ? [release] : await publishedReleases();
     const index = releases.findIndex(item => item.tag_name === release.tag_name);
     releases = index < 0 ? [release] : [release, ...releases.slice(index + 1)];
@@ -257,10 +254,6 @@ async function main() {
     await download(archive, digest, values['archive-directory']);
     await download(source, sourceDigest, values['archive-directory']);
     await writeFile(join(values['archive-directory'], 'SHA256SUMS'), text);
-    for (const url of [metadata.platforms.android?.downloadURL].filter(Boolean)) {
-      const asset = release.assets.find(asset => asset.browser_download_url === url);
-      await download(asset, checksumFor(text, asset), values['archive-directory']);
-    }
   }
   const output = resolve(values.output);
   await mkdir(dirname(output), { recursive: true });

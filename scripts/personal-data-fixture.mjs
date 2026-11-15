@@ -6,18 +6,16 @@ import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const entries = [
-  '.claude-cage/config.json',
-  '.claude-cage/environment.json',
-  '.claude-cage/account.json',
-  '.claude-cage/password-vault.json',
-  '.claude-cage/favorites.json',
-  '.claude-cage/projects.json',
-  '.claude-cage/workbench.json',
-  '.claude-cage/appearance.json',
-  '.claude-cage/webview2/Default/Local Storage/leveldb/000001.log',
-  '.claude-cage/webkit/data/WebsiteData/LocalStorage/storage.sqlite3',
-  '.claude-cage/state/lima/persistent/disk',
-  '.claude-cage-workspace/project.txt',
+  '.eden/config.json',
+  '.eden/environment.json',
+  '.eden/account.json',
+  '.eden/password-vault.json',
+  '.eden/favorites.json',
+  '.eden/projects.json',
+  '.eden/workbench.json',
+  '.eden/appearance.json',
+  '.eden/webview2/Default/Local Storage/leveldb/000001.log',
+  '.eden/state/lima/persistent/disk',
 ];
 const digest = (data) => createHash('sha256').update(data).digest('hex');
 
@@ -26,7 +24,7 @@ export async function seed(home, manifest) {
   for (const name of entries) {
     const path = join(home, name);
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-    const bytes = Buffer.from(`Cage package test: preserve ${name}\n历史、收藏与登录数据\n\0\xff`, 'utf8');
+    const bytes = Buffer.from(`Claude Eden package test: preserve ${name}\n历史、收藏与登录数据\n\0\xff`, 'utf8');
     await writeFile(path, bytes, { flag: 'wx', mode: 0o600 });
     records[name] = digest(bytes);
   }

@@ -129,7 +129,7 @@ func (e *app) main(ctx context.Context, args []string) int {
 	case "code":
 		return e.codeCmd(ctx, opts, args)
 	default:
-		fmt.Fprintf(io.Stderr, "Unknown command: %s\nRun 'agent-vm help' for usage.\n", cmd)
+		fmt.Fprintf(io.Stderr, "Unknown command: %s\nRun '%s help' for usage.\n", cmd, Command)
 		return exitUsage
 	}
 }
@@ -137,7 +137,7 @@ func (e *app) main(ctx context.Context, args []string) int {
 var versionRe = regexp.MustCompile(`^[0-9]+(\.[0-9]+)*(-[A-Za-z0-9.]+)?$`)
 
 // Command names this program in the messages of the commands it shares with
-// other entry points. A program that embeds this package, such as Cage, sets
+// other entry points. A program that embeds this package, such as Eden, sets
 // its own before calling Main.
 var Command = "agent-vm"
 

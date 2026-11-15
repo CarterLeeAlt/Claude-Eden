@@ -24,13 +24,13 @@ func TestDesktopResizeScriptAppliesTheViewersDensity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, err := os.MkdirTemp(filepath.Dir(executable), "cage-resize-")
+	root, err := os.MkdirTemp(filepath.Dir(executable), "workbench-resize-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(root) })
-	desktop, phone, bin := filepath.Join(root, "desktop"), filepath.Join(root, "phone"), filepath.Join(root, "bin")
-	for _, directory := range []string{desktop, phone, bin} {
+	desktop, bin := filepath.Join(root, "desktop"), filepath.Join(root, "bin")
+	for _, directory := range []string{desktop, bin} {
 		if err := os.Mkdir(directory, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -45,13 +45,13 @@ func TestDesktopResizeScriptAppliesTheViewersDensity(t *testing.T) {
 		data, _ := os.ReadFile(path)
 		return string(data)
 	}
-	t.Setenv("CAGE_RESIZE_FIXTURE", root)
-	write(filepath.Join(bin, "xrandr"), "#!/bin/sh\necho \"$*\" >> \"$CAGE_RESIZE_FIXTURE/modes\"\n", 0o700)
+	t.Setenv("EDEN_RESIZE_FIXTURE", root)
+	write(filepath.Join(bin, "xrandr"), "#!/bin/sh\necho \"$*\" >> \"$EDEN_RESIZE_FIXTURE/modes\"\n", 0o700)
 	// The script signals a process named xsettingsd.
-	write(filepath.Join(bin, "xsettingsd"), "#!/bin/sh\ntrap 'echo reload >> \"$CAGE_RESIZE_FIXTURE/reloads\"' HUP\nwhile :; do sleep 1 & wait $!; done\n", 0o700)
+	write(filepath.Join(bin, "xsettingsd"), "#!/bin/sh\ntrap 'echo reload >> \"$EDEN_RESIZE_FIXTURE/reloads\"' HUP\nwhile :; do sleep 1 & wait $!; done\n", 0o700)
 	resize := func(scale string) string {
 		t.Helper()
-		script := strings.NewReplacer("/run/cage-desktop", desktop, "/run/cage-phone-desktop", phone).Replace(desktopResizeScript(1000, 800, scale))
+		script := strings.ReplaceAll(desktopResizeScript(1000, 800, scale), "/run/workbench-desktop", desktop)
 		cmd := exec.Command(bash, "--noprofile", "--norc", "-c", script)
 		cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"))
 		output, err := cmd.CombinedOutput()
@@ -77,7 +77,7 @@ func TestDesktopResizeScriptAppliesTheViewersDensity(t *testing.T) {
 	if output := resize("1.25"); output != "" || read(filepath.Join(desktop, "desktop-size")) != "1000 800 \n" || read(filepath.Join(desktop, "xsettings.conf")) != "" {
 		t.Fatalf("fixed density changed: %q", output)
 	}
-	if !strings.Contains(read(filepath.Join(root, "modes")), "--output VNC-0 --mode cage-1000x800") {
+	if !strings.Contains(read(filepath.Join(root, "modes")), "--output VNC-0 --mode workbench-1000x800") {
 		t.Fatal("size not applied")
 	}
 
@@ -127,14 +127,13 @@ func TestDesktopResizeScriptAppliesTheViewersDensity(t *testing.T) {
 	}
 	reloads(3)
 
-	// While a phone holds the display the request is kept for its release.
-	write(filepath.Join(phone, "layout.json"), "{}", 0o600)
+	// The desktop applies a unit-density request immediately.
 	modes := read(filepath.Join(root, "modes"))
 	if output := resize("1"); output != "scale 1\n" || read(filepath.Join(desktop, "desktop-size")) != "1000 800 1\n" {
-		t.Fatalf("deferred request: %q", output)
+		t.Fatalf("unit-density request: %q", output)
 	}
-	if read(filepath.Join(desktop, "display-scale")) != "2\n" || read(filepath.Join(root, "modes")) != modes {
-		t.Fatal("a held display was changed")
+	if read(filepath.Join(desktop, "display-scale")) != "1\n" || read(filepath.Join(root, "modes")) == modes {
+		t.Fatal("unit-density request was not applied")
 	}
-	reloads(3)
+	reloads(4)
 }

@@ -7,7 +7,7 @@ import { createWorkbench } from './workbench-fixture.mjs';
 import { createPrivacyController } from '../../scripts/browser-privacy-fixture.mjs';
 
 const output = new URL('../../docs/test-reports/2026-11-07-browser-privacy/', import.meta.url);
-const engine = process.env.CAGE_TEST_BROWSER || 'chromium';
+const engine = process.env.EDEN_TEST_BROWSER || 'chromium';
 await mkdir(output, { recursive: true });
 const controller = await createPrivacyController();
 let workbench;
@@ -28,8 +28,8 @@ try {
   const { page, errors } = workbench;
   page.setDefaultTimeout(10000);
   workbench.state.settings.browser_home_url = controller.origin + '/ui-home';
-  await page.getByRole('button', { name: '启动 Cage 环境', exact: true }).click();
-  await page.getByRole('heading', { name: 'Cage 环境已就绪', exact: true }).waitFor();
+  await page.getByRole('button', { name: '启动 Eden 环境', exact: true }).click();
+  await page.getByRole('heading', { name: 'Eden 环境已就绪', exact: true }).waitFor();
   await page.getByRole('button', { name: '打开浏览器', exact: true }).click();
   await page.getByRole('tab', { name: 'Privacy fixture', exact: true }).waitFor();
   const menu = page.getByRole('button', { name: '浏览器菜单', exact: true });

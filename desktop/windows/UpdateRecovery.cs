@@ -1,10 +1,10 @@
 using System.Security.Cryptography;
 
-namespace Cage.Windows;
+namespace Eden.Windows;
 
 internal static class UpdateRecovery
 {
-    public static string BackendPath(string backup) => Path.Combine(backup, "resources", "cage.exe");
+    public static string BackendPath(string backup) => Path.Combine(backup, "resources", "eden.exe");
 
     // NSIS may reject an update or restore its original directory before it
     // exits. A started installer alone does not mean the App was replaced.
@@ -12,9 +12,9 @@ internal static class UpdateRecovery
     {
         try
         {
-            if (File.Exists(target + ".cage-installation.json") || !Directory.Exists(target) || !Directory.Exists(backup)) return false;
+            if (File.Exists(target + ".eden-installation.json") || !Directory.Exists(target) || !Directory.Exists(backup)) return false;
             UpdatePolicy.PlainPath(target); UpdatePolicy.PlainPath(backup);
-            if (!File.Exists(Path.Combine(backup, "Cage.exe")) || !File.Exists(Path.Combine(backup, "Cage.install-id"))) return false;
+            if (!File.Exists(Path.Combine(backup, "Eden.exe")) || !File.Exists(Path.Combine(backup, "Eden.install-id"))) return false;
             foreach (var source in Directory.EnumerateFiles(backup, "*", SearchOption.AllDirectories))
             {
                 var installed = Path.Combine(target, Path.GetRelativePath(backup, source));

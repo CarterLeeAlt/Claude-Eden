@@ -5,8 +5,8 @@ import (
 	"github.com/goccy/go-yaml"
 	"testing"
 
-	"github.com/lima-vm/lima/v2/pkg/guestidentity"
 	"github.com/lima-vm/lima/v2/pkg/limatype"
+	"workbench.local/guestidentity"
 )
 
 func TestGuestIdentityYAMLRoundTripAndFallback(t *testing.T) {

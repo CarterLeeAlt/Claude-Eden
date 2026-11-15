@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
 const epoch = new Date("2026-11-08T03:00:00Z");
-for (const platform of ["darwin", "windows"]) {
+for (const platform of ["windows"]) {
   let proxyReady = false;
   const calls = [];
   const fixture = await createWorkbench({

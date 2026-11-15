@@ -6,6 +6,7 @@ import { createWorkbench } from "./workbench-fixture.mjs";
 
 const output = await smokeCaptureDirectory("workbench");
 const { browser, page, state, errors } = await createWorkbench();
+const firstProject = state.chosenFolder;
 const checks = [];
 const shot = (name) =>
   page.screenshot({ path: join(output, name + ".png"), animations: "disabled" });
@@ -19,27 +20,20 @@ try {
   const navigation = page.getByRole("navigation", { name: "主导航" });
   assert.equal(await navigation.getByRole("button", { name: /打开项目|项目文件/ }).count(), 0);
   await page
-    .getByRole("button", { name: "启动 Cage 环境", exact: true })
+    .getByRole("button", { name: "启动 Eden 环境", exact: true })
     .click();
   await page
-    .getByRole("heading", { name: "Cage 环境已就绪", exact: true })
+    .getByRole("heading", { name: "Eden 环境已就绪", exact: true })
     .waitFor();
   await page
     .getByRole("button", { name: "添加项目", exact: true })
     .click();
   await page.getByRole("button", { name: "添加本机项目…", exact: true }).click();
-  await page.waitForFunction(
-    (path) => document.getElementById("project-path")?.value === path,
-    state.chosenFolder,
-  );
-  assert.equal(
-    await page.getByLabel("新项目文件夹", { exact: true }).inputValue(),
-    state.chosenFolder,
-  );
+  await page.getByRole("list", { name: "已绑定文件夹" }).getByText(state.chosenFolder, { exact: true }).waitFor();
   state.failJob = true;
   await page
     .getByRole("dialog")
-    .getByRole("button", { name: "打开项目", exact: true })
+    .getByRole("button", { name: "创建项目", exact: true })
     .click();
 
   await page
@@ -47,22 +41,19 @@ try {
     .getByRole("alert")
     .filter({ hasText: "项目文件夹连接失败" })
     .waitFor();
-  assert.equal(
-    await page.getByLabel("新项目文件夹", { exact: true }).inputValue(),
-    state.chosenFolder,
-  );
-  assert.ok(state.settings.workspace.endsWith(".claude-cage-workspace"));
+  await page.getByRole("list", { name: "已绑定文件夹" }).getByText(state.chosenFolder, { exact: true }).waitFor();
+  assert.ok(state.settings.workspace.endsWith(".claude-eden-workspace"));
   state.failJob = false;
   await page
     .getByRole("dialog")
-    .getByRole("button", { name: "打开项目", exact: true })
+    .getByRole("button", { name: "创建项目", exact: true })
     .click();
 
   await page.getByRole("dialog").waitFor({ state: "hidden" });
   assert.equal(state.settings.workspace, state.chosenFolder);
   await page.reload();
   await page
-    .getByRole("heading", { name: "Cage 环境已就绪", exact: true })
+    .getByRole("heading", { name: "Eden 环境已就绪", exact: true })
     .waitFor();
   await page
     .getByRole("region", { name: "项目 design-lab", exact: true })
@@ -70,7 +61,7 @@ try {
   assert.ok(state.status.projects.includes(state.chosenFolder));
   await page.evaluate(() =>
     localStorage.setItem(
-      "cage-projects",
+      "eden-projects",
       JSON.stringify(["/fake/local-history"]),
     ),
   );
@@ -86,7 +77,7 @@ try {
   assert.equal(await page.getByText("最近项目", { exact: true }).count(), 0);
   checks.push("真实目录列表刷新读回、不使用本地历史、项目打开失败保留路径");
   await page
-    .getByRole("heading", { name: "Cage 环境已就绪", exact: true })
+    .getByRole("heading", { name: "Eden 环境已就绪", exact: true })
     .waitFor();
   await page
     .getByRole("button", { name: "在 design-lab 新建终端", exact: true })
@@ -107,7 +98,7 @@ try {
   await terminalTab.focus();
   // WebKit's default keyboard mode skips buttons when tabbing. The tab's
   // context-menu shortcut reaches its actions in that mode too.
-  await terminalTab.press(process.env.CAGE_TEST_BROWSER === "webkit" ? "Shift+F10" : "Tab");
+  await terminalTab.press(process.env.EDEN_TEST_BROWSER === "webkit" ? "Shift+F10" : "Tab");
   assert.equal(await page.locator(":focus").getAttribute("aria-label"), "置顶");
   await page.keyboard.press("Enter");
   await actions.getByRole("button", { name: "取消置顶", exact: true }).click();
@@ -163,7 +154,7 @@ try {
     "新标签页",
     "文件 · design-lab",
   ]);
-  await page.keyboard.press("Meta+2");
+  await page.keyboard.press("Control+2");
   await page.waitForFunction(
     () =>
       document.querySelector('.browser-tabs [aria-selected="true"]')
@@ -182,7 +173,7 @@ try {
     state.tabs.find((tab) => tab.kind === "editor").id,
   );
   await page.getByRole("tab", { name: "开发终端", exact: true }).click();
-  await page.keyboard.press("Meta+1");
+  await page.keyboard.press("Control+1");
   await page.waitForFunction(
     () =>
       document.querySelector('.sidebar-tabs [aria-selected="true"]')
@@ -207,7 +198,7 @@ try {
   await settings();
   await page.getByRole("heading", { name: "通用", exact: true }).waitFor();
   await shot("settings");
-  await page.getByRole("radio", { name: /^原生 Linux/ }).check();
+  await page.getByRole("radio", { name: /^Mac 快捷键/ }).check();
   await page
     .getByRole("button", { name: "返回工作台", exact: true })
     .first()
@@ -219,14 +210,14 @@ try {
     .getByRole("button", { name: "取消", exact: true })
     .click();
   assert.equal(
-    await page.getByRole("radio", { name: /^原生 Linux/ }).isChecked(),
+    await page.getByRole("radio", { name: /^Mac 快捷键/ }).isChecked(),
     true,
   );
   state.failSave = true;
   await page.getByRole("button", { name: "保存设置", exact: true }).click();
   await page.getByRole("alert").filter({ hasText: "保存失败" }).waitFor();
   assert.equal(
-    await page.getByRole("radio", { name: /^原生 Linux/ }).isChecked(),
+    await page.getByRole("radio", { name: /^Mac 快捷键/ }).isChecked(),
     true,
   );
   state.failSave = false;
@@ -234,11 +225,11 @@ try {
   await page
     .getByRole("region", { name: "设置", exact: true })
     .waitFor({ state: "hidden" });
-  assert.equal(state.settings.keyboard, "native");
+  assert.equal(state.settings.keyboard, "mac");
   assert.equal(state.terminalConnections, connections);
   await settings();
   assert.equal(
-    await page.getByRole("radio", { name: /^原生 Linux/ }).isChecked(),
+    await page.getByRole("radio", { name: /^Mac 快捷键/ }).isChecked(),
     true,
   );
   await page.getByRole("button", { name: "时区与语言", exact: true }).click();
@@ -267,21 +258,22 @@ try {
   await shot("settings-region-minimum");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "放弃修改", exact: true }).click();
+  state.chosenFolder = "";
   await page
     .getByRole("button", { name: "添加项目", exact: true })
     .click();
   await page.getByRole("button", { name: "添加本机项目…", exact: true }).click();
   await page
-    .getByLabel("新项目文件夹", { exact: true })
-    .fill("/Users/shihao/Projects/another-project");
+    .getByLabel("添加文件夹", { exact: true })
+    .fill("C:/Users/developer/Projects/another-project");
   await page
     .getByRole("dialog")
-    .getByRole("button", { name: "打开项目", exact: true })
+    .getByRole("button", { name: "创建项目", exact: true })
     .click();
   await page.getByRole("dialog").waitFor({ state: "hidden" });
   assert.equal(
     state.settings.workspace,
-    "/Users/shihao/Projects/another-project",
+    "C:/Users/developer/Projects/another-project",
   );
   assert.ok(state.terminals.length > 0);
   assert.ok(state.tabs.length > 0);
@@ -299,7 +291,7 @@ try {
     .waitFor();
   assert.equal(
     state.terminals[1].workspace,
-    "/Users/shihao/Projects/another-project",
+    "C:/Users/developer/Projects/another-project",
   );
   await page
     .getByRole("button", { name: "在 design-lab 新建终端", exact: true })
@@ -309,10 +301,10 @@ try {
     .getByRole("region", { name: "项目 design-lab", exact: true })
     .getByRole("tab", { name: "终端 3", exact: true })
     .waitFor();
-  assert.equal(state.terminals[2].workspace, state.chosenFolder);
+  assert.equal(state.terminals[2].workspace, firstProject);
   assert.equal(
     state.settings.workspace,
-    "/Users/shihao/Projects/another-project",
+    "C:/Users/developer/Projects/another-project",
   );
   await page.getByRole("button", { name: "打开浏览器", exact: true }).click();
   await shot("browser-minimum");
@@ -328,7 +320,7 @@ try {
     .getByRole("tab", { name: "文件 · design-lab", exact: true })
     .waitFor();
   assert.equal(state.tabs.filter((tab) => tab.kind === "editor").length, 2);
-  assert.equal(state.tabs.find((tab) => tab.id === state.active)?.workspace, state.chosenFolder);
+  assert.equal(state.tabs.find((tab) => tab.id === state.active)?.workspace, firstProject);
   checks.push(
     "两个项目终端各自归组、指定目录新建不受最后打开项目影响、浏览器与终端保持运行",
   );
@@ -351,7 +343,7 @@ try {
   await page.reload();
   await page.getByRole("button", { name: "展开侧栏", exact: true }).waitFor();
   await page.setViewportSize({ width: 375, height: 812 });
-  await page.keyboard.press("Meta+t");
+  await page.keyboard.press("Control+t");
   await tabs().waitFor();
   await shot("compact-workspace");
   assert.equal(

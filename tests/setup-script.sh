@@ -63,24 +63,46 @@ fi
 
 # Exercise the real package transaction without installing on the host.
 chromium_block="$(awk '/^if \[\[ "\$INSTALL_CHROMIUM" == "1" \]\]; then/,/^fi$/' "$SETUP_SH")"
-chromium_install="$(
-  INSTALL_CHROMIUM=1 CLAUDE_CAGE=1
-  sudo() { :; }
-  apt_get() { printf 'install: %s\n' "$*"; }
-  cage_is_ubuntu() { return 1; }
-  cage_cache_chromium() { printf 'cache: %s\n' "$*"; }
-  eval "$chromium_block"
-)"
-case "$chromium_install" in
-  *'install: install -y --no-install-recommends chromium chromium-l10n '*) pass "Chromium explicitly installs its language packs";;
-  *) fail "Chromium install omits language packs: $chromium_install";;
-esac
+for managed in 0 1; do
+  chromium_install="$(
+    set -e
+    INSTALL_CHROMIUM=1 WORKBENCH_SETUP="$managed"
+    sudo() { if [[ "$1" == env ]]; then printf 'install: %s\n' "$*"; fi; }
+    apt_get() { printf 'install: %s\n' "$*"; }
+    workbench_cache_chromium() { printf 'cache: %s\n' "$*"; }
+    source "$SELF_DIR/internal/eden/debian-browser.sh"
+    eval "$chromium_block"
+  )"
+  case "$chromium_install" in
+    *'install -y --no-install-recommends chromium chromium-l10n fonts-liberation fonts-dejavu-core xvfb xauth'*) pass "Chromium installs language packs and fonts (managed=$managed)";;
+    *) fail "Chromium install omits required packages: $chromium_install";;
+  esac
+  if [[ $managed == 1 ]]; then
+    case "$chromium_install" in
+      *'cache: --no-install-recommends chromium chromium-l10n fonts-liberation fonts-dejavu-core xvfb xauth'*) pass "managed setup uses the shared Chromium cache";;
+      *) fail "managed setup did not prefetch Chromium: $chromium_install";;
+    esac
+  fi
+done
+
+release_gate="$(awk '/^if \[\[ "\$ID" != debian/,/^fi$/' "$SETUP_SH")"
+for release in debian:13 debian:12 debian:14 ubuntu:24.04 debian:; do
+  output="$(ID="${release%%:*}" VERSION_ID="${release#*:}" bash -c "$release_gate" 2>&1)"
+  status=$?
+  if [[ $release == debian:13 ]]; then
+    check "setup accepts Debian 13" "$status" 0
+  elif [[ $status == 1 && $output == *'requires Debian 13'* ]]; then
+    pass "setup rejects $release before changing the guest"
+  else
+    fail "setup accepted unsupported release $release: $status $output"
+  fi
+done
 
 # Behind a proxy, sudo must keep the proxy settings Lima puts in the guest's
 # environment (#25): installed before the first apt call, and checked by
 # visudo first, since a broken sudoers file breaks sudo.
 proxy_line="$(grep -n '/etc/sudoers.d/10-agent-vm-proxy' "$SETUP_SH" | head -1 | cut -d: -f1)"
-visudo_line="$(grep -n 'sudo visudo -cqf /tmp/agent-vm-proxy.sudoers' "$SETUP_SH" | head -1 | cut -d: -f1)"
+visudo_line="$(grep -nF 'sudo visudo -cqf "$proxy_sudoers"' "$SETUP_SH" | head -1 | cut -d: -f1)"
 apt_line="$(grep -nE '^[^#]*apt_get (update|install)' "$SETUP_SH" | head -1 | cut -d: -f1)"
 if [ -n "$proxy_line" ] && [ -n "$visudo_line" ] && [ "$visudo_line" -lt "$proxy_line" ] && [ "$proxy_line" -lt "$apt_line" ]; then
   pass "sudo keeps the proxy settings from before the first apt call, checked by visudo"

@@ -12,14 +12,14 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func TestBrowserExitRetryUsesFreshSampleAndKeepsFailureEvidence(t *testing.T) {
 	for _, condition := range []string{"recovers", "unavailable", "settings mismatch", "invalid address", "canceled", "fault drill"} {
 		t.Run(condition, func(t *testing.T) {
 			s := testServer(t)
-			cfg := cage.DefaultConfig()
+			cfg := eden.DefaultConfig()
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			var requests atomic.Int32
@@ -110,8 +110,8 @@ func TestStartJobDistinguishesNetworkFailureFromBootFailure(t *testing.T) {
 
 func TestSettingsJobRetainsSaveWhenNetworkCheckFails(t *testing.T) {
 	s := testServer(t)
-	saved := savedProfile{Config: cage.DefaultConfig(), Preferences: s.preferences}
-	saved.Config.ExitPolicy = cage.ExitPolicy{Mode: "dynamic", Scope: "country", CountryCode: "US"}
+	saved := savedProfile{Config: eden.DefaultConfig(), Preferences: s.preferences}
+	saved.Config.ExitPolicy = eden.ExitPolicy{Mode: "dynamic", Scope: "country", CountryCode: "US"}
 	_, err := s.submitJob("settings", func() error {
 		if err := s.apply(saved, false); err != nil {
 			return err
@@ -122,7 +122,7 @@ func TestSettingsJobRetainsSaveWhenNetworkCheckFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	job := awaitJobIdle(t, &s.jobs)
-	cfg, err := cage.Load(s.configPath)
+	cfg, err := eden.Load(s.configPath)
 	if err != nil || cfg.ExitPolicy != saved.Config.ExitPolicy || !job.SettingsSaved || job.Message != "设置已保存，环境已启动，联网检查未通过" || !strings.Contains(job.Error, "503") {
 		t.Fatalf("persisted settings and later network error: cfg=%v job=%+v err=%v", cfg.ExitPolicy, job, err)
 	}

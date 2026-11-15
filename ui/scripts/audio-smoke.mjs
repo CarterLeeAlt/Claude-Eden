@@ -3,12 +3,12 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 const require = createRequire(import.meta.url);
-const browserName = process.env.CAGE_TEST_BROWSER || "chromium";
-const browserEngine = require(process.env.CAGE_PLAYWRIGHT_MODULE || "playwright")[browserName];
+const browserName = process.env.EDEN_TEST_BROWSER || "chromium";
+const browserEngine = require(process.env.EDEN_PLAYWRIGHT_MODULE || "playwright")[browserName];
 const vite = await createServer({ root: fileURLToPath(new URL("..", import.meta.url)), configFile: fileURLToPath(new URL("../vite.config.js", import.meta.url)), server: { host: "127.0.0.1", port: 0 } });
 await vite.listen();
 const origin = `http://127.0.0.1:${vite.httpServer.address().port}`;
-const browser = await browserEngine.launch({ headless: true, ...(browserName === "chromium" ? { args: ["--autoplay-policy=user-gesture-required"] } : {}) });
+const browser = await browserEngine.launch({ headless: true, executablePath: process.env.EDEN_TEST_BROWSER_PATH, ...(browserName === "chromium" ? { args: ["--autoplay-policy=user-gesture-required"] } : {}) });
 const page = await browser.newPage();
 let connected = 0, open = 0;
 const timers = new Set(), errors = [];
@@ -23,7 +23,7 @@ await page.addInitScript(() => {
 await page.route("**/audio-test", async route => route.fulfill({ contentType: "text/html", body: await vite.transformIndexHtml("/audio-test", '<div id="root"></div><script type="module" src="/scripts/audio-fixture.jsx"></script>') }));
 const format = { format: "s16le", sample_rate: 48000, channels: 2 };
 let permissionMissing = false;
-const permissionMessage = "请在虚拟 Mac 的系统设置中允许 Cage Guest Window 录制屏幕和系统声音";
+const permissionMessage = "客机声音服务暂不可用，请重新连接客机图形会话";
 await page.route("**/api/audio", route => route.fulfill(permissionMissing
   ? { status: 409, contentType: "text/plain", body: permissionMessage }
   : { json: format }));
@@ -101,11 +101,11 @@ try {
   await page.locator("output").filter({ hasText: "playing" }).waitFor();
   await page.getByRole("button", { name: "停止测试环境" }).click();
   await waitFor(() => open === 0);
-  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("cage.audio")).volume), .5);
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("eden.audio")).volume), .5);
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ result: "PASS", fullVolumeRMS: full, halfVolumeRMS: half, checks: ["real AudioWorklet PCM output", "volume", "mute closes stream", "unmute reconnects", "guest permission error", "recovery after permission restored", "environment stop", "preference persistence"] }));
 } catch (error) {
-  console.error({ pageErrors: errors, body: await page.locator("body").innerText(), connected, open, preference: await page.evaluate(() => localStorage.getItem("cage.audio")) });
+  console.error({ pageErrors: errors, body: await page.locator("body").innerText(), connected, open, preference: await page.evaluate(() => localStorage.getItem("eden.audio")) });
   throw error;
 } finally {
   for (const timer of timers) clearInterval(timer);

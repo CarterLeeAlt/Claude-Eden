@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func TestLinuxTimezoneRejectsStaleSystemFile(t *testing.T) {
@@ -43,7 +43,7 @@ func TestLinuxTimezoneRejectsStaleSystemFile(t *testing.T) {
 	zonePath, _ := json.Marshal([]string{filepath.Dir(zoneDirectory)})
 	script = "import zoneinfo; zoneinfo.reset_tzpath(" + string(zonePath) + ")\n" + script
 	input, _ := json.Marshal(map[string]any{"stage": "environment", "timezone": "Asia/Shanghai"})
-	config := cage.DefaultConfig()
+	config := eden.DefaultConfig()
 	config.Timezone = "Asia/Shanghai"
 	config.Locale = "C"
 	for _, tc := range []struct {

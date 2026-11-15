@@ -2,23 +2,22 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
-const capture = process.env.CAGE_TEST_CAPTURE;
+const capture = process.env.EDEN_TEST_CAPTURE;
 if (capture) await mkdir(capture, { recursive: true });
-for (const [platform, system] of [["darwin", "macos"], ["win32", "windows-11"], ["linux", "debian-13"]]) {
+for (const [platform, system] of [["windows", "debian-13"]]) {
   const { page, state, browser, errors } = await createWorkbench({
     clientContext: { mode: "local", connection_id: "local", client_platform: platform,
       server_platform: platform, connection: { state: "disconnected" } },
     beforeNavigate: async (page, state) => {
       await page.addInitScript(value => Object.defineProperty(navigator, "platform", { get: () => value }),
-        platform === "darwin" ? "MacIntel" : platform === "win32" ? "Win32" : "Linux x86_64");
+        "Win32");
       state.account.guest_system = state.status.guest_system = system;
       state.status.ready = state.status.vm_running = true;
       state.tabs = [{ id: "existing-web", kind: "web", title: "原有网页", url: "https://example.test/" }];
       state.active = "existing-web";
       state.terminals = [{ id: "existing-terminal", kind: "shell", title: "原有终端", workspace: state.settings.workspace }];
-      const desktop = { installed: true, running: true, native_user_session: true, version: "4.0", screen: false, input: false };
+      const desktop = { installed: true, running: true, managed: true, version: "4.0", screen: false, input: false };
       await page.route("**/api/claude-desktop", route => route.fulfill({ json: desktop }));
-      await page.route("**/api/macos/claude/window", route => route.fulfill({ json: desktop }));
       await page.route("**/api/claude-accounts*", route => route.fulfill({ json: {
         accounts: [{ id: "navigation-account", email: "test@example.invalid", label: "测试账号", enabled: true, status: "ready" }],
         detection_status: "ready", scheduling: { mode: "balanced", switch_policy: "ask" },
@@ -72,7 +71,7 @@ for (const [platform, system] of [["darwin", "macos"], ["win32", "windows-11"], 
     await accountPage.getByRole("button", { name: "展开侧栏", exact: true }).click();
     await sidebar.waitFor();
     if (capture) await page.screenshot({ path: `${capture}/${platform}.png` });
-    await page.keyboard.press(platform === "darwin" ? "Meta+w" : "Control+w");
+    await page.keyboard.press("Control+w");
     await accountPage.waitFor({ state: "hidden" });
     assert.equal(state.requests.filter(request => /\/close$/.test(request.path)).length, 0,
       "closing the account page must preserve the previous terminal and browser");

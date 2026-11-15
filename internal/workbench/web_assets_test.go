@@ -11,7 +11,6 @@ import (
 func TestPackagedWebAssetsRejectDamageAfterBuild(t *testing.T) {
 	files := fstest.MapFS{
 		"index.html":     {Data: []byte(`<script type="module" src="/assets/main.js"></script>`)},
-		"mobile.html":    {Data: []byte(`<script type="module" src="/assets/main.js"></script>`)},
 		"assets/main.js": {Data: []byte("export const valid=true;")},
 	}
 	hashes := map[string]string{}

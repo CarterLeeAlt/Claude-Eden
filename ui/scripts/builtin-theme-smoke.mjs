@@ -142,7 +142,7 @@ try {
   await page.getByRole("status").filter({ hasText: "主题已导出" }).waitFor();
   assert.ok(sameTheme(parseThemeDocument(exported.text), snapshot));
   await fs.writeFile(
-    output + "accessible-export.cage-theme.json",
+    output + "accessible-export.eden-theme.json",
     exported.text,
   );
   await page.reload();
@@ -169,7 +169,7 @@ try {
   );
   await page.getByRole("button", { name: "返回工作台", exact: true }).click();
   await page
-    .getByRole("button", { name: "启动 Cage 环境", exact: true })
+    .getByRole("button", { name: "启动 Eden 环境", exact: true })
     .click();
   await page
     .getByRole("button", { name: "新建终端", exact: true })

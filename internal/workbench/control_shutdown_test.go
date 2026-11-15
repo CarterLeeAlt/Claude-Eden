@@ -15,7 +15,7 @@ import (
 )
 
 func TestServeShutdownHandoff(t *testing.T) {
-	const helperConfig = "CAGE_TEST_SHUTDOWN_CONFIG"
+	const helperConfig = "EDEN_TEST_SHUTDOWN_CONFIG"
 	if configPath := os.Getenv(helperConfig); configPath != "" {
 		if err := Serve(configPath); err != nil {
 			t.Fatal(err)
@@ -26,7 +26,7 @@ func TestServeShutdownHandoff(t *testing.T) {
 		name, saved                  string
 		timezone, language, balanced bool
 	}{
-		{"fresh profile", "", true, true, true},
+		{"fresh profile", "", true, true, false},
 		{"legacy missing fields", `{"keyboard":"native"}`, true, false, false},
 		{"saved manual choice", `{"auto_timezone":false,"auto_language":false}`, false, false, false},
 		{"saved automatic choice", `{"auto_timezone":true,"auto_language":true}`, true, true, false},
@@ -38,7 +38,7 @@ func TestServeShutdownHandoff(t *testing.T) {
 }
 
 func testServeShutdownHandoff(t *testing.T, saved string, timezone, language, balanced bool) {
-	const helperConfig = "CAGE_TEST_SHUTDOWN_CONFIG"
+	const helperConfig = "EDEN_TEST_SHUTDOWN_CONFIG"
 
 	// Keep both the profile and its sibling workspace under the test directory.
 	// With no VM record, node store or service record, Serve only initializes

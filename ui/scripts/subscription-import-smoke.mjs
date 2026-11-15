@@ -8,14 +8,14 @@ import { promisify } from "node:util";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.CAGE_PLAYWRIGHT_MODULE || "playwright");
+const { chromium } = require(process.env.EDEN_PLAYWRIGHT_MODULE || "playwright");
 const run = promisify(execFile);
-const executable = process.env.CAGE_SUBSCRIPTION_QA_EXECUTABLE;
-assert.ok(executable, "Set CAGE_SUBSCRIPTION_QA_EXECUTABLE to the newly built cage beside mihomo");
-const output = path.resolve(process.env.CAGE_SUBSCRIPTION_QA_OUTPUT || "/tmp/cage-subscription-ui");
+const executable = process.env.EDEN_SUBSCRIPTION_QA_EXECUTABLE;
+assert.ok(executable, "Set EDEN_SUBSCRIPTION_QA_EXECUTABLE to the newly built Eden executable beside mihomo");
+const output = path.resolve(process.env.EDEN_SUBSCRIPTION_QA_OUTPUT || "../.tmp/guest-neutralization/ui-eden/subscription-ui");
 await fs.mkdir(output, { recursive: true });
-const profile = await fs.mkdtemp("/private/tmp/cage-subscription-qa-");
-const env = { ...process.env, CLAUDE_CAGE_CONFIG: path.join(profile, "config.json") };
+const profile = await fs.mkdtemp(path.join(output, "profile-"));
+const env = { ...process.env, EDEN_CONFIG: path.join(profile, "config.json") };
 await run(executable, ["init"], { env });
 const log = await fs.open(path.join(profile, "server.log"), "w", 0o600);
 const service = spawn(executable, ["serve"], { env, stdio: ["ignore", log.fd, log.fd] });
@@ -39,7 +39,7 @@ try {
     headers: { Origin: origin, "Content-Type": "application/json" },
     body: JSON.stringify({ token: control.token }),
   }).then((response) => response.json());
-  browser = await chromium.launch({ headless: true, executablePath: process.env.CAGE_TEST_BROWSER_PATH });
+  browser = await chromium.launch({ headless: true, executablePath: process.env.EDEN_TEST_BROWSER_PATH });
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(launch.url);

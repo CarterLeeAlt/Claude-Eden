@@ -1,5 +1,5 @@
 // Uses the built app, real workbench APIs, real Mihomo, and local CONNECT
-// upstreams. No request reaches the user's running Cage or Clash instances.
+// upstreams. No request reaches the user's running Eden or Clash instances.
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import http from "node:http";
@@ -9,17 +9,17 @@ import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.CAGE_PLAYWRIGHT_MODULE || "playwright");
+const { chromium } = require(process.env.EDEN_PLAYWRIGHT_MODULE || "playwright");
 const run = promisify(execFile);
 const root = path.resolve(import.meta.dirname, "../..");
-const appBundle = process.env.CAGE_QA_APP_BUNDLE || path.join(root, "_output/Cage.app");
-const executable = path.join(appBundle, "Contents/Resources/cage");
-const output = path.join(root, "docs/test-reports/2026-10-31-managed-proxy");
+const executable = process.env.EDEN_QA_EXECUTABLE;
+assert.ok(executable && path.isAbsolute(executable) && executable.toLowerCase().endsWith(".exe"), "Set EDEN_QA_EXECUTABLE to the Eden Windows executable beside mihomo");
+const output = path.join(root, ".tmp/guest-neutralization/ui-eden/managed-proxy");
 await fs.mkdir(output, { recursive: true });
 await fs.writeFile(path.join(output, "result.json"), JSON.stringify({ passed: false, state: "running" }));
-const profile = await fs.mkdtemp("/private/tmp/cage-proxy-qa-");
+const profile = await fs.mkdtemp(path.join(output, "profile-"));
 const config = path.join(profile, "config.json");
-const env = { ...process.env, CLAUDE_CAGE_CONFIG: config };
+const env = { ...process.env, EDEN_CONFIG: config };
 await run(executable, ["init"], { env });
 const sockets = new Set();
 async function upstream(label) {
@@ -85,7 +85,7 @@ try {
   const firstRevision = p.revision;
   async function through() {
     const stored = JSON.parse(await fs.readFile(path.join(profile, "proxy/sources.json")));
-    const file=path.join(profile,"curl.conf");await fs.writeFile(file,`proxy = "socks5h://cage:${stored.auth}@127.0.0.1:${stored.port}"\n`,{mode:0o600});
+    const file=path.join(profile,"curl.conf");await fs.writeFile(file,`proxy = "socks5h://eden:${stored.auth}@127.0.0.1:${stored.port}"\n`,{mode:0o600});
     return (await run("curl", ["--config",file,"--noproxy", "", "--fail", "--silent", "--show-error", "--max-time", "10", "http://example.com/"])).stdout;
   }
   console.log("QA: core selected A"); assert.equal(await through(), "via-A"); assert.ok(a.requests() > 0);
@@ -112,7 +112,7 @@ try {
   await page.getByRole("tab", { name: "诊断", exact: true }).click();
   await page.getByLabel("独立代理端口", { exact: true }).fill(String(a.port));
   await page.getByRole("button", { name: "应用端口并重启核心", exact: true }).click();
-  await page.getByRole("region", { name: "设置", exact: true }).getByRole("alert").filter({ hasText: "Cage 代理端口已被占用，请更换独立端口" }).waitFor();
+  await page.getByRole("region", { name: "设置", exact: true }).getByRole("alert").filter({ hasText: "Eden 代理端口已被占用，请更换独立端口" }).waitFor();
   assert.equal(a.proxy.listening, true);
   assert.equal((await state()).port, port, "port conflict replaced the saved profile");
   await page.getByRole("button", { name: "应用端口并重启核心", exact: true }).click();
@@ -123,11 +123,11 @@ try {
   await assert.rejects(through());
   await page.screenshot({ path: path.join(output, "stopped.png") });
   let realHTTPS = false;
-  if (process.env.CAGE_QA_REAL_CONFIG) {
+  if (process.env.EDEN_QA_REAL_CONFIG) {
     await page.getByRole("tab", { name: "订阅", exact: true }).click();
     await page.getByRole("button", { name: "添加来源", exact: true }).click();
     await page.getByRole("button", { name: "本地 YAML", exact: true }).click();
-    await page.locator('input[type="file"]').setInputFiles(process.env.CAGE_QA_REAL_CONFIG);
+    await page.locator('input[type="file"]').setInputFiles(process.env.EDEN_QA_REAL_CONFIG);
     await page.getByLabel("来源名称", { exact: true }).fill("Real egress QA");
     await page.getByRole("button", { name: "导入并验证", exact: true }).click();
     await page.waitForFunction(() => !document.querySelector(".proxy-progress"));
@@ -140,7 +140,7 @@ try {
   await page.getByRole("button", { name: "应用代理", exact: true }).click();
     await page.waitForFunction(() => !document.querySelector(".proxy-progress"));
     const stored = JSON.parse(await fs.readFile(path.join(profile, "proxy/sources.json")));
-    const file=path.join(profile,"curl.conf");await fs.writeFile(file,`proxy = "socks5h://cage:${stored.auth}@127.0.0.1:${stored.port}"\n`,{mode:0o600});
+    const file=path.join(profile,"curl.conf");await fs.writeFile(file,`proxy = "socks5h://eden:${stored.auth}@127.0.0.1:${stored.port}"\n`,{mode:0o600});
     const trace = (await run("curl", ["--config",file,"--noproxy", "", "--fail", "--silent", "--show-error", "--max-time", "25", "https://1.1.1.1/cdn-cgi/trace"])).stdout;
     assert.match(trace, /^ip=/m); realHTTPS = true;
     console.log("QA: real HTTPS through imported node and bundled core verified (exit address withheld)");

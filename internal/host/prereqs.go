@@ -39,7 +39,7 @@ func qemuBinaryFor(goarch, manager string) (bin, install string) {
 	case "apt-get":
 		return bin, "sudo apt-get install " + deb + " qemu-utils"
 	}
-	return bin, "your distribution's QEMU package (with Nix, 'nix run github:sylvinus/agent-vm' brings its own)"
+	return bin, "your distribution's QEMU package, including qemu-img"
 }
 
 // WSLVersion is 2 or 1 under WSL, from the kernel release, 0 elsewhere.
@@ -70,7 +70,7 @@ func LinuxPrereqs(w io.Writer) bool {
 	// the disk image.
 	for _, b := range []string{bin, "qemu-img"} {
 		if _, err := exec.LookPath(b); err != nil {
-			fmt.Fprintf(w, "Error: Lima needs '%s' on PATH (not found).\n  Install with: %s\n", b, install)
+			fmt.Fprintf(w, "Error: The Linux virtual machine requires '%s' on PATH (not found).\n  Install with: %s\n", b, install)
 			ok = false
 		}
 	}
@@ -152,7 +152,7 @@ func WindowsPrereqs(out, w io.Writer) bool {
 			return true
 		}
 	}
-	fmt.Fprintf(w, "Error: Lima needs '%s' on PATH (not found).\n  Install QEMU with: winget install -e --id SoftwareFreedomConservancy.QEMU\n  QEMU also needs the 'Windows Hypervisor Platform' Windows feature (see 'agent-vm doctor').\n", bin)
+	fmt.Fprintf(w, "Error: The Linux virtual machine requires '%s' and 'qemu-img' on PATH.\n  Install QEMU with: winget install -e --id SoftwareFreedomConservancy.QEMU\n  QEMU also requires the 'Windows Hypervisor Platform' Windows feature.\n", bin)
 	return false
 }
 
@@ -169,7 +169,7 @@ func WindowsStartHint(w io.Writer, logs ...string) {
 	for _, l := range logs {
 		if b, err := os.ReadFile(l); err == nil && strings.Contains(strings.ToLower(string(b)), "whpx") {
 			if windowsHypervisorReady() == nil {
-				fmt.Fprintln(w, "Windows Hypervisor Platform is enabled, but QEMU could not initialize WHPX. Check the original QEMU error and any custom QEMU arguments; Cage uses kernel-irqchip=off for WHPX compatibility.")
+				fmt.Fprintln(w, "Windows Hypervisor Platform is enabled, but QEMU could not initialize WHPX. Check the original QEMU error and any custom QEMU arguments; Eden uses kernel-irqchip=off for WHPX compatibility.")
 				return
 			}
 			fmt.Fprintf(w, `QEMU could not use the Windows hypervisor. It needs the "Windows Hypervisor

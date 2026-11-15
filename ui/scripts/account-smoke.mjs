@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createWorkbench } from './workbench-fixture.mjs';
-const output = fileURLToPath(new URL('../../.oil-ui/local-account/shots/', import.meta.url));
+const output = fileURLToPath(new URL('../../.tmp/guest-neutralization/ui-eden/screenshots/account/', import.meta.url));
 await fs.mkdir(output, { recursive: true });
 let launchAcks = 0;
 const {browser,page,state,errors} = await createWorkbench({nativeRequest: async ({action}) => {
@@ -26,7 +26,7 @@ async function checkMenuLayout() {
   assert.ok(projectBox.y + projectBox.height <= menu.y);
   assert.equal(await page.getByRole('menuitem', {name:'设置',exact:true}).evaluate(el => el === document.activeElement), true);
   await page.keyboard.press('ArrowDown');
-  assert.equal(await page.getByRole('menuitem', {name:/锁定 Cage/}).evaluate(el => el === document.activeElement), true);
+  assert.equal(await page.getByRole('menuitem', {name:/锁定 Eden/}).evaluate(el => el === document.activeElement), true);
   await page.keyboard.press('Escape');
   await list.waitFor({state:'hidden'});
   assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
@@ -36,7 +36,7 @@ try {
   Object.assign(state.account, {exists:false,unlocked:false,username:''});
   const previousAcks = launchAcks;
   await page.reload();
-  await page.getByRole('heading',{name:'注册 Cage 账户'}).waitFor();
+  await page.getByRole('heading',{name:'注册 Eden 账户'}).waitFor();
   await page.waitForFunction(async (previous) => await window.fixtureLaunchAcks() > previous, previousAcks);
   await page.screenshot({path:output+'create.png'});
   await page.getByLabel('用户名',{exact:true}).fill('林间工作室');
@@ -78,17 +78,17 @@ try {
   await page.getByRole('menuitem',{name:'普通终端',exact:true}).click();
   const ids=state.terminals.map(x=>x.id);
   await accountMenu().click();
-  await page.getByRole('menuitem',{name:/锁定 Cage/}).click();
-  await page.getByRole('region',{name:'解锁 Cage',exact:true}).waitFor();
+  await page.getByRole('menuitem',{name:/锁定 Eden/}).click();
+  await page.getByRole('region',{name:'解锁 Eden',exact:true}).waitFor();
   assert.equal(state.status.vm_running,true);
   assert.deepEqual(state.terminals.map(x=>x.id),ids);
   await page.getByText('后台环境仍在运行，任务没有停止',{exact:true}).waitFor();
   await page.screenshot({path:output+'locked.png'});
   await page.getByLabel('账户密码',{exact:true}).fill('fixture-password');
-  await page.getByRole('button',{name:'解锁 Cage',exact:true}).click();
+  await page.getByRole('button',{name:'解锁 Eden',exact:true}).click();
   await page.getByRole('alert').filter({hasText:'密码不正确'}).waitFor();
   await page.getByLabel('账户密码',{exact:true}).fill('changed-fixture-password');
-  await page.getByRole('button',{name:'解锁 Cage',exact:true}).click();
+  await page.getByRole('button',{name:'解锁 Eden',exact:true}).click();
   await accountMenu().waitFor();
   assert.deepEqual(state.terminals.map(x=>x.id),ids);
   await page.reload();
@@ -104,7 +104,7 @@ try {
   await accountMenu().click();
   await page.getByRole('menuitem',{name:'退出账户',exact:true}).click();
   await page.getByRole('dialog').getByRole('button',{name:'停止环境并退出账户',exact:true}).click();
-  await page.getByRole('region',{name:'解锁 Cage',exact:true}).waitFor();
+  await page.getByRole('region',{name:'解锁 Eden',exact:true}).waitFor();
   assert.equal(state.status.vm_running,false);
   assert.equal(state.terminals.length,0);
   assert.deepEqual(errors,[]);

@@ -15,8 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
-	"github.com/sylvinus/agent-vm/internal/guestos"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func agentTestController(t *testing.T) *Server {
@@ -68,7 +67,7 @@ func TestAgentAuthenticationAndLockedAccount(t *testing.T) {
 func TestAgentSettingsPatchPreservesOmittedFields(t *testing.T) {
 	s := agentTestController(t)
 	s.preferences.ClaudeTerminalCommand = "claude --verbose"
-	before, err := cage.Load(s.configPath)
+	before, err := eden.Load(s.configPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +88,7 @@ func TestAgentSettingsPatchPreservesOmittedFields(t *testing.T) {
 	if s.preferences.ClaudeTerminalCommand != "claude --verbose" || s.preferences.BrowserHomeURL != "https://example.org/" {
 		t.Fatalf("preferences lost: %+v", s.preferences)
 	}
-	after, _ := cage.Load(s.configPath)
+	after, _ := eden.Load(s.configPath)
 	if before != after {
 		t.Fatal("unrelated network config changed")
 	}
@@ -102,11 +101,11 @@ func TestAgentSettingsPatchPreservesOmittedFields(t *testing.T) {
 
 func TestAgentPartialExitPolicyPreservesAnchor(t *testing.T) {
 	s := agentTestController(t)
-	cfg, err := cage.Load(s.configPath)
+	cfg, err := eden.Load(s.configPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.ExitPolicy = cage.ExitPolicy{Mode: "dynamic", Scope: "city", IP: "8.8.8.8", CountryCode: "US", Region: "California", City: "Los Angeles"}
+	cfg.ExitPolicy = eden.ExitPolicy{Mode: "dynamic", Scope: "city", IP: "8.8.8.8", CountryCode: "US", Region: "California", City: "Los Angeles"}
 	if err := writePrivate(s.configPath, cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -174,28 +173,18 @@ func TestAgentNoImplicitStartAndUnknownInput(t *testing.T) {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatal("read created profile")
 	}
-	for _, path := range []string{"/api/agent/settings", "/api/agent/jobs/012345abcdef"} {
-		if !macOSWorkbenchRoute(path) || !windowsWorkbenchRoute(path) {
-			t.Fatal("missing native platform route", path)
-		}
-	}
-	if !macOSSetupRoute("/api/agent/jobs/012345abcdef") {
-		t.Fatal("cannot track first setup")
-	}
 }
 
-func TestAgentCannotFollowSelectedRemote(t *testing.T) {
+func TestAgentCannotTreatDesktopGatewayAsWorkload(t *testing.T) {
 	s := agentTestController(t)
-	s.remote = newRemoteGateway(s.profile)
-	t.Cleanup(func() { s.remote.close() })
-	s.remote.setRemote(true)
+	s.desktopEntry = true
 	_, err := AgentCall(context.Background(), s.configPath, "environment.stop", json.RawMessage(`{}`))
 	var ae *AgentError
-	if !errors.As(err, &ae) || ae.Code != "state_conflict" {
-		t.Fatalf("remote target accepted: %v", err)
+	if !errors.As(err, &ae) || ae.Code != "controller_mismatch" {
+		t.Fatalf("gateway accepted as workload: %v", err)
 	}
 	if s.jobs.snapshot().ID != "" {
-		t.Fatal("remote rejection fell back to local mutation")
+		t.Fatal("gateway rejection fell back to workload mutation")
 	}
 }
 
@@ -206,23 +195,17 @@ func TestAgentRejectsOtherConfigFileInSameProfile(t *testing.T) {
 	if !errors.As(err, &ae) || ae.Code != "config_path_mismatch" {
 		t.Fatalf("wrong config accepted: %v", err)
 	}
-	s.clientOnly = true
+	s.desktopEntry = true
 	_, err = AgentCall(context.Background(), s.configPath, "account.status", nil)
 	if !errors.As(err, &ae) || ae.Code != "controller_mismatch" {
-		t.Fatalf("remote-only client accepted: %v", err)
+		t.Fatalf("desktop gateway accepted as workload: %v", err)
 	}
 }
 
 func TestAgentNativeDiagnosticExport(t *testing.T) {
-	for _, system := range []string{"linux", "macos", "windows"} {
+	for _, system := range []string{"linux"} {
 		t.Run(system, func(t *testing.T) {
 			s := agentTestController(t)
-			if system == "macos" {
-				s.macosGuest = &guestos.MacOSProfile{Instance: "test", User: "test"}
-			}
-			if system == "windows" {
-				s.windowsGuest = &guestos.WindowsProfile{}
-			}
 			s.account.lock()
 			path := filepath.Join(t.TempDir(), "diagnostics.zip")
 			if err := ExportAgentDiagnostics(s.configPath, path); err != nil {

@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -103,13 +102,8 @@ func hostPortOpen(p int) bool {
 }
 
 // codeSay prints the editor's address and password, and a note, in a box.
-// Safari leaves *.localhost to macOS, which may not resolve it: 127.0.0.1
-// then, in a window of its own.
 func (s *start) codeSay(port int, pw, note string) {
 	body := fmt.Sprintf("  Address:   http://%s:%d/\n  Password:  %s\n", codeHost(s.name), port, pw)
-	if runtime.GOOS == "darwin" {
-		body += fmt.Sprintf("\nIf Safari does not open it: http://127.0.0.1:%d/ in a private window kept for this editor, so pages from other VMs never get its cookie.\n", port)
-	}
 	if note != "" {
 		body += "\n" + note + "\n"
 	}
@@ -128,7 +122,7 @@ func (e *app) codeCmd(ctx context.Context, opts VMOpts, args []string) int {
 		if len(rest) > 0 {
 			a = rest[0]
 		}
-		fmt.Fprintf(e.io.Stderr, "Error: unknown argument for code: %s\nUsage: agent-vm [vm options] code\n", a)
+		fmt.Fprintf(e.io.Stderr, "Error: unknown argument for code: %s\nUsage: %s [vm options] code\n", a, Command)
 		return 1
 	}
 	return e.inVM(ctx, opts, (*start).codeSession)
@@ -136,7 +130,7 @@ func (e *app) codeCmd(ctx context.Context, opts VMOpts, args []string) int {
 
 func (s *start) codeSession() int {
 	ports := codePorts(s.name)
-	args := []string{"zsh", "-lc", codePrep, "agent-vm-code"}
+	args := []string{"zsh", "-lc", codePrep, Command + "-code"}
 	for _, p := range ports {
 		args = append(args, strconv.Itoa(p))
 	}
@@ -155,7 +149,7 @@ func (s *start) codeSession() int {
 	for _, l := range strings.Split(out.String(), "\n") {
 		switch {
 		case l == "missing":
-			s.warnf("Error: code-server is not installed in VM '%s'.\n  'agent-vm setup --preinstall=default,code-claude' (or code-server alone) adds it to the base, then 'agent-vm --reset code'\n  re-clones this VM (its disk is lost).", s.name)
+			s.warnf("Error: code-server is not installed in VM '%s'.\n  '%s setup --preinstall=default,code-claude' (or code-server alone) adds it to the base, then '%s --reset code'\n  re-clones this VM (its disk is lost).", s.name, Command, Command)
 			return 1
 		case strings.HasPrefix(l, "config="):
 			cfg = strings.TrimPrefix(l, "config=")

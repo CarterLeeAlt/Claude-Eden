@@ -11,7 +11,7 @@ import (
 )
 
 func TestStreamDrainsWarningFlood(t *testing.T) {
-	const flag = "CAGE_DIAGNOSTICS_FLOOD"
+	const flag = "EDEN_DIAGNOSTICS_FLOOD"
 	const count = 200000
 	const warning = "W: Tried to start delayed item package, but failed\n"
 	if os.Getenv(flag) == "1" {
@@ -59,7 +59,7 @@ func TestStreamDrainsWarningFlood(t *testing.T) {
 func TestStreamCoalescingKeepsProgressAndDistinctSecrets(t *testing.T) {
 	s := New(t.TempDir())
 	w := s.Stream("setup", "info")
-	input := "password=one\npassword=two\nCAGE_TOOL_BYTES pkg 0 10\nCAGE_TOOL_BYTES pkg 0 10\nlast\nlast\n"
+	input := "password=one\npassword=two\nWORKBENCH_TOOL_BYTES pkg 0 10\nWORKBENCH_TOOL_BYTES pkg 0 10\nlast\nlast\n"
 	w.Write([]byte(input))
 	w.Close()
 	events := readEvents(t, s)

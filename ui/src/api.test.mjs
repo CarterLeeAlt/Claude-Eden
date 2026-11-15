@@ -9,8 +9,8 @@ test("address input retains loopback inside guest and rejects active schemes", (
   );
   assert.equal(normalizeURL("example.com"), "https://example.com/");
   assert.equal(
-    normalizeURL("hello cage"),
-    "https://www.google.com/search?q=hello%20cage",
+    normalizeURL("hello eden"),
+    "https://www.google.com/search?q=hello%20eden",
   );
   assert.throws(() => normalizeURL("javascript:alert(1)"));
   assert.throws(() => normalizeURL("file:///etc/passwd"));
@@ -25,7 +25,7 @@ function nativeRuntime(t, fetcher, bridge) {
   };
   globalThis.fetch = fetcher;
   globalThis.window = {
-    webkit: { messageHandlers: { cage: { postMessage: bridge } } },
+    edenNativeBridge: { postMessage: bridge },
   };
   globalThis.location = new URL("http://localhost:17777/");
   t.after(() => {
@@ -51,13 +51,10 @@ test("aborted session opens preserve their cancellation reason and do not replay
   await assert.rejects(pending, error => error === reason);
   assert.equal(calls,1);
 });
-test("Linux native calls survive WebKit's transient messageHandlers objects", async (t) => {
+test("Windows native calls use the Eden bridge directly", async (t) => {
   const calls = [];
   nativeRuntime(t, () => { throw Error("unexpected request"); }, () => {});
-  Object.defineProperty(window, "webkit", {
-    get: () => ({ messageHandlers: {} }),
-  });
-  window.cageNativeBridge = {
+  window.edenNativeBridge = {
     postMessage: async (request) => { calls.push(request); return "clipboard text"; },
   };
   assert.equal(nativeAvailable(), true);

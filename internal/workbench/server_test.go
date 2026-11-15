@@ -3,7 +3,6 @@ package workbench
 import (
 	"context"
 	"encoding/json"
-	"github.com/sylvinus/agent-vm/internal/host"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,7 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/host"
+
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/managedproxy"
 )
 
@@ -19,7 +20,7 @@ func testServer(t *testing.T) *Server {
 	t.Helper()
 	profile := t.TempDir()
 	path := filepath.Join(profile, "config.json")
-	c := cage.DefaultConfig()
+	c := eden.DefaultConfig()
 	p, _ := managedproxy.Load(profile)
 	p.Auth = strings.Repeat("secret", 8)
 	if err := p.Import("test", "", []byte(`proxies: [{name: qa, type: socks5, server: 127.0.0.1, port: 1}]`), "source", 0, ""); err != nil {
@@ -122,7 +123,7 @@ func TestBootstrapRequiresSecretAndIssuesHostOnlyCookie(t *testing.T) {
 }
 func TestSettingsPreserveSecretsAndRejectHostSharing(t *testing.T) {
 	s := testServer(t)
-	old, e := cage.Load(s.configPath)
+	old, e := eden.Load(s.configPath)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -156,7 +157,7 @@ func TestSettingsPreserveSecretsAndRejectHostSharing(t *testing.T) {
 func TestInvalidSettingsDoNotReplaceCurrentProfile(t *testing.T) {
 	s := testServer(t)
 	before, _ := os.ReadFile(s.configPath)
-	old, _ := cage.Load(s.configPath)
+	old, _ := eden.Load(s.configPath)
 	input := settingsView(old, s.preferences)
 	input.Timezone = "Invented/Invalid"
 	body, _ := json.Marshal(input)
@@ -171,14 +172,14 @@ func TestInvalidSettingsDoNotReplaceCurrentProfile(t *testing.T) {
 }
 func TestKeyboardPreferenceDoesNotRestartOrChangeNetwork(t *testing.T) {
 	s := testServer(t)
-	old, _ := cage.Load(s.configPath)
+	old, _ := eden.Load(s.configPath)
 	s.ready = true
 	p := s.preferences
 	p.Keyboard = "native"
 	if e := s.apply(savedProfile{old, p}, true); e != nil {
 		t.Fatal(e)
 	}
-	after, _ := cage.Load(s.configPath)
+	after, _ := eden.Load(s.configPath)
 	if after != old || !s.ready {
 		t.Fatal("keyboard-only save changed runtime")
 	}
@@ -195,9 +196,14 @@ func TestKeyboardPreferenceDoesNotRestartOrChangeNetwork(t *testing.T) {
 
 func TestDisplayPreferenceAppliesAtNextLaunch(t *testing.T) {
 	s := testServer(t)
-	cfg, err := cage.Load(s.configPath)
+	cfg, err := eden.Load(s.configPath)
 	if err != nil {
 		t.Fatal(err)
+	}
+	initial := request(s, "GET", "/api/settings", "", "", true)
+	var defaults Settings
+	if initial.Code != 200 || json.Unmarshal(initial.Body.Bytes(), &defaults) != nil || defaults.BalancedDisplay {
+		t.Fatal("new settings must prefer sharp display")
 	}
 	s.ready = true
 	s.credentials.DisplayScale = 2
@@ -221,7 +227,7 @@ func TestDisplayPreferenceAppliesAtNextLaunch(t *testing.T) {
 	if json.Unmarshal(w.Body.Bytes(), &active) != nil || !active.Dynamic {
 		t.Fatal("viewer was not told that the display follows its screen")
 	}
-	// A client that omits the new preference must preserve the user's choice.
+	// A partial settings request must preserve the user's explicit choice.
 	settings := request(s, "GET", "/api/settings", "", "", true)
 	var payload map[string]any
 	if err = json.Unmarshal(settings.Body.Bytes(), &payload); err != nil || payload["balanced_display"] != true {
@@ -233,23 +239,57 @@ func TestDisplayPreferenceAppliesAtNextLaunch(t *testing.T) {
 	r.Header.Set("Content-Type", "application/json")
 	next, ok := s.proposed(httptest.NewRecorder(), r)
 	if !ok || !next.Preferences.BalancedDisplay || next.Config != cfg {
-		t.Fatal("legacy settings save changed the display preference or network configuration")
+		t.Fatal("partial settings save changed the display preference or network configuration")
+	}
+	for _, balanced := range []bool{true, false} {
+		payload["balanced_display"] = balanced
+		body, _ = json.Marshal(payload)
+		r = httptest.NewRequest("POST", "/api/settings", strings.NewReader(string(body)))
+		r.Header.Set("Content-Type", "application/json")
+		next, ok = s.proposed(httptest.NewRecorder(), r)
+		if !ok || next.Preferences.BalancedDisplay != balanced || next.Config != cfg {
+			t.Fatalf("explicit balanced=%t was not accepted", balanced)
+		}
+		if err = s.apply(next, true); err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(filepath.Join(s.profile, "workbench.json"))
+		var persisted Preferences
+		if err != nil || json.Unmarshal(data, &persisted) != nil || persisted.BalancedDisplay != balanced {
+			t.Fatalf("balanced=%t was not persisted: %s, %v", balanced, data, err)
+		}
+		settings = request(s, "GET", "/api/settings", "", "", true)
+		if json.Unmarshal(settings.Body.Bytes(), &payload) != nil || payload["balanced_display"] != balanced {
+			t.Fatal("settings did not return the saved display preference")
+		}
+		delete(payload, "balanced_display")
+		body, _ = json.Marshal(payload)
+		r = httptest.NewRequest("POST", "/api/settings", strings.NewReader(string(body)))
+		r.Header.Set("Content-Type", "application/json")
+		next, ok = s.proposed(httptest.NewRecorder(), r)
+		if !ok || next.Preferences.BalancedDisplay != balanced {
+			t.Fatal("partial settings save replaced the saved display preference")
+		}
+		w = request(s, "GET", "/api/vnc-credentials", "", "", true)
+		if json.Unmarshal(w.Body.Bytes(), &active) != nil || active.Scale != 2 || !active.Dynamic || !s.ready {
+			t.Fatal("display preference interrupted the running environment")
+		}
 	}
 }
 
 func TestLocationProbeHasNoDirectFallback(t *testing.T) {
-	c := cage.DefaultConfig()
+	c := eden.DefaultConfig()
 	c.ProxyURL = "socks5://127.0.0.1:1"
 	if _, e := probeLocation(context.Background(), c); e == nil {
 		t.Fatal("location probe bypassed unavailable proxy")
 	}
 }
 func TestLocationLiveIntegration(t *testing.T) {
-	path := os.Getenv("CAGE_TEST_CONFIG")
+	path := os.Getenv("EDEN_TEST_CONFIG")
 	if path == "" {
 		t.Skip("explicit proxy profile required")
 	}
-	c, e := cage.Load(path)
+	c, e := eden.Load(path)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -266,7 +306,7 @@ func TestLocationLiveIntegration(t *testing.T) {
 func TestRestoreCannotReplaceManagedEndpoint(t *testing.T) {
 	s := testServer(t)
 	s.ready = true
-	old, _ := cage.Load(s.configPath)
+	old, _ := eden.Load(s.configPath)
 	bad := old
 	bad.ProxyURL = "socks5://127.0.0.1:1"
 	if e := s.apply(savedProfile{bad, s.preferences}, true); e != nil {
@@ -284,7 +324,7 @@ func TestSSHIsolationOverridesLocalClientSettings(t *testing.T) {
 	}
 	s := testServer(t)
 	s.preferences.Workspace = t.TempDir()
-	dir := filepath.Join(s.profile, "state", "lima", cage.InstanceName(s.profile, s.environmentDir()))
+	dir := filepath.Join(s.profile, "state", "lima", eden.InstanceName(s.profile, s.environmentDir()))
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -292,13 +332,13 @@ func TestSSHIsolationOverridesLocalClientSettings(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "ssh.config"), []byte(config), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("CAGE_TEST_HOST_SECRET", "must-not-cross-the-boundary")
+	t.Setenv("EDEN_TEST_HOST_SECRET", "must-not-cross-the-boundary")
 	cmd := s.sshCommand(context.Background(), "-G", "lima-test")
 	if cmd.Env == nil {
 		t.Fatal("SSH inherits the host environment")
 	}
 	for _, v := range cmd.Env {
-		if strings.HasPrefix(v, "CAGE_TEST_HOST_SECRET=") {
+		if strings.HasPrefix(v, "EDEN_TEST_HOST_SECRET=") {
 			t.Fatal("host secret forwarded")
 		}
 	}
@@ -315,7 +355,7 @@ func TestSSHIsolationOverridesLocalClientSettings(t *testing.T) {
 }
 func TestImplicitHostTimezonesAreRejected(t *testing.T) {
 	for _, zone := range []string{"", "Local"} {
-		c := cage.DefaultConfig()
+		c := eden.DefaultConfig()
 		c.Timezone = zone
 		if c.Validate() == nil {
 			t.Errorf("implicit timezone %q accepted", zone)

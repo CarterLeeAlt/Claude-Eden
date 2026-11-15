@@ -3,11 +3,11 @@ import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
-const output = new URL("../../output/about-settings/", import.meta.url);
+const output = new URL("../../.tmp/guest-neutralization/ui-eden/screenshots/about/", import.meta.url);
 await fs.mkdir(output, { recursive: true });
-for (const platform of ["darwin", "windows", "linux"]) {
+for (const platform of ["windows"]) {
   const build = { version: "0.1.7", commit: "a".repeat(40), modified: true };
-  const remoteContext = { mode: "remote", connection_id: "remote-test", instance_id: "test-instance", client_platform: platform, server_platform: "linux", connection: { state: "connected" } };
+  const clientContext = { mode: "local", connection_id: "local-test", client_platform: platform, server_platform: platform, connection: { state: "connected" } };
   const nativeCalls = [];
   let checks = 0, pending, finish;
   let result = {
@@ -15,9 +15,9 @@ for (const platform of ["darwin", "windows", "linux"]) {
     release: { status: "available", version: "0.2.0-rc.1", prerelease: true }, checkedAt: new Date().toISOString(),
   };
   const fixture = await createWorkbench({
-    clientContext: remoteContext,
+    clientContext,
     clientRequest: async (route, path) => {
-      if (path === "/client/context") return route.fulfill({ json: remoteContext });
+      if (path === "/client/context") return route.fulfill({ json: clientContext });
       if (path !== "/client/about") return route.fulfill({ json: {} });
       if (route.request().method() === "GET") return route.fulfill({ json: build });
       checks++;
@@ -30,7 +30,7 @@ for (const platform of ["darwin", "windows", "linux"]) {
   try {
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await page.getByRole("navigation", { name: "设置分组" }).getByRole("button", { name: "关于", exact: true }).click();
-    const about = page.getByRole("region", { name: "关于 Cage", exact: true });
+    const about = page.getByRole("region", { name: "关于 Eden", exact: true });
     await about.getByText("0.1.7", { exact: true }).waitFor();
     await about.getByText("aaaaaaaaaaaa", { exact: true }).waitFor();
     await about.getByText(/优先通过主机网络与系统代理/).waitFor();

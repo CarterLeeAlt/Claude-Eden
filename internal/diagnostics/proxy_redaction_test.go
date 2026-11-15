@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const proxyFailure = `time="2026-11-14T10:20:30+08:00" level=warning msg="[TCP] dial CAGE (match Match/) 192.0.2.8:63839 --> api.github.com:443 error: static.example-provider.io:1337 connect error: dns resolve failed: context deadline exceeded"`
+const proxyFailure = `time="2026-11-14T10:20:30+08:00" level=warning msg="[TCP] dial EDEN (match Match/) 192.0.2.8:63839 --> api.github.com:443 error: static.example-provider.io:1337 connect error: dns resolve failed: context deadline exceeded"`
 
 func TestRedactProxyAddresses(t *testing.T) {
 	for _, tc := range []struct{ input, want string }{

@@ -73,19 +73,15 @@ func (s *Server) diagnosticExport(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 		defer cancel()
 		var err error
-		if s.macosGuest != nil || s.windowsGuest != nil {
-			guest, err = s.nativeGuestDiagnostics(ctx)
-		} else {
-			guest, err = s.guest(ctx, `sudo python3 - <<'CAGE_DIAGNOSTIC_JOURNAL'
+		guest, err = s.guest(ctx, `sudo python3 - <<'WORKBENCH_DIAGNOSTIC_JOURNAL'
 import subprocess, sys
-result = subprocess.run(['journalctl','--namespace=cage','--no-pager','-o','short-iso','-n','150','--since','14 days ago'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=5, check=True)
+result = subprocess.run(['journalctl','--namespace=workbench','--no-pager','-o','short-iso','-n','150','--since','14 days ago'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=5, check=True)
 data = result.stdout
 if len(data) > 49152:
     data = data[-49152:]
     data = data.partition(b'\n')[2]
 sys.stdout.buffer.write(data)
-CAGE_DIAGNOSTIC_JOURNAL`)
-		}
+WORKBENCH_DIAGNOSTIC_JOURNAL`)
 		if err != nil {
 			guest = nil
 			guestState = "guest collection failed"
@@ -99,7 +95,7 @@ CAGE_DIAGNOSTIC_JOURNAL`)
 		return
 	}
 	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", `attachment; filename="cage-diagnostics.zip"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="eden-diagnostics.zip"`)
 	_, _ = w.Write(bundle.Bytes())
 }
 
@@ -127,7 +123,7 @@ func exportDiagnostics(configPath, connectionID, destination string, agentLocal 
 	profile := filepath.Dir(configPath)
 	store := diagnostics.New(profile)
 	dir := filepath.Dir(destination)
-	f, err := os.CreateTemp(dir, ".cage-diagnostics-*.zip")
+	f, err := os.CreateTemp(dir, ".eden-diagnostics-*.zip")
 	if err != nil {
 		return err
 	}
@@ -147,10 +143,7 @@ func exportDiagnostics(configPath, connectionID, destination string, agentLocal 
 		}
 		if e != nil {
 			if connectionID != "" && connectionID != "local" {
-				return errors.New("远程连接不可用，无法导出云端诊断包")
-			}
-			if e := store.ImportLegacy(profile); e != nil {
-				return e
+				return errors.New("本机工作台连接不可用，无法核对当前环境并导出诊断包")
 			}
 			return store.Export(f, version.Version, nil, "controller unavailable or invalid; host logs only")
 		}
@@ -163,7 +156,7 @@ func exportDiagnostics(configPath, connectionID, destination string, agentLocal 
 			ticket := parsed.Fragment
 			code, e := c.call("POST", "/api/session", map[string]string{"token": ticket}, nil)
 			if e != nil || code != 200 {
-				return errors.New("无法创建诊断导出会话，请重新打开 Cage")
+				return errors.New("无法创建诊断导出会话，请重新打开 Eden")
 			}
 			if _, err := c.bindConnection(connectionID); err != nil {
 				return err
@@ -180,7 +173,7 @@ func exportDiagnostics(configPath, connectionID, destination string, agentLocal 
 		}
 		defer response.Body.Close()
 		if response.StatusCode != 200 {
-			return errors.New("诊断包导出未完成，请重新打开 Cage 后重试")
+			return errors.New("诊断包导出未完成，请重新打开 Eden 后重试")
 		}
 		if response.Header.Get("Content-Type") != "application/zip" {
 			return errors.New("当前后台尚不支持诊断导出，请重启应用")

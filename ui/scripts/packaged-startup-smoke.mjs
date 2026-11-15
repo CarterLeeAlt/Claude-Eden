@@ -9,27 +9,26 @@ import { createRequire } from "node:module";
 
 const run = promisify(execFile);
 const target = process.argv[2];
-assert.ok(path.isAbsolute(target || ""), "supply an absolute Cage.app or full Cage helper path");
-const packaged = target.endsWith(".app");
-const cage = packaged ? path.join(target, "Contents/Resources/cage") : target;
-const evidence = process.env.CAGE_REMOTE_QA_DIR;
+assert.ok(path.isAbsolute(target || "") && target.toLowerCase().endsWith(".exe"), "supply an absolute Eden Windows executable path");
+const eden = target;
+const evidence = process.env.EDEN_REMOTE_QA_DIR;
 if (evidence) await fs.mkdir(evidence, { recursive: true });
-const profile = await fs.mkdtemp(path.join(os.tmpdir(), "cage-packaged-"));
-const env = { ...process.env, CLAUDE_CAGE_CONFIG: path.join(profile, "config.json") };
+const profile = await fs.mkdtemp(path.join(os.tmpdir(), "eden-packaged-"));
+const env = { ...process.env, EDEN_CONFIG: path.join(profile, "config.json") };
 const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.CAGE_PLAYWRIGHT_MODULE || "playwright");
+const { chromium } = require(process.env.EDEN_PLAYWRIGHT_MODULE || "playwright");
 let browser;
 try {
-  const { stdout } = await run(cage, ["desktop", "--json"], { env });
+  const { stdout } = await run(eden, ["desktop", "--json"], { env, windowsHide: true });
   const entry = JSON.parse(stdout);
   assert.equal(entry.status, "ready");
   assert.equal(entry.controller.version, (await fs.readFile(new URL("../../VERSION", import.meta.url), "utf8")).trim());
-  browser = await chromium.launch({ headless: true, executablePath: process.env.CAGE_TEST_BROWSER_PATH });
+  browser = await chromium.launch({ headless: true, executablePath: process.env.EDEN_TEST_BROWSER_PATH });
   const page = await browser.newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(entry.url);
-  await page.getByRole("heading", { name: "注册 Cage 账户", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "注册 Eden 账户", exact: true }).waitFor();
   await page.getByLabel("用户名",{exact:true}).waitFor();
   const initial = await page.evaluate(async () => (await fetch("/api/client/local-status")).json());
   assert.ok(initial.known && initial.service_running && !initial.running, "opening the local home must not boot the VM");
@@ -43,7 +42,7 @@ try {
   await page.getByRole("button",{name:"创建本地账户",exact:true}).click();
   const status = await (await statusResponse).json();
   assert.equal(status.vm_running, false);
-  await page.getByRole("heading", { name: "为 Cage 准备独立环境", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "为 Eden 准备独立环境", exact: true }).waitFor();
   const nav = page.getByRole("navigation", {name:"主导航"});
   assert.equal(await nav.count(), 0, "fresh profile must not mount workbench navigation");
   await page.getByRole("button",{name:"只连接 SSH 主机",exact:true}).click();
@@ -57,10 +56,10 @@ try {
   await page.getByText("添加来源", { exact: true }).first().waitFor();
   if(evidence) await page.screenshot({ path:path.join(evidence,"initialization-proxy.png") });
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ checks: ["standalone initialization after account setup", "VM stopped throughout", "no workbench navigation before initialization", "SSH-only alternative", "proxy required before installation", packaged ? "packaged helper bootstrap" : "development helper bootstrap", "real session and APIs", "embedded production UI loaded", "private profile onboarding", "launch ticket removed"], version: entry.controller.version }));
+  console.log(JSON.stringify({ checks: ["standalone initialization after account setup", "VM stopped throughout", "no workbench navigation before initialization", "SSH-only alternative", "proxy required before installation", "Windows executable bootstrap", "real session and APIs", "embedded production UI loaded", "private profile onboarding", "launch ticket removed"], version: entry.controller.version }));
 } finally {
   await browser?.close();
-  await run(cage, ["prepare-update", "--json"], { env });
+  await run(eden, ["prepare-update", "--json"], { env, windowsHide: true });
   await fs.rm(profile, { recursive: true, force: true });
   await fs.rm(profile + "-workspace", { recursive: true, force: true });
 }

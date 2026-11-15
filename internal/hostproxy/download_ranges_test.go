@@ -38,7 +38,7 @@ func TestParallelPackageDownloadAndFallback(t *testing.T) {
 				if r.Header.Get("Accept") != "application/octet-stream" {
 					t.Error("Accept lost")
 				}
-				if strings.Contains(r.UserAgent(), "Cage") {
+				if strings.Contains(r.UserAgent(), "Eden") {
 					t.Error("product identity sent")
 				}
 				head := r.Header.Get("Range")

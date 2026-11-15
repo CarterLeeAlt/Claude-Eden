@@ -3,13 +3,13 @@
 param(
     [string]$DependencyCache,
     [string]$OutputDirectory,
-    [string]$MsysDirectory = $env:CAGE_MSYS2_ROOT
+    [string]$MsysDirectory = $env:EDEN_MSYS2_ROOT
 )
 . (Join-Path $PSScriptRoot 'windows-common.ps1')
 if (-not $IsWindows) { throw 'Build the Windows QEMU runtime in an MSYS2 UCRT64 environment on Windows.' }
 $repository = Split-Path $PSScriptRoot -Parent
 if (-not $DependencyCache) { $DependencyCache = Join-Path $repository '_output/windows-deps' }
-if (-not $OutputDirectory) { $OutputDirectory = Join-Path $DependencyCache 'qemu-cage' }
+if (-not $OutputDirectory) { $OutputDirectory = Join-Path $DependencyCache 'qemu-eden' }
 $DependencyCache = [IO.Path]::GetFullPath($DependencyCache)
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 $dependencies = Get-Content (Join-Path $repository 'packaging/windows/dependencies.json') -Raw | ConvertFrom-Json
@@ -17,7 +17,7 @@ $patchDirectory = Join-Path $repository 'patches/qemu'
 $inputs = @((Join-Path $PSScriptRoot 'build-qemu-windows.sh'), $PSCommandPath) + @(Get-ChildItem $patchDirectory -Filter '*.patch' | Sort-Object Name | ForEach-Object FullName)
 $fingerprintText = $dependencies.qemuSource.hash + $dependencies.qemuKeycodemap.hash + (($inputs | ForEach-Object { (Get-FileHash $_ -Algorithm SHA256).Hash }) -join '')
 $fingerprint = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($fingerprintText)))
-$manifestPath = Join-Path $OutputDirectory 'cage-build.json'
+$manifestPath = Join-Path $OutputDirectory 'eden-build.json'
 if (Test-Path $manifestPath) {
     $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
     if ($manifest.fingerprint -eq $fingerprint) {
@@ -34,7 +34,7 @@ if (-not $MsysDirectory) {
     $MsysDirectory = @('C:\msys64', 'D:\msys64') | Where-Object { Test-Path (Join-Path $_ 'ucrt64/bin/gcc.exe') } | Select-Object -First 1
 }
 if (-not $MsysDirectory -or -not (Test-Path (Join-Path $MsysDirectory 'ucrt64/bin/pkg-config.exe'))) {
-    throw 'Set CAGE_MSYS2_ROOT to MSYS2 with the UCRT64 QEMU build dependencies described in docs/windows.md.'
+    throw 'Set EDEN_MSYS2_ROOT to MSYS2 with the UCRT64 QEMU build dependencies described in docs/windows.md.'
 }
 $archive = Get-VerifiedGitArchive $dependencies.qemuSource $DependencyCache
 $stage = Join-Path $repository ('_output/windows-qemu-' + [guid]::NewGuid().ToString('N'))
@@ -55,7 +55,7 @@ try {
         @{ name = $_.Name; sha256 = (Get-FileHash $_.FullName -Algorithm SHA256).Hash }
     })
     @{ fingerprint = $fingerprint; source = $dependencies.qemuSource.commit; files = $files } |
-        ConvertTo-Json -Depth 4 | Set-Content (Join-Path $built 'cage-build.json')
+        ConvertTo-Json -Depth 4 | Set-Content (Join-Path $built 'eden-build.json')
     New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
     Copy-Item (Join-Path $built '*') $OutputDirectory -Force
 } finally {

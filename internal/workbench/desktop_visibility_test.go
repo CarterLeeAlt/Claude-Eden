@@ -1,7 +1,6 @@
 package workbench
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -58,61 +57,6 @@ func TestBrowserVisibilityUsesGuestControllerAndIndependentDemand(t *testing.T) 
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("Desktop viewing prevented the browser from hiding")
-	}
-}
-
-func TestPhoneDesktopCloseReleasesOnlyPhoneDisplay(t *testing.T) {
-	s := testServer(t)
-	changes := make(chan bool, 4)
-	update := func(show bool) error { changes <- show; return nil }
-	computer, err := s.desktopViews.acquire(update)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !<-changes {
-		t.Fatal("computer not shown")
-	}
-	phone, err := s.desktopViews.acquire(update)
-	if err != nil {
-		t.Fatal(err)
-	}
-	closed := false
-	s.browserControl = browserClientForTest(t, s, browserTransport(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Path != "/phone-desktop/close" {
-			t.Fatalf("unexpected guest operation: %s", r.URL.Path)
-		}
-		closed = true
-		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{}`))}, nil
-	}))
-	ctx, cancel := context.WithCancel(t.Context())
-	b := &phoneSurfaceSession{id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", ctx: ctx, cancel: cancel, stopEpoch: func() bool { return false },
-		releaseDisplay: func() {
-			if !closed {
-				t.Error("display released before phone layout restored")
-			}
-			phone()
-		}}
-	s.phones.desktop.session = b
-	s.phones.desktop.op.Lock()
-	s.retirePhoneSurface(phoneDesktop, b)
-	s.retirePhoneSurface(phoneDesktop, b)
-	s.phones.desktop.op.Unlock()
-	if !closed || b.releaseDisplay != nil || s.phones.desktop.session != nil {
-		t.Fatal("phone display not retired")
-	}
-	select {
-	case show := <-changes:
-		t.Fatalf("phone close changed computer display to %t", show)
-	case <-time.After(600 * time.Millisecond):
-	}
-	computer()
-	select {
-	case show := <-changes:
-		if show {
-			t.Fatal("last computer close did not hide")
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("phone lease leaked")
 	}
 }
 

@@ -164,7 +164,7 @@ func rcSourcesUs() bool {
 
 func (e *app) installCmd(ctx context.Context, args []string) int {
 	if len(args) > 0 {
-		fmt.Fprintln(e.io.Stderr, "Usage: agent-vm install")
+		fmt.Fprintf(e.io.Stderr, "Usage: %s install\n", Command)
 		return 2
 	}
 	w := e.io.Stdout
@@ -293,7 +293,7 @@ func copyFile(src, dst string) error {
 // ~/.agent-vm and the executable itself stay.
 func (e *app) uninstallCmd(args []string) int {
 	if len(args) > 0 {
-		fmt.Fprintln(e.io.Stderr, "Usage: agent-vm uninstall")
+		fmt.Fprintf(e.io.Stderr, "Usage: %s uninstall\n", Command)
 		return 2
 	}
 	w := e.io.Stdout

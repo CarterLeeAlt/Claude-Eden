@@ -16,6 +16,11 @@ func TestTailnetInstallAtomicallyReplacesRunningPayloadAndPreservesIdentity(t *t
 	root := t.TempDir()
 	bin := filepath.Join(root, "bin")
 	sudoers := filepath.Join(root, "sudoers")
+	temporary := filepath.Join(root, "temporary")
+	if err := os.Mkdir(temporary, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", temporary)
 	if err := os.MkdirAll(bin, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +31,7 @@ func TestTailnetInstallAtomicallyReplacesRunningPayloadAndPreservesIdentity(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	executable := filepath.Join(bin, "cage-tailnet")
+	executable := filepath.Join(bin, "workbench-tailnet")
 	if err = os.WriteFile(executable, old, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +45,7 @@ func TestTailnetInstallAtomicallyReplacesRunningPayloadAndPreservesIdentity(t *t
 		t.Fatal(err)
 	}
 	defer func() { _ = running.Process.Kill(); _ = running.Wait() }()
-	if err = os.WriteFile(filepath.Join(bin, "sudo"), []byte("#!/bin/sh\nexec \"$@\"\n"), 0755); err != nil {
+	if err = os.WriteFile(filepath.Join(bin, "sudo"), []byte("#!/bin/sh\nif test \"$1\" = install; then\ncase \"$4\" in \"$TMPDIR\"/workbench-tailnet.*) ;; *) echo 'payload escaped TMPDIR' >&2; exit 43;; esac\nfi\nexec \"$@\"\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	script := strings.ReplaceAll(tailnetInstallScript, "/usr/local/bin", bin)
@@ -59,8 +64,11 @@ func TestTailnetInstallAtomicallyReplacesRunningPayloadAndPreservesIdentity(t *t
 	if data, err := os.ReadFile(identity); err != nil || string(data) != "saved-node-and-keys" {
 		t.Fatal("installation touched identity", err)
 	}
-	if entries, err := filepath.Glob(filepath.Join(bin, ".cage-tailnet.*")); err != nil || len(entries) != 0 {
+	if entries, err := filepath.Glob(filepath.Join(bin, ".workbench-tailnet.*")); err != nil || len(entries) != 0 {
 		t.Fatal("staged payload left behind", entries, err)
+	}
+	if entries, err := os.ReadDir(temporary); err != nil || len(entries) != 0 {
+		t.Fatal("download payload left behind", entries, err)
 	}
 	// A failed staged copy must leave the working binary and identity in place.
 	if err = os.WriteFile(filepath.Join(bin, "sudo"), []byte("#!/bin/sh\nif test \"$1\" = install; then exit 42; fi\nexec \"$@\"\n"), 0755); err != nil {
@@ -78,7 +86,10 @@ func TestTailnetInstallAtomicallyReplacesRunningPayloadAndPreservesIdentity(t *t
 	if actual, err := os.ReadFile(identity); err != nil || string(actual) != "saved-node-and-keys" {
 		t.Fatal("failed installation touched identity", err)
 	}
-	if entries, err := filepath.Glob(filepath.Join(bin, ".cage-tailnet.*")); err != nil || len(entries) != 0 {
+	if entries, err := filepath.Glob(filepath.Join(bin, ".workbench-tailnet.*")); err != nil || len(entries) != 0 {
 		t.Fatal("failed installation leaked its stage", entries, err)
+	}
+	if entries, err := os.ReadDir(temporary); err != nil || len(entries) != 0 {
+		t.Fatal("failed installation leaked its download", entries, err)
 	}
 }

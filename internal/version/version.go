@@ -12,7 +12,7 @@ var Version string
 
 func init() {
 	if Version == "" {
-		Version = strings.TrimSpace(agentvm.CageVersion)
+		Version = strings.TrimSpace(agentvm.EdenVersion)
 	}
 }
 

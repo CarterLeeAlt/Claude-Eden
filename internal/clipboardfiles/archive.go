@@ -20,7 +20,7 @@ func LinkCachedFiles(paths []string) (result []string, err error) {
 	return linkCachedFiles(paths, temporaryDirectory)
 }
 
-func temporaryDirectory() (string, error) { return os.MkdirTemp("", "cage-clipboard-") }
+func temporaryDirectory() (string, error) { return os.MkdirTemp("", "workbench-clipboard-") }
 
 func linkCachedFiles(paths []string, directory func() (string, error)) (result []string, err error) {
 	if len(paths) == 0 || len(paths) > SelectionLimit {
@@ -38,7 +38,7 @@ func linkCachedFiles(paths []string, directory func() (string, error)) (result [
 	for _, source := range paths {
 		name := filepath.Base(source)
 		info, err := os.Lstat(source)
-		if err != nil || !filepath.IsAbs(source) || !strings.HasPrefix(filepath.Base(filepath.Dir(source)), "cage-clipboard-") || !validName(name) || !info.Mode().IsRegular() || info.Size() > FileLimit {
+		if err != nil || !filepath.IsAbs(source) || !strings.HasPrefix(filepath.Base(filepath.Dir(source)), "workbench-clipboard-") || !validName(name) || !info.Mode().IsRegular() || info.Size() > FileLimit {
 			return nil, errors.New("附件缓存文件无效")
 		}
 		target := filepath.Join(root, name)

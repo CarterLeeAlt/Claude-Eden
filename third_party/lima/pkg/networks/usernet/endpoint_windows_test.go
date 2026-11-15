@@ -15,7 +15,7 @@ import (
 
 func TestNetstackWindowsNativeSocketPaths(t *testing.T) {
 	// A drive letter, spaces and URL punctuation must remain a file path.
-	dir, err := os.MkdirTemp("", "cage %23-")
+	dir, err := os.MkdirTemp("", "eden %23-")
 	if err != nil {
 		t.Fatal(err)
 	}

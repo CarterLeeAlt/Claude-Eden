@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
-const warning = "WARNING: Loading development channels\r\nChannels: server:cage\r\n1. I am using this for local development\r\nEnter to confirm";
-for (const platform of ["darwin", "windows", "linux"]) {
+const warning = "WARNING: Loading development channels\r\nChannels: server:0132fd0e-589b-4afb-9c55-38b86627e90a\r\n1. I am using this for local development\r\nEnter to confirm";
+for (const platform of ["windows"]) {
   const fixture = await createWorkbench({
     mockWebSockets: false,
     clientContext: { mode: "local", connection_id: "local", client_platform: platform, server_platform: platform, connection: { state: "disconnected" } },
@@ -27,7 +27,7 @@ for (const platform of ["darwin", "windows", "linux"]) {
       socket.send(Buffer.from(warning.slice(22)));
     });
     await page.reload();
-    await page.getByRole("button", { name: "启动 Cage 环境", exact: true }).click();
+    await page.getByRole("button", { name: "启动 Eden 环境", exact: true }).click();
     await page.getByRole("button", { name: "新建终端", exact: true }).first().click();
     await page.getByRole("menuitem", { name: /Claude/ }).first().click();
     await page.getByText("正在准备 Claude 会话…", { exact: true }).waitFor();

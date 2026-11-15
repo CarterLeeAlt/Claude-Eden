@@ -21,7 +21,7 @@ import (
 // This runs the bundled core against local servers. A slow CONNECT handshake
 // must affect elapsed time without inflating the displayed request latency.
 func TestCoreLatencyExcludesProxyHandshake(t *testing.T) {
-	if os.Getenv("CAGE_PROXY_INTEGRATION") != "1" {
+	if os.Getenv("EDEN_PROXY_INTEGRATION") != "1" {
 		t.Skip("requires a test binary beside the bundled Mihomo")
 	}
 	var requests, connections atomic.Int32

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -110,7 +111,7 @@ func TestSetupPreinstall(t *testing.T) {
 		}
 	}
 	te, code, _ = setupRun(t, "--help")
-	if code != 0 || te.stdout.String() != setupHelp {
+	if code != 0 || te.stdout.String() != fmt.Sprintf(setupHelp, Command) {
 		t.Error("--help")
 	}
 }
@@ -161,7 +162,7 @@ func TestSetupWizard(t *testing.T) {
 	if b := te.fake.VMs[vmname.Template]; b.CPUs != 3 || b.Memory != 4<<30 || b.Disk != 15<<30 {
 		t.Errorf("resources: %+v", b)
 	}
-	if !strings.Contains(te.out(), "Node.js 24: yes (Chrome DevTools MCP uses npx)") || !strings.Contains(te.out(), "  agent-vm code\n") ||
+	if !strings.Contains(te.out(), "Node.js 24: yes (Chrome DevTools MCP uses npx)") || !strings.Contains(te.out(), "  Browser editor: code-server is installed in the guest.\n") ||
 		strings.Contains(te.out(), "  agent-vm claude\n") {
 		t.Errorf("output: %s", te.out())
 	}
@@ -298,12 +299,12 @@ func TestSetupBase(t *testing.T) {
 	}
 }
 
-func TestCageCustomSetupUsesBashRegardlessOfGuestLoginShell(t *testing.T) {
+func TestEdenCustomSetupUsesBashRegardlessOfGuestLoginShell(t *testing.T) {
 	te, code, _ := setupRun(t, "--preinstall=none")
 	if code != 0 {
 		t.Fatal(te.out())
 	}
-	t.Setenv("CLAUDE_CAGE_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+	t.Setenv("EDEN_CONFIG", filepath.Join(t.TempDir(), "config.json"))
 	if err := os.WriteFile(te.state.Path("setup.sh"), []byte("set -euo pipefail\nlocal_marker=ready\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -317,12 +318,12 @@ func TestCageCustomSetupUsesBashRegardlessOfGuestLoginShell(t *testing.T) {
 		t.Fatalf("%d: %s", result, te.out())
 	}
 	if len(commands) != 2 || commands[1] != "bash -l" {
-		t.Fatalf("Cage script ran in the guest login shell: %v", commands)
+		t.Fatalf("Eden script ran in the guest login shell: %v", commands)
 	}
 }
 
-func TestCageSetupResumesExistingBuild(t *testing.T) {
-	t.Setenv("CLAUDE_CAGE_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+func TestEdenSetupResumesExistingBuild(t *testing.T) {
+	t.Setenv("EDEN_CONFIG", filepath.Join(t.TempDir(), "config.json"))
 	te := newTestEnv(t, vmtest.New())
 	te.fake.VMs[building] = &vm.Instance{Name: building, Status: vm.Stopped, CPUs: 2, Memory: 4 << 30, Disk: 24 << 30}
 	if code := te.setupBase([]string{"setup", "--preinstall=none"}); code != 0 {

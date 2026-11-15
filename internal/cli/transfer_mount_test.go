@@ -7,23 +7,23 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/vm"
 	"github.com/sylvinus/agent-vm/internal/vmname"
 )
 
-func TestCageCLIRetainsRunningInstanceUntilTransferMountRestart(t *testing.T) {
+func TestEdenCLIRetainsRunningInstanceUntilTransferMountRestart(t *testing.T) {
 	se := newStartEnv(t)
 	se.base()
 	config := filepath.Join(se.home, "config.json")
-	data, err := json.Marshal(cage.DefaultConfig())
+	data, err := json.Marshal(eden.DefaultConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(config, data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(cage.ConfigEnv, config)
+	t.Setenv(eden.ConfigEnv, config)
 	if code := se.run("run", "true"); code != 0 {
 		t.Fatalf("initial environment: %s", se.out())
 	}
@@ -31,7 +31,7 @@ func TestCageCLIRetainsRunningInstanceUntilTransferMountRestart(t *testing.T) {
 	old := t.TempDir()
 	instance.Mounts[0].Location, instance.Mounts[0].MountPoint = old, old
 	se.g.ran = nil
-	if code := se.run("run", "true"); code == 0 || !strings.Contains(se.out(), "cage stop") {
+	if code := se.run("run", "true"); code == 0 || !strings.Contains(se.out(), "eden stop") {
 		t.Fatalf("old live mount was accepted: %s", se.out())
 	}
 	if instance.Status != vm.Running || instance.Mounts[0].Location != old || len(se.g.ran) != 0 {

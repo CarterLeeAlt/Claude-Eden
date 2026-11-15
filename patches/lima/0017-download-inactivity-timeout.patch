@@ -59,7 +59,7 @@ diff --git a/pkg/downloader/resume.go b/pkg/downloader/resume.go
 +	reader := &downloadActivityReader{reader: resp.Body, activity: idle.touch}
  	// The desktop workbench consumes complete lines when stderr is a pipe.
  	// Range responses count the bytes already present in the partial file.
- 	if os.Getenv("CAGE_SETUP_PROGRESS") == "1" {
+ 	if os.Getenv("EDEN_SETUP_PROGRESS") == "1" {
 @@ -169,6 +168,7 @@
  		reader.lastReport = time.Now()
  	}

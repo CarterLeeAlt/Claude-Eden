@@ -6,18 +6,14 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"sync"
 
 	"github.com/lima-vm/lima/v2/pkg/hostagent/events"
-
-	"github.com/sylvinus/agent-vm/internal/desktop"
 )
 
-// eventWatch passes the hostagent's events (one JSON object a line) to w,
-// and tells the user, out of any terminal, of the ports forwarded from the
-// guest: a guest listening on a port gets it on the host's loopback, and a
-// surprise one should not go unseen.
+// eventWatch passes the hostagent's events (one JSON object a line) to w
+// and offers a callback for forwarded-port events. Hosts have no native
+// notification callback by default; the event stream remains intact.
 type eventWatch struct {
 	w      io.Writer
 	vm     string
@@ -28,11 +24,7 @@ type eventWatch struct {
 }
 
 func newEventWatch(w io.Writer, vm string) *eventWatch {
-	n := desktop.Notify
-	if os.Getenv("AGENT_VM_NOTIFY") == "0" {
-		n = func(string, string) {}
-	}
-	return &eventWatch{w: w, vm: vm, notify: n}
+	return &eventWatch{w: w, vm: vm, notify: func(string, string) {}}
 }
 
 func (e *eventWatch) Write(p []byte) (int, error) {

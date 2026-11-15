@@ -1,6 +1,6 @@
-// Run `npm run prepare-vnc` in ui first. No Cage server or user session is used:
+// Run `npm run prepare-vnc` in ui first. No Eden server or user session is used:
 // every browser request is fulfilled from local UI modules or rejected.
-// CAGE_PLAYWRIGHT_MODULE and CAGE_TEST_BROWSER_PATH select the test runtime.
+// EDEN_PLAYWRIGHT_MODULE and EDEN_TEST_BROWSER_PATH select the test runtime.
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -8,12 +8,12 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.CAGE_PLAYWRIGHT_MODULE || "playwright");
+const { chromium } = require(process.env.EDEN_PLAYWRIGHT_MODULE || "playwright");
 const root = fileURLToPath(new URL("../", import.meta.url));
 const origin = "http://127.0.0.1:51234";
 const browser = await chromium.launch({
   headless: true,
-  executablePath: process.env.CAGE_TEST_BROWSER_PATH,
+  executablePath: process.env.EDEN_TEST_BROWSER_PATH,
 });
 const checks = [];
 const problems = [];
@@ -63,7 +63,7 @@ async function fixture(platform) {
     ]);
     const container = document.querySelector("#remote");
     const rfb = new EventTarget();
-    for (const name of ["sendKey", "_cageSendKey", "_cageQueueInput", "_handleKeyEvent", "cageSetKeyboardTarget", "focus", "blur"])
+    for (const name of ["sendKey", "_workbenchSendKey", "_workbenchQueueInput", "_handleKeyEvent", "workbenchSetKeyboardTarget", "focus", "blur"])
       rfb[name] = RFB.prototype[name].bind(rfb);
     rfb._canvas = container.querySelector("canvas");
     rfb._keyboard = new Keyboard(rfb._canvas);
@@ -77,20 +77,20 @@ async function fixture(platform) {
       sQpush32(value) { bytes.push(value >>> 24, (value >> 16) & 255, (value >> 8) & 255, value & 255); },
       flush() { packets.push(bytes); bytes = []; },
     };
-    window.cageNativeIMEAvailable = true;
-    window.webkit = { messageHandlers: { cage: { postMessage: async (value) => {
+    window.edenNativeIMEAvailable = true;
+    window.edenNativeBridge = { postMessage: async (value) => {
       if (value.action === "clipboardRevision") return 0;
       if (value.action !== "remoteInput") throw new Error(`Unexpected native operation: ${value.action}`);
       requests.push(value);
       return true;
-    } } } };
+    } };
     const input = installRemoteInput({
       events: rfb,
-      setKeyboardTarget: (target) => rfb.cageSetKeyboardTarget(target),
+      setKeyboardTarget: (target) => rfb.workbenchSetKeyboardTarget(target),
       sendKey: (...key) => rfb.sendKey(...key),
       focus: () => rfb.focus(),
       pasteText() { throw new Error("ASCII key fixture must not use paste"); },
-      runKeyAction: (action) => rfb._cageQueueInput(() => action((...key) => rfb._cageSendKey(...key))),
+      runKeyAction: (action) => rfb._workbenchQueueInput(() => action((...key) => rfb._workbenchSendKey(...key))),
     }, container, {
       mode: () => /mac/i.test(platform) ? "mac" : "native",
       isActive: () => true,
@@ -118,7 +118,7 @@ async function fixture(platform) {
             // A server LED-state reply arrives after the CapsLock press.
             rfb._remoteCapsLock = value.feedback;
           } else {
-            window.dispatchEvent(new CustomEvent("cage-native-input", { detail: { owner, ...value } }));
+            window.dispatchEvent(new CustomEvent("eden-native-input", { detail: { owner, ...value } }));
           }
         }
         return {
@@ -194,7 +194,7 @@ try {
     const letter = caps ? "A" : "a";
     const result = await mac.evaluate((value) => probe.run(value), { remoteCapsLock: caps, sequence: keyPair(letter, "KeyA", caps) });
     assert.equal(result.observed[0].caps, caps);
-    expectKeys(result, press(letter.codePointAt(0)), `existing macOS native payload preserves CapsLock ${caps ? "on" : "off"}`, false);
+    expectKeys(result, press(letter.codePointAt(0)), `native payload preserves CapsLock ${caps ? "on" : "off"}`, false);
   }
   await mac.evaluate(() => probe.input.dispose());
   await mac.close();
@@ -203,7 +203,7 @@ try {
     passed: true,
     checks,
     coverage: "Real Chromium KeyboardEvent, production installRemoteInput native-event bridge, noVNC keyboard, RFB lock synchronization, and final wire encoding; in-memory transport only.",
-    limitation: "Native Windows/GTK/AppKit event production, physical keyboard LED state, and remote X11 application behavior require separate runtime acceptance. Mac platform detection is simulated in Chromium, not WebKit.",
+    limitation: "Native Windows event production, physical keyboard LED state, and remote X11 application behavior require separate runtime acceptance. Mac browser platform detection is simulated in Chromium, not WebKit.",
   }, null, 2));
 } finally {
   await browser.close();

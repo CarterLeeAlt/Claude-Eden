@@ -68,7 +68,7 @@ func (f envFile) write(data []byte) error {
 // file: it holds secrets.
 func (e *app) envVerb(verb string, f envFile, args []string) int {
 	stderr := e.io.Stderr
-	usage := fmt.Sprintf("Usage: agent-vm %s {set KEY [VALUE]|get KEY|has KEY|unset KEY|list}", verb)
+	usage := fmt.Sprintf("Usage: %s %s {set KEY [VALUE]|get KEY|has KEY|unset KEY|list}", Command, verb)
 	action, key := "list", ""
 	if len(args) > 0 {
 		action = args[0]

@@ -10,7 +10,7 @@ param(
     [string]$Diagnostics,
     [switch]$LegacyTarget,
     # Top-level folders that stay in the installation folder during an update.
-    # A VM registered on a disk inside CageData keeps its path and handles.
+    # A VM registered on a disk inside EdenData keeps its path and handles.
     [string[]]$KeepInPlace = @()
 )
 $ErrorActionPreference = 'Stop'
@@ -36,8 +36,8 @@ trap {
     }
     throw $failure
 }
-$manifestName = 'Cage.install-files.json'
-$identityName = 'Cage.install-id'
+$manifestName = 'Eden.install-files.json'
+$identityName = 'Eden.install-id'
 
 function Read-FileManifest([string]$Path) {
     $files = [Collections.Generic.Dictionary[string,string]]::new([StringComparer]::OrdinalIgnoreCase)
@@ -101,7 +101,7 @@ function Stream-Hash([IO.Stream]$Stream) {
 }
 
 function Initialize-VerifiedDeletion {
-    if (!('CageVerifiedFile' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'verified-file-deletion.cs') }
+    if (!('EdenVerifiedFile' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'verified-file-deletion.cs') }
 }
 
 function Remove-MatchingFile([string]$Root, [string]$Relative, [string]$Hash) {
@@ -109,11 +109,11 @@ function Remove-MatchingFile([string]$Root, [string]$Relative, [string]$Hash) {
     if (!(Test-Path -LiteralPath $Path -PathType Leaf)) { return }
     if ((Get-Item -LiteralPath $Path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { return }
     $windows = $env:OS -eq 'Windows_NT'
-    if ($windows) { Initialize-VerifiedDeletion; $stream = [CageVerifiedFile]::Open($Root, $Relative) }
+    if ($windows) { Initialize-VerifiedDeletion; $stream = [EdenVerifiedFile]::Open($Root, $Relative) }
     else { $stream = Open-ReadLocked $Path }
     try {
         if ((Stream-Hash $stream) -eq $Hash) {
-            if ($windows) { [CageVerifiedFile]::Delete($stream) } else { [IO.File]::Delete($Path) }
+            if ($windows) { [EdenVerifiedFile]::Delete($stream) } else { [IO.File]::Delete($Path) }
         }
     }
     finally { $stream.Dispose() }
@@ -159,7 +159,7 @@ function Move-TopLevel([string]$From, [string]$To, [string[]]$Keep, [switch]$Rem
         foreach ($entry in @(Get-ChildItem -LiteralPath $From -Force)) {
             if ($entry.Name -in $Keep) { continue }
             $script:blockedEntry = if ($programNames.Contains($entry.Name)) { 'program' }
-                elseif ($entry.Name -eq 'Cage-preserved-files') { 'preserved' }
+                elseif ($entry.Name -eq 'Eden-preserved-files') { 'preserved' }
                 elseif ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) { 'link' }
                 else { 'personal' }
             $destination = Join-Path $To $entry.Name
@@ -192,7 +192,7 @@ function Save-Transfer($Transfer) {
 
 function Complete-Transfer {
     $transfer = Get-Content -LiteralPath $Receipt -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($transfer.kind -ne 'cage-installation' -or !(Test-Path -LiteralPath (Join-Path $Target $identityName))) { throw '安装目录尚未恢复，事务回执已保留。' }
+    if ($transfer.kind -ne 'eden-installation' -or !(Test-Path -LiteralPath (Join-Path $Target $identityName))) { throw '安装目录尚未恢复，事务回执已保留。' }
     if ($transfer.backupPath -and (Test-Path -LiteralPath $transfer.backupPath)) { throw ('旧目录仍需恢复，事务回执已保留：' + $transfer.backupPath) }
     foreach ($entry in $transfer.moves) {
         if ($entry.state -eq 'absent') { continue }
@@ -229,7 +229,7 @@ if ($Operation -eq 'prepare') {
     $transfers = [Collections.Generic.List[object]]::new()
     $moves = [Collections.Generic.List[object]]::new()
     $directories = @()
-    $recovery = 'Cage-preserved-files/' + [guid]::NewGuid().ToString('N')
+    $recovery = 'Eden-preserved-files/' + [guid]::NewGuid().ToString('N')
     $programDirectories = Directory-Paths @($current.Keys)
     if ($Source -and (Test-Path -LiteralPath $Source -PathType Container)) {
         $diagnosticStep = 'scanning_previous_installation'
@@ -251,7 +251,7 @@ if ($Operation -eq 'prepare') {
             # The failed candidate's manifest identifies its program paths, so
             # current personal content can return to its original location.
             if ($legacySnapshot -and $previous.Count -and !$programContent -and !$hasOwnedChildren -and
-                $relative -notin @($manifestName, 'Cage-preserved-files')) {
+                $relative -notin @($manifestName, 'Eden-preserved-files')) {
                 $oldCopy = Get-Item -LiteralPath (Join-Path $Target $relative) -Force -ErrorAction SilentlyContinue
                 if ($oldCopy) {
                     $oldDestination = Join-Path $Target ($recovery + '/previous/' + $relative)
@@ -298,7 +298,7 @@ if ($Operation -eq 'prepare') {
     $files = @($current.Keys | Sort-Object | ForEach-Object { @{ path = $_; sha256 = $current[$_] } })
     @{ version = 1; files = $files } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Target $manifestName) -Encoding UTF8
     $diagnosticStep = 'writing_transaction_receipt'
-    $record = @{kind = 'cage-installation'; version = 1; installPath = $Source; stagePath = $Target; backupPath = $Backup; files = @($transfers); directories = $directories; moves = @($moves); keepInPlace = @($KeepInPlace)}
+    $record = @{kind = 'eden-installation'; version = 1; installPath = $Source; stagePath = $Target; backupPath = $Backup; files = @($transfers); directories = $directories; moves = @($moves); keepInPlace = @($KeepInPlace)}
     $encoding = [Text.UTF8Encoding]::new($true)
     [byte[]]$bytes = $encoding.GetPreamble() + $encoding.GetBytes(($record | ConvertTo-Json -Depth 6))
     $temporary = $Receipt + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
@@ -336,8 +336,8 @@ if ($Operation -eq 'prepare') {
             throw
         }
     }
-    if ($Operation -eq 'move' -and @($moves | Where-Object { $_.destination.StartsWith('Cage-preserved-files/') }).Count) {
-        Write-Output ('同名修改或旧程序文件已保留在 ' + (Join-Path $Target 'Cage-preserved-files'))
+    if ($Operation -eq 'move' -and @($moves | Where-Object { $_.destination.StartsWith('Eden-preserved-files/') }).Count) {
+        Write-Output ('同名修改或旧程序文件已保留在 ' + (Join-Path $Target 'Eden-preserved-files'))
     }
 } elseif ($Operation -eq 'cleanup') {
     $diagnosticStep = 'verifying_previous_file_ownership'
@@ -355,7 +355,7 @@ if ($Operation -eq 'prepare') {
     }
     Remove-EmptyDirectories $Source $transfer.directories
     if (@(Get-ChildItem -LiteralPath $Source -Force).Count) {
-        $recovery = Join-Path $Target ('Cage-preserved-files/late-' + [guid]::NewGuid().ToString('N'))
+        $recovery = Join-Path $Target ('Eden-preserved-files/late-' + [guid]::NewGuid().ToString('N'))
         [IO.Directory]::CreateDirectory((Split-Path $recovery -Parent)) | Out-Null
         [IO.Directory]::Move($Source, $recovery)
         Write-Output ('安装期间变化的文件已保留在 ' + $recovery)
@@ -365,7 +365,7 @@ if ($Operation -eq 'prepare') {
     # Source is the installation folder, Target the new backup folder.
     $diagnosticStep = 'detaching_previous_application'
     $transfer = Get-Content -LiteralPath $Receipt -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($transfer.kind -ne 'cage-installation' -or !$Source) { throw '安装事务回执无效，原安装目录已保留。' }
+    if ($transfer.kind -ne 'eden-installation' -or !$Source) { throw '安装事务回执无效，原安装目录已保留。' }
     if (Test-Path -LiteralPath $Target) { throw '备份目录已存在，原安装目录已保留。' }
     $Source = [IO.Path]::GetFullPath($Source).TrimEnd([IO.Path]::DirectorySeparatorChar)
     Move-TopLevel $Source $Target @($transfer.keepInPlace) -RemoveEmptyTarget

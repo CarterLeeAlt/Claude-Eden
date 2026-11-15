@@ -5,13 +5,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createWorkbench, chooseInline } from "./workbench-fixture.mjs";
 
-const output = path.resolve(process.env.CAGE_SSH_QA_OUTPUT || "_output/qa/manual-ssh");
+const output = path.resolve(process.env.EDEN_SSH_QA_OUTPUT || "../.tmp/guest-neutralization/ui-eden/manual-ssh");
 await fs.mkdir(output, { recursive: true });
 const { privateKey } = generateKeyPairSync("ed25519", {
   privateKeyEncoding: { type: "pkcs8", format: "pem" },
   publicKeyEncoding: { type: "spki", format: "pem" },
 });
-for (const platform of ["darwin", "windows", "linux"]) {
+for (const platform of ["windows"]) {
   const f = await createWorkbench({
     viewport: { width: 1280, height: 1100 },
     clientContext: { mode: "local", connection_id: "local", client_platform: platform, server_platform: platform, connection: { state: "disconnected" } },

@@ -19,24 +19,13 @@ export function orderedTabs(tabs, saved) {
   });
 }
 
-const clientMount = /^\/run\/cage-client-projects\/[0-9a-f]{32}$/;
 const folderName = (path) => path?.split(/[\\/]/).filter(Boolean).at(-1);
-
-export function rememberClientProjectName(share) {
-  if (!clientMount.test(share.guest_path)) return;
-  try { sessionStorage.setItem(share.guest_path, folderName(share.path)); }
-  catch { /* The mount is usable without browser storage. */ }
-}
 
 export function projectGroups(status) {
   return status?.project_groups || (status?.projects || []).map(path => ({ workspace: path, name: projectName(path), folders: [path] }));
 }
 
 export function projectName(path, groups = []) {
-  if (clientMount.test(path)) {
-    try { return sessionStorage.getItem(path) || "本机共享项目"; }
-    catch { return "本机共享项目"; }
-  }
   const group = groups.find(item => item.workspace === path || item.folders.includes(path));
   if (group?.name) return group.name;
   return folderName(path) || "新项目";

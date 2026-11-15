@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
 	"github.com/sylvinus/agent-vm/internal/diagnostics"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/usererror"
 )
 
@@ -24,14 +24,14 @@ type networkRecovery struct {
 // platform; no independent timer or cached permission is introduced.
 func (s *Server) networkRecoveryMessageLocked(now time.Time) string {
 	r := s.recovery
-	if r.RunID == "" || s.networkPaused || s.closing || s.safety.pauseVersion != r.PauseVersion || s.safety.Gate == nil || s.safety.Gate.RunID != r.RunID || s.safety.Gate.Configuration != r.Configuration || s.safety.Gate.Mode == cage.GateOpen {
+	if r.RunID == "" || s.networkPaused || s.closing || s.safety.pauseVersion != r.PauseVersion || s.safety.Gate == nil || s.safety.Gate.RunID != r.RunID || s.safety.Gate.Configuration != r.Configuration || s.safety.Gate.Mode == eden.GateOpen {
 		return ""
 	}
-	if s.safety.Gate.Mode == cage.GateClosed && s.safety.Gate.Epoch != r.Epoch {
+	if s.safety.Gate.Mode == eden.GateClosed && s.safety.Gate.Epoch != r.Epoch {
 		return "" // A newer closure must not promise this recovery will run.
 	}
 	job := s.jobs.snapshot()
-	if s.safety.Gate.Mode != cage.GateClosed && (!job.Running || job.Kind != "network-recovery") {
+	if s.safety.Gate.Mode != eden.GateClosed && (!job.Running || job.Kind != "network-recovery") {
 		return "" // A manual check owns the next transition.
 	}
 	if job.Running {
@@ -53,18 +53,18 @@ func (s *Server) networkRecoveryMessageLocked(now time.Time) string {
 	return "自动重检正在等待后台调度"
 }
 
-func (s *Server) scheduleNetworkRecovery(state cage.GateStatus) {
+func (s *Server) scheduleNetworkRecovery(state eden.GateStatus) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.networkPaused || s.closing || state.Mode != cage.GateClosed || state.Report == nil {
+	if s.networkPaused || s.closing || state.Mode != eden.GateClosed || state.Report == nil {
 		return
 	}
 	s.recovery = networkRecovery{RunID: state.RunID, Configuration: state.Configuration, Epoch: state.Epoch, PauseVersion: s.safety.pauseVersion, Next: time.Now().Add(15 * time.Second)}
 	diagnostics.Log("warn", "network", "temporary monitoring failure; full recheck scheduled: "+state.Reason)
 }
 
-func recoveryMatches(r networkRecovery, state cage.GateStatus, configuration string, paused bool, generation uint64) bool {
-	return r.RunID != "" && !paused && generation == r.PauseVersion && state.RunID == r.RunID && state.Configuration == r.Configuration && configuration == r.Configuration && state.Epoch == r.Epoch && state.Mode == cage.GateClosed
+func recoveryMatches(r networkRecovery, state eden.GateStatus, configuration string, paused bool, generation uint64) bool {
+	return r.RunID != "" && !paused && generation == r.PauseVersion && state.RunID == r.RunID && state.Configuration == r.Configuration && configuration == r.Configuration && state.Epoch == r.Epoch && state.Mode == eden.GateClosed
 }
 
 // Called with s.op held. Admission uses the ordinary job queue and never changes
@@ -95,7 +95,7 @@ func (s *Server) recoverNetwork() {
 	}
 	// The resource manager refreshes UpdatedAt even when a sample fails.
 	// Only a recent pressure measurement should postpone the full gate check.
-	resources, err := cage.ReadResourceStatus(s.instanceDir())
+	resources, err := eden.ReadResourceStatus(s.instanceDir())
 	guestPressure := resources.Pressure && time.Since(resources.ObservedAt) <= 10*time.Second
 	if err == nil && (guestPressure || resources.HostPressure) {
 		timing.result = "memory_pressure"
@@ -157,7 +157,7 @@ func (s *Server) runNetworkRecovery(expected networkRecovery, recheck func() err
 func (s *Server) finishNetworkRecovery(expected networkRecovery, err error) error {
 	// A failed full check changes the gate epoch. Keep that exact epoch for the
 	// next attempt, while preserving user/configuration changes as cancellation.
-	var current cage.GateStatus
+	var current eden.GateStatus
 	if err != nil {
 		if client, e := s.gateClient(); e == nil {
 			ctx, cancel := context.WithTimeout(s.lifetimeContext(), 3*time.Second)
@@ -175,7 +175,7 @@ func (s *Server) finishNetworkRecovery(expected networkRecovery, err error) erro
 		return err
 	}
 	if current.RunID != "" {
-		if current.RunID != expected.RunID || current.Configuration != expected.Configuration || current.Mode != cage.GateClosed {
+		if current.RunID != expected.RunID || current.Configuration != expected.Configuration || current.Mode != eden.GateClosed {
 			s.recovery = networkRecovery{}
 			return err
 		}

@@ -112,7 +112,7 @@ func (n *node) proxyURL() string {
 	if err != nil || host != "127.0.0.1" {
 		return ""
 	}
-	return (&url.URL{Scheme: "http", Host: record.Address, User: url.UserPassword("cage", record.Token)}).String()
+	return (&url.URL{Scheme: "http", Host: record.Address, User: url.UserPassword("workbench", record.Token)}).String()
 }
 
 func (n *node) acceptForward(key string, forward *tailnetForward) {

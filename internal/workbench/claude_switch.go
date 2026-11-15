@@ -31,7 +31,7 @@ func validSwitchPolicy(policy string) bool {
 
 // Explicit groups prevent a work transcript from silently moving to a personal
 // identity. Empty groups never authorize a cross-account transfer.
-func switchCandidates(list claudeAccountList, record *mobileRecord) []claudeSwitchOption {
+func switchCandidates(list claudeAccountList, record *cliSessionRecord) []claudeSwitchOption {
 	options := []claudeSwitchOption{}
 	source := list.find(record.Account.ID)
 	if source == nil || source.HandoffGroup == "" || source.guestID() != record.Account.GuestID || claudeIdentityHash(source.Email, source.Organization) != record.Account.Subject {
@@ -46,8 +46,8 @@ func switchCandidates(list claudeAccountList, record *mobileRecord) []claudeSwit
 	return options
 }
 
-func (s *Server) mobileSessionAccount(w http.ResponseWriter, r *http.Request) {
-	view, terminal, ok := s.authorizedMobileSessionRecord(w, r)
+func (s *Server) cliSessionAccount(w http.ResponseWriter, r *http.Request) {
+	view, terminal, ok := s.authorizedCLISessionRecord(w, r)
 	if !ok {
 		return
 	}
@@ -56,7 +56,7 @@ func (s *Server) mobileSessionAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if input.Action == "switch" {
-		if !input.Confirm || !mobileID(input.RequestID) || !validCLIUUID(input.SourceID) {
+		if !input.Confirm || !cliSessionID(input.RequestID) || !validCLIUUID(input.SourceID) {
 			http.Error(w, "请确认本次账号接续并提供当前会话标识", 400)
 			return
 		}
@@ -80,23 +80,23 @@ func (s *Server) mobileSessionAccount(w http.ResponseWriter, r *http.Request) {
 		}
 		defer s.op.Unlock()
 		s.account.mu.Lock()
-		if !s.mobileAuthorized(r.Context()) {
+		if !s.cliAuthorized(r.Context()) {
 			s.account.mu.Unlock()
-			http.Error(w, errMobileLocked.Error(), 423)
+			http.Error(w, errCLILocked.Error(), 423)
 			return
 		}
-		s.mobileCLI.mu.Lock()
-		record, err := s.mobileCLI.record(s.profile, view.ID)
+		s.cliSessions.mu.Lock()
+		record, err := s.cliSessions.record(s.profile, view.ID)
 		if err == nil {
 			if record.Switch != nil && record.Switch.Phase != "completed" {
 				err = errors.New("账号交接中，请等待完成后修改授权")
 			} else {
 				record.SwitchPolicy = input.Policy
 				record.changed()
-				err = writePrivate(mobileRecordPath(s.profile, view.ID), record)
+				err = writePrivate(cliSessionRecordPath(s.profile, view.ID), record)
 			}
 		}
-		s.mobileCLI.mu.Unlock()
+		s.cliSessions.mu.Unlock()
 		s.account.mu.Unlock()
 		if err != nil {
 			requestError(w, err)
@@ -119,10 +119,10 @@ func (s *Server) mobileSessionAccount(w http.ResponseWriter, r *http.Request) {
 		requestError(w, err)
 		return
 	}
-	s.mobileCLI.mu.Lock()
-	record, err := s.mobileCLI.record(s.profile, view.ID)
+	s.cliSessions.mu.Lock()
+	record, err := s.cliSessions.record(s.profile, view.ID)
 	if err != nil {
-		s.mobileCLI.mu.Unlock()
+		s.cliSessions.mu.Unlock()
 		requestError(w, err)
 		return
 	}
@@ -137,7 +137,7 @@ func (s *Server) mobileSessionAccount(w http.ResponseWriter, r *http.Request) {
 	sourceID := record.CLIID
 	options := switchCandidates(list, record)
 	supported := record.Terminal && record.Launcher == "claude" && record.Account.ID != ""
-	s.mobileCLI.mu.Unlock()
+	s.cliSessions.mu.Unlock()
 	jsonReply(w, map[string]any{"session": snapshot, "source_id": sourceID, "switch_policy": policy, "candidates": options, "supported": supported})
 }
 
@@ -149,10 +149,10 @@ func (s *Server) switchClaudeAccount(ctx context.Context, id string, input claud
 	s.conversationMu.Lock()
 	defer s.conversationMu.Unlock()
 	s.account.mu.Lock()
-	allowed := s.mobileAuthorized(ctx)
+	allowed := s.cliAuthorized(ctx)
 	s.account.mu.Unlock()
 	if !allowed {
-		return errMobileLocked
+		return errCLILocked
 	}
 	s.mu.Lock()
 	ready := s.ready && !s.closing && !s.guestUpdateRequired && claudeTerminalCommand(s.preferences) == "claude"
@@ -166,7 +166,7 @@ func (s *Server) switchClaudeAccount(ctx context.Context, id string, input claud
 	if err != nil {
 		return err
 	}
-	m := &s.mobileCLI
+	m := &s.cliSessions
 	m.mu.Lock()
 	record, err := m.record(s.profile, id)
 	m.mu.Unlock()
@@ -249,9 +249,6 @@ func (s *Server) switchClaudeAccount(ctx context.Context, id string, input claud
 			return fail(errors.New("原会话连接尚未就绪，请先打开原会话"))
 		}
 		query := map[string]any{"cli_id": sw.Source.CLIID, "config": sw.Source.Config, "connection": sw.Connection, "workspace": record.GuestWorkspace, "target_cli_id": sw.TargetID, "switch_id": sw.ID}
-		if err := s.windowsConversationInput(record, query); err != nil {
-			return fail(err)
-		}
 		err = s.runCLIChannel(ctx, "account-switch", query, &result)
 		if err != nil {
 			return fail(err)
@@ -259,7 +256,7 @@ func (s *Server) switchClaudeAccount(ctx context.Context, id string, input claud
 		if result.Error != "" {
 			return fail(errors.New(result.Error))
 		}
-		if !strings.HasPrefix(result.Transcript, "/") && !(s.windowsGuest != nil && windowsCLIAbsolutePath(result.Transcript)) {
+		if !strings.HasPrefix(result.Transcript, "/") {
 			return fail(errors.New("原会话历史未确认，未启动目标账号"))
 		}
 		if old := s.terminals.get(record.TerminalID); old != nil {
@@ -284,9 +281,6 @@ func (s *Server) switchClaudeAccount(ctx context.Context, id string, input claud
 			Running bool `json:"running"`
 		}
 		query := map[string]any{"cli_id": record.CLIID, "config": record.GuestConfig, "account": record.Account.GuestID}
-		if err := s.windowsConversationInput(record, query); err != nil {
-			return fail(err)
-		}
 		if err := s.runCLIChannel(ctx, "active", query, &state); err != nil {
 			return fail(err)
 		}
@@ -327,14 +321,14 @@ func (s *Server) cancelClaudeSwitch(ctx context.Context, id, requestID string) e
 	s.conversationMu.Lock()
 	defer s.conversationMu.Unlock()
 	s.account.mu.Lock()
-	allowed := s.mobileAuthorized(ctx)
+	allowed := s.cliAuthorized(ctx)
 	s.account.mu.Unlock()
 	if !allowed {
-		return errMobileLocked
+		return errCLILocked
 	}
-	s.mobileCLI.mu.Lock()
-	record, err := s.mobileCLI.record(s.profile, id)
-	s.mobileCLI.mu.Unlock()
+	s.cliSessions.mu.Lock()
+	record, err := s.cliSessions.record(s.profile, id)
+	s.cliSessions.mu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -350,9 +344,6 @@ func (s *Server) cancelClaudeSwitch(ctx context.Context, id, requestID string) e
 		Error string `json:"error"`
 	}
 	query := map[string]any{"cli_id": sw.Source.CLIID, "connection": sw.Connection, "switch_id": sw.ID}
-	if err := s.windowsConversationInput(record, query); err != nil {
-		return err
-	}
 	if err := s.runCLIChannel(ctx, "account-switch-cancel", query, &response); err != nil {
 		return err
 	}
@@ -364,8 +355,8 @@ func (s *Server) cancelClaudeSwitch(ctx context.Context, id, requestID string) e
 }
 
 // Preserve metadata written concurrently while committing execution ownership.
-func (s *Server) saveClaudeSwitch(record *mobileRecord) error {
-	m := &s.mobileCLI
+func (s *Server) saveClaudeSwitch(record *cliSessionRecord) error {
+	m := &s.cliSessions
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	current, err := m.record(s.profile, record.ID)
@@ -376,7 +367,13 @@ func (s *Server) saveClaudeSwitch(record *mobileRecord) error {
 	record.SwitchPolicy = current.SwitchPolicy
 	record.Revision = current.Revision
 	record.changed()
-	return writePrivate(mobileRecordPath(s.profile, record.ID), record)
+	if err := writePrivate(cliSessionRecordPath(s.profile, record.ID), record); err != nil {
+		return err
+	}
+	if m.catalog != nil {
+		m.catalog[record.ID] = record.summary()
+	}
+	return nil
 }
 
 func (s *Server) monitorClaudeAccount(terminal *terminalSession, id string) {
@@ -402,7 +399,7 @@ func (s *Server) monitorClaudeAccount(terminal *terminalSession, id string) {
 			}
 			// Locking pauses observation; unlocking resumes it for the same
 			// terminal. Cancel an in-flight attempt if its access epoch ends.
-			attempt, finish := context.WithCancel(context.WithValue(ctx, mobileEpochKey{}, epoch))
+			attempt, finish := context.WithCancel(context.WithValue(ctx, cliEpochKey{}, epoch))
 			stop := context.AfterFunc(epoch, finish)
 			s.maybeSwitchClaudeAccount(attempt, id, &lastUsageCheck)
 			stop()
@@ -422,9 +419,9 @@ func (s *Server) maybeSwitchClaudeAccount(ctx context.Context, id string, lastUs
 	if err != nil {
 		return
 	}
-	s.mobileCLI.mu.Lock()
-	record, err := s.mobileCLI.record(s.profile, id)
-	s.mobileCLI.mu.Unlock()
+	s.cliSessions.mu.Lock()
+	record, err := s.cliSessions.record(s.profile, id)
+	s.cliSessions.mu.Unlock()
 	if err != nil {
 		return
 	}
@@ -447,7 +444,7 @@ func (s *Server) maybeSwitchClaudeAccount(ctx context.Context, id string, lastUs
 			}
 		}
 	}
-	active := s.mobileCLI.activeAccounts()
+	active := make(map[string]int)
 	logins := make(map[string]bool)
 	for _, terminal := range s.terminals.snapshot() {
 		if terminal["closed"] == true {

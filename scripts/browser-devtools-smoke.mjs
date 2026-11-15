@@ -1,6 +1,6 @@
 // Headed Chromium check; on Linux, run on an isolated DISPLAY. Browser data and
 // the controller listener use a temporary directory, never the user's profile.
-// CAGE_TEST_BROWSER_PATH can select a local Chromium on macOS or Windows.
+// EDEN_TEST_BROWSER_PATH can select a local Chromium executable.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -11,8 +11,8 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 if (process.platform === "linux") assert.ok(process.env.DISPLAY, "Provide an isolated X display");
-const executable = process.env.CAGE_TEST_BROWSER_PATH || "/usr/bin/chromium";
-const directory = await realpath(await mkdtemp(join(tmpdir(), "cage-devtools-smoke-")));
+const executable = process.env.EDEN_TEST_BROWSER_PATH || "/usr/bin/chromium";
+const directory = await realpath(await mkdtemp(join(tmpdir(), "workbench-devtools-smoke-")));
 const token = randomBytes(32).toString("hex");
 let agent, control, stderr = "";
 async function waitFor(fn, label) {
@@ -37,7 +37,7 @@ async function api(path, input) {
 }
 const cdp = (method, params = {}, sessionId) => api("/__devtools-test", { method, params, sessionId });
 try {
-  const sourceDirectory = new URL("../internal/cage/", import.meta.url);
+  const sourceDirectory = new URL("../internal/eden/", import.meta.url);
   for (const name of await readdir(sourceDirectory))
     if ((name.startsWith("browser-") && name.endsWith(".mjs")) || name === "native-input.mjs")
       await cp(new URL(name, sourceDirectory), join(directory, name));
@@ -50,9 +50,9 @@ try {
   // Auto-open exercises Chromium's real DevTools availability check without
   // relying on OS-specific shortcut synthesis. Keep the production mode flag.
   const adapted = source
-    .replaceAll("/home/cage-browser", directory)
-    .replace("/etc/claude-cage/browser-control.json", join(directory, "control.json"))
-    .replace("/usr/local/lib/cage-split", join(directory, "extension"))
+    .replaceAll("/home/browser", directory)
+    .replace("/etc/workbench/browser-control.json", join(directory, "control.json"))
+    .replace("/usr/local/lib/workbench-split", join(directory, "extension"))
     .replace('spawn(browserBinary, flags', `spawn(${JSON.stringify(executable)}, [...flags, "--use-mock-keychain", "--password-store=basic", "--auto-open-devtools-for-tabs"]`)
     .replace(listen, 'server.listen(0, "127.0.0.1", () => console.log("PORT=" + server.address().port));')
     .replace(input, `${input}
@@ -80,12 +80,12 @@ try {
     return result.result.value;
   }, "DevTools UI loaded");
   const state = await api("/tabs");
-  assert.equal(state.tabs.length, 1, "DevTools must not appear as a Cage tab");
+  assert.equal(state.tabs.length, 1, "DevTools must not appear as a Workbench tab");
   assert.equal(state.tabs[0].url, "about:blank");
-  assert.equal(state.active, state.tabs[0].id, "DevTools must not become the active Cage tab");
+  assert.equal(state.active, state.tabs[0].id, "DevTools must not become the active Workbench tab");
   await cdp("Target.closeTarget", { targetId: devtools.targetId });
   assert.equal((await api("/tabs")).active, state.active);
-  console.log("PASS: production fullscreen controller opens real DevTools, keeps its page out of Cage tabs, and preserves the active website when DevTools closes");
+  console.log("PASS: production fullscreen controller opens real DevTools, keeps its page out of Workbench tabs, and preserves the active website when DevTools closes");
 } finally {
   if (agent?.exitCode === null) {
     const exited = once(agent, "exit");

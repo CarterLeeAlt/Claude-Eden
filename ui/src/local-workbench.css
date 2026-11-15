@@ -1,0 +1,9 @@
+.local-workbench-shell { height: 100dvh; display: flex; flex-direction: column; min-width: 0; }
+.local-workbench-shell > .app { flex: 1; min-height: 0; }
+.local-workbench-connect { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 32px; text-align: center; }
+.local-workbench-connect > img { width: 56px; height: 56px; }
+.local-workbench-connect h1, .local-workbench-connect p { margin: 0; max-width: 560px; }
+.local-workbench-connect [role="status"], .local-workbench-connect > div { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.local-workbench-connect [role="alert"] { color: var(--error, #b42318); overflow-wrap: anywhere; }
+.local-workbench-error { padding: 12px 24px; color: var(--error, #b42318); overflow-wrap: anywhere; }
+.client-loading { flex: 1; display: grid; place-items: center; padding: 32px; }

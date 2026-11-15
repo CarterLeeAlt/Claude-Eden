@@ -3,26 +3,24 @@ package vm
 import (
 	"context"
 	"encoding/json"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/sylvinus/agent-vm/internal/host"
 	"golang.org/x/sys/windows"
 )
 
 func isWindowsQEMU(pid int, dir, name string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	root := os.Getenv("SystemRoot")
-	if root == "" {
-		root = `C:\Windows`
-	}
-	cmd := exec.CommandContext(ctx, filepath.Join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), "-NoProfile", "-NonInteractive", "-Command",
+	cmd, err := host.SystemPowerShellCommand(ctx, "-NoProfile", "-NonInteractive", "-Command",
 		`[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); (Get-CimInstance Win32_Process -Filter 'ProcessId=`+strconv.Itoa(pid)+`').CommandLine | ConvertTo-Json -Compress`)
+	if err != nil {
+		return false
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	out, err := cmd.Output()
 	if err != nil {

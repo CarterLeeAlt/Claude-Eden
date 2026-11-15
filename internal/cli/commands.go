@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -67,7 +68,7 @@ func (e *app) inVM(ctx context.Context, opts VMOpts, fn session) int {
 		return e.scratch(ctx, cleanup, opts, dir, fn)
 	}
 	s := &start{app: e, ctx: ctx, opts: opts, dir: dir, name: e.instanceName(dir)}
-	if os.Getenv("CLAUDE_CAGE_CONFIG") != "" {
+	if os.Getenv("EDEN_CONFIG") != "" {
 		b, err := s.backend()
 		if err != nil {
 			fmt.Fprintln(e.io.Stderr, err)
@@ -80,7 +81,7 @@ func (e *app) inVM(ctx context.Context, opts VMOpts, fn session) int {
 		}
 		for _, inst := range instances {
 			if inst.Status == vm.Running && inst.Name != s.name {
-				fmt.Fprintf(e.io.Stderr, "Cage uses one persistent environment per profile; stop legacy VM %s before connecting it.\n", inst.Name)
+				fmt.Fprintf(e.io.Stderr, "Eden uses one persistent environment per profile; stop VM %s before connecting it.\n", inst.Name)
 				return 1
 			}
 		}
@@ -129,8 +130,8 @@ func (s *start) lima(tty bool, args ...string) int {
 	code, err := b.Shell(s.ctx, s.name, vm.ShellOpts{
 		Workdir: paths.Guest(s.dir),
 		Args: append([]string{"zsh", "-l", "-c",
-			`case "$1" in *=*|*/*) ;; *) command -v -- "$1" >/dev/null || { print -r -- "agent-vm: $1 is not installed in this VM." >&2; exit 127; } ;; esac; exec env -- "$@"`,
-			"agent-vm"}, args...),
+			`case "$1" in *=*|*/*) ;; *) command -v -- "$1" >/dev/null || { print -r -- "$0: $1 is not installed in this VM." >&2; exit 127; } ;; esac; exec env -- "$@"`,
+			Command}, args...),
 		Stdin: s.io.Stdin, Stdout: s.io.Stdout, Stderr: s.io.Stderr, Interactive: tty,
 	})
 	if err != nil {
@@ -177,7 +178,7 @@ func (e *app) runCmd(ctx context.Context, opts VMOpts, args []string) int {
 		return exitUsage
 	}
 	if len(rest) == 0 {
-		fmt.Fprintln(e.io.Stderr, "Usage: agent-vm run [--tty] <command> [args]")
+		fmt.Fprintf(e.io.Stderr, "Usage: %s run [--tty] <command> [args]\n", Command)
 		return exitUsage
 	}
 	return e.inVM(ctx, opts, func(s *start) int { return s.lima(tty, rest...) })
@@ -205,7 +206,7 @@ func (e *app) shellCmd(ctx context.Context, opts VMOpts, args []string) int {
 			}
 			command, args = args[1], args[2:]
 		default:
-			fmt.Fprintf(e.io.Stderr, "Error: unknown argument for shell: %s\nUsage: agent-vm [vm options] shell [-c \"command\"]\n", args[0])
+			fmt.Fprintf(e.io.Stderr, "Error: unknown argument for shell: %s\nUsage: %s [vm options] shell [-c \"command\"]\n", args[0], Command)
 			return exitUsage
 		}
 	}
@@ -217,7 +218,7 @@ func (e *app) shellCmd(ctx context.Context, opts VMOpts, args []string) int {
 		if s.opts.RM {
 			fmt.Fprintln(s.io.Stdout, "Type 'exit' to leave. VM will be destroyed after exit.")
 		} else {
-			fmt.Fprintln(s.io.Stdout, "Type 'exit' to leave (VM keeps running). Use 'agent-vm stop' to stop it.")
+			fmt.Fprintf(s.io.Stdout, "Type 'exit' to leave (VM keeps running). Use '%s stop' to stop it.\n", Command)
 		}
 		return s.shell(true, "zsh", "-l")
 	})
@@ -258,7 +259,7 @@ func (e *app) scratch(ctx, cleanup context.Context, opts VMOpts, dir string, fn 
 		e.deleteVM(cleanup, left)
 	}
 	for _, left := range unknown {
-		fmt.Fprintf(e.io.Stderr, "Note: scratch VM '%s' has a record without a process number, so it is not known whether a run still uses it: left alone. 'agent-vm rm %s' deletes it.\n", left, left)
+		fmt.Fprintf(e.io.Stderr, "Note: scratch VM '%s' has a record without a process number, so it is not known whether a run still uses it: left alone. Inspect the retained VM before removal: %s\n", left, filepath.Join(LimaHome(e.state), left))
 	}
 	name, err := e.names.Scratch(dir)
 	if err != nil {

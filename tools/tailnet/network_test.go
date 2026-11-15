@@ -33,7 +33,7 @@ func TestHTTPProxyUsesTailnetAndRevokesConnections(t *testing.T) {
 	envknob.SetenvForTest(t, "TS_DEBUG_ALWAYS_USE_DERP", "true")
 	netns.SetEnabled(false)
 	defer netns.SetEnabled(true)
-	control := &testcontrol.Server{DERPMap: integration.RunDERPAndSTUN(t, logger.Discard, "127.0.0.1"), MagicDNSDomain: "cage-test.ts.net", DNSConfig: &tailcfg.DNSConfig{Proxied: true}, Logf: logger.Discard}
+	control := &testcontrol.Server{DERPMap: integration.RunDERPAndSTUN(t, logger.Discard, "127.0.0.1"), MagicDNSDomain: "workbench-test.ts.net", DNSConfig: &tailcfg.DNSConfig{Proxied: true}, Logf: logger.Discard}
 	server := httptest.NewUnstartedServer(control)
 	control.HTTPTestServer = server
 	server.Start()
@@ -44,7 +44,7 @@ func TestHTTPProxyUsesTailnetAndRevokesConnections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = n.startServer(&tsnet.Server{Dir: n.dir, Hostname: "cage-proxy", ControlURL: server.URL, UserLogf: logger.Discard}); err != nil {
+	if err = n.startServer(&tsnet.Server{Dir: n.dir, Hostname: "workbench-proxy", ControlURL: server.URL, UserLogf: logger.Discard}); err != nil {
 		t.Fatal(err)
 	}
 	defer func() { n.mu.Lock(); n.stop(); n.mu.Unlock() }()
@@ -116,11 +116,11 @@ func TestHTTPProxyUsesTailnetAndRevokesConnections(t *testing.T) {
 	if err = json.Unmarshal(b, &record); err != nil {
 		t.Fatal(err)
 	}
-	proxyURL := &url.URL{Scheme: "http", Host: record.Address, User: url.UserPassword("cage", record.Token)}
+	proxyURL := &url.URL{Scheme: "http", Host: record.Address, User: url.UserPassword("workbench", record.Token)}
 	transport := &http.Transport{Proxy: http.ProxyURL(proxyURL), DisableKeepAlives: true, TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: 10 * time.Second}
-	for _, host := range []string{peer.TailscaleIPs[0].String(), "private-web.cage-test.ts.net", "private-web"} {
+	for _, host := range []string{peer.TailscaleIPs[0].String(), "private-web.workbench-test.ts.net", "private-web"} {
 		r, _ := http.NewRequestWithContext(ctx, "POST", "http://"+host+":8080/hello?q=world", strings.NewReader("payload"))
 		r.Header.Set("Connection", "X-Remove")
 		r.Header.Set("X-Remove", "secret")
@@ -152,7 +152,7 @@ func TestHTTPProxyUsesTailnetAndRevokesConnections(t *testing.T) {
 	if err != nil || line != "data: live\n" {
 		t.Fatalf("stream buffered: %q %v", line, err)
 	}
-	for _, target := range []string{"http://127.0.0.1:8080/", "http://1.1.1.1/", "http://192.168.1.1/", "http://unknown.cage-test.ts.net/"} {
+	for _, target := range []string{"http://127.0.0.1:8080/", "http://1.1.1.1/", "http://192.168.1.1/", "http://unknown.workbench-test.ts.net/"} {
 		response, err := client.Get(target)
 		if err != nil {
 			t.Fatal(err)
@@ -250,7 +250,7 @@ func TestHTTPProxyUsesTailnetAndRevokesConnections(t *testing.T) {
 	}
 	defer conn.Close()
 	conn.SetDeadline(time.Now().Add(10 * time.Second))
-	authorization := base64.StdEncoding.EncodeToString([]byte("cage:" + record.Token))
+	authorization := base64.StdEncoding.EncodeToString([]byte("workbench:" + record.Token))
 	fmt.Fprintf(conn, "CONNECT private-web:8080 HTTP/1.1\r\nHost: private-web:8080\r\nProxy-Authorization: Basic %s\r\n\r\n", authorization)
 	reader := bufio.NewReader(conn)
 	connected, err := http.ReadResponse(reader, &http.Request{Method: "CONNECT"})

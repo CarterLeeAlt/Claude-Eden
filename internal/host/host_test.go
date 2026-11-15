@@ -59,7 +59,7 @@ func TestQemuBinaryFor(t *testing.T) {
 		{"arm64", "apt-get", "qemu-system-aarch64", "sudo apt-get install qemu-system-arm qemu-utils"},
 		{"amd64", "dnf", "qemu-system-x86_64", "sudo dnf install qemu-system-x86-core qemu-img"},
 		{"arm64", "dnf", "qemu-system-aarch64", "sudo dnf install qemu-system-aarch64-core qemu-img"},
-		{"amd64", "", "qemu-system-x86_64", "your distribution's QEMU package (with Nix, 'nix run github:sylvinus/agent-vm' brings its own)"},
+		{"amd64", "", "qemu-system-x86_64", "your distribution's QEMU package, including qemu-img"},
 	} {
 		if bin, cmd := qemuBinaryFor(c.goarch, c.manager); bin != c.bin || cmd != c.cmd {
 			t.Errorf("%s %q: %s %q", c.goarch, c.manager, bin, cmd)

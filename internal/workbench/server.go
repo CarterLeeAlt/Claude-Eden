@@ -9,11 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/sylvinus/agent-vm/internal/cage"
-	"github.com/sylvinus/agent-vm/internal/diagnostics"
-	"github.com/sylvinus/agent-vm/internal/guestos"
-	"github.com/sylvinus/agent-vm/internal/host"
-	"github.com/sylvinus/agent-vm/internal/hostimage"
 	"io"
 	"io/fs"
 	"log"
@@ -27,12 +22,17 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/sylvinus/agent-vm/internal/diagnostics"
+	"github.com/sylvinus/agent-vm/internal/eden"
+	"github.com/sylvinus/agent-vm/internal/guestos"
+	"github.com/sylvinus/agent-vm/internal/host"
 )
 
 //go:embed web/*
 var assets embed.FS
 
-const cookieName = "cage_session"
+const cookieName = "eden_session"
 
 type controlFile struct {
 	Port       int                `json:"port"`
@@ -46,31 +46,19 @@ type Server struct {
 	browserViews                                     displayViewDemand
 	desktopStatus                                    desktopStatusCache
 	agentNativeQueue                                 agentNativeQueue
-	macSetupProjectsChecked                          time.Time
-	macSetupProjectsAttempt                          time.Time
-	macProjectsRetryAt                               time.Time
-	macLoginLease                                    *macLoginLease
-	macosGuest                                       *guestos.MacOSProfile
-	macResources                                     macOSResourceObserver
-	windowsGuest                                     *guestos.WindowsProfile
-	windowsState                                     windowsGuestState
-	windowsProjectHistory                            map[string]string
 	clipboardFiles                                   map[string]clipboardFileSelection
 	clipboardRelease                                 func([]string)
 	clipboardCancel                                  context.CancelFunc
 	clipboardGuestSession                            string
-	phones                                           mobilePairing
 	instanceID                                       string
-	clientOnly                                       bool
 	desktopEntry                                     bool
 	appUpdateConfigPath                              string
 	windowOwners                                     map[int]bool
-	remote                                           *remoteGateway
+	gateway                                          *clientGateway
 	account                                          *localAccount
 	identity                                         ControllerIdentity
-	guestManifest                                    *cage.GuestManifest
+	guestManifest                                    *eden.GuestManifest
 	guestUpdateRequired                              bool
-	macComponentsChecked                             bool
 	guestUpdateError                                 string
 	storageRecoveryError                             string
 	closing                                          bool
@@ -84,11 +72,6 @@ type Server struct {
 	tickets                                          map[string]time.Time
 	browserControl                                   *browserClient
 	controlSession                                   guestSession
-	windowsBrowserControl                            *windowsBrowserClient
-	nativeDownloads                                  map[string]*nativeDownload
-	nativeDownloadSlots                              chan struct{}
-	nativeDownloadRevision                           uint64
-	windowsNetwork                                   *windowsHostNetwork
 	op                                               sync.Mutex
 	profile, configPath, exe, origin, token, session string
 	mu                                               sync.Mutex
@@ -101,14 +84,12 @@ type Server struct {
 	networkIntentError                               string
 	credentials                                      guestCredentials
 	terminals                                        terminalManager
-	mobileCLI                                        mobileCLIStore
+	cliSessions                                      cliSessionStore
 	conversationMu                                   sync.Mutex
-	mobileConnectMu                                  sync.Mutex
+	cliConnectMu                                     sync.Mutex
 	audioClients                                     int
 	projectShares                                    map[string]*projectShare
 	projectErrors                                    []projectShareError
-	clientMounts                                     map[string]*guestClientMount
-	clientWorkspace                                  string
 	safety                                           safetyState
 	recovery                                         networkRecovery
 	locations                                        map[string]Location
@@ -137,17 +118,15 @@ func randomToken() string {
 func equalSecret(a, b string) bool {
 	return len(a) > 0 && subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
-func Serve(configPath string) error { return serve(configPath, false, "") }
-
-func ServeClient(configPath string) error { return serve(configPath, true, "") }
+func Serve(configPath string) error { return serve(configPath, "") }
 
 // ServeDesktop is the desktop window's connection gateway. Its control lock and
 // logs live separately from the workload it may later attach to.
 func ServeDesktop(fullConfigPath string) error {
-	return serve(desktopConfigPath(fullConfigPath), false, fullConfigPath)
+	return serve(desktopConfigPath(fullConfigPath), fullConfigPath)
 }
 
-func serve(configPath string, clientOnly bool, fullConfigPath string) (returned error) {
+func serve(configPath string, fullConfigPath string) (returned error) {
 	store := diagnostics.New(filepath.Dir(configPath))
 	diagnostics.SetDefault(store)
 	if err := store.Clean(); err != nil {
@@ -174,9 +153,6 @@ func serve(configPath string, clientOnly bool, fullConfigPath string) (returned 
 	if err := host.ProtectFile(lock.Name()); err != nil {
 		return err
 	}
-	if err := store.ImportLegacy(filepath.Dir(configPath)); err != nil {
-		diagnostics.Log("warn", "diagnostics", "legacy log import failed: "+err.Error())
-	}
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -187,48 +163,24 @@ func serve(configPath string, clientOnly bool, fullConfigPath string) (returned 
 		return err
 	}
 	defer listener.Close()
-	s := &Server{profile: profile, configPath: configPath, exe: exe, clientOnly: clientOnly, origin: fmt.Sprintf("http://localhost:%d", port), token: randomToken(), session: randomToken(), preferences: Preferences{Keyboard: defaultKeyboard(), AutoTimezone: true, AutoLanguage: true, BalancedDisplay: true, ProjectFileCache: true}}
+	s := &Server{profile: profile, configPath: configPath, exe: exe, origin: fmt.Sprintf("http://localhost:%d", port), token: randomToken(), session: randomToken(), preferences: Preferences{Keyboard: defaultKeyboard(), AutoTimezone: true, AutoLanguage: true, ProjectFileCache: true}}
 	s.desktopEntry = fullConfigPath != ""
 	s.appUpdateConfigPath = configPath
 	if fullConfigPath != "" {
 		s.appUpdateConfigPath = fullConfigPath
 	}
-	workload := !s.desktopEntry && !clientOnly
+	workload := !s.desktopEntry
 	if s.desktopEntry {
-		if err = importDesktopConnections(filepath.Dir(fullConfigPath), profile); err != nil {
-			return err
-		}
-		s.remote = newDesktopGateway(profile, NewDesktopLocalController(fullConfigPath, exe))
+		s.gateway = newDesktopGateway(NewDesktopLocalController(fullConfigPath, exe))
 	} else {
-		s.remote = newRemoteGateway(profile)
-		s.remote.clientOnly = clientOnly
+		s.gateway = newClientGateway()
 	}
-	defer s.remote.close()
+	defer s.gateway.close()
 	if workload {
-		if err = guestos.RecoverWindowsStorage(context.Background(), profile); err != nil {
+		if _, err = eden.GetStorageLocation(profile); err != nil {
 			s.failStorageRecovery(err)
 		}
-		s.macosGuest, err = guestos.LoadMacOSProfile(profile)
-		if err != nil {
-			return err
-		}
-		s.windowsGuest, err = guestos.LoadWindowsProfile(profile)
-		if err != nil {
-			return err
-		}
-		if s.macosGuest != nil && s.windowsGuest != nil {
-			return errors.New("一个配置只能绑定一个客机系统")
-		}
-		if s.windowsGuest != nil {
-			pending, err := guestos.WindowsCloneCleanupPending(profile)
-			if err != nil {
-				return err
-			}
-			if pending {
-				s.windowsGuest = nil
-			}
-		}
-		s.instanceID, err = ensureRemoteInstance(profile)
+		s.instanceID, err = ensureControllerInstance(profile)
 		if err != nil {
 			return err
 		}
@@ -241,16 +193,11 @@ func serve(configPath string, clientOnly bool, fullConfigPath string) (returned 
 		if b, e := os.ReadFile(filepath.Join(profile, "workbench.json")); e == nil {
 			// Existing profiles without this field used manual language settings.
 			s.preferences.AutoLanguage = false
-			// Preserve the original density of profiles saved before this setting.
-			s.preferences.BalancedDisplay = false
 			_ = json.Unmarshal(b, &s.preferences)
 		}
 		if !s.storageRecoveryStatus().Required {
 			if err = s.prepareEnvironment(); err != nil {
-				if s.windowsGuest == nil {
-					return err
-				}
-				s.failStorageRecovery(err)
+				return err
 			}
 		}
 		// Invalid intent keeps the gate paused and its error visible in status.
@@ -264,19 +211,13 @@ func serve(configPath string, clientOnly bool, fullConfigPath string) (returned 
 			}
 		}
 		// A previously running VM cannot keep an unmanaged endpoint online.
-		if s.macosGuest != nil {
-			_ = s.closeProxyGate("控制服务已重新连接，外网等待重新检查")
-		} else if cfg, e := loadConfig(configPath); s.windowsGuest == nil && (e != nil || cfg.RequireManagedProxy(profile) != nil) {
+		if cfg, e := loadConfig(configPath); e != nil || cfg.RequireManagedProxy(profile) != nil {
 			_ = s.closeProxyGate("尚未配置有效节点，外网保持关闭")
 		}
-		if s.networkPaused && s.windowsGuest == nil {
+		if s.networkPaused {
 			_ = s.closeProxyGate("网络保持暂停，请手动恢复后再联网")
 		}
 		s.startMonitors()
-		if err = s.restorePhone(); err != nil {
-			s.phones.status = "无法恢复手机配对，请移除旧记录后重试"
-		}
-		defer s.stopPhone()
 	}
 	s.identity, err = currentController()
 	if err != nil {
@@ -333,20 +274,15 @@ func (s *Server) handler() http.Handler {
 	})
 	s.agentRoutes(mux)
 	s.agentNativeRoutes(mux)
-	s.mobileCLIRoutes(mux)
-	s.mobileSurfaceRoutes(mux)
-	mux.HandleFunc("GET /api/mobile-pair", s.phoneStatus)
-	mux.HandleFunc("POST /api/mobile-pair", s.pairPhone)
-	mux.HandleFunc("DELETE /api/mobile-pair", s.removePhone)
-	mux.HandleFunc("POST /api/mobile/device", s.reportPhoneDevice)
+	s.cliSessionRoutes(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { jsonReply(w, map[string]bool{"ready": true}) })
 	mux.HandleFunc("POST /api/launch", func(w http.ResponseWriter, r *http.Request) {
 		if !s.launcherAuthenticated(w, r) {
 			return
 		}
-		jsonReply(w, launchResponse{ConfigPath: s.configPath, ClientOnly: s.clientOnly, DesktopGateway: s.desktopEntry, URL: s.origin + "/?launch=" + randomToken()[:8] + "#" + s.issueTicket(), Controller: s.identity})
+		jsonReply(w, launchResponse{ConfigPath: s.configPath, DesktopGateway: s.desktopEntry, URL: s.origin + "/?launch=" + randomToken()[:8] + "#" + s.issueTicket(), Controller: s.identity})
 	})
-	if s.desktopEntry || s.clientOnly {
+	if s.desktopEntry {
 		mux.HandleFunc("POST /api/handoff", s.handoffEntry)
 	} else {
 		mux.HandleFunc("POST /api/handoff", s.handoff)
@@ -364,7 +300,7 @@ func (s *Server) handler() http.Handler {
 			return
 		}
 		if !s.consumeTicket(v.Token) {
-			http.Error(w, "访问凭证无效，请从 Cage 应用重新打开。", http.StatusUnauthorized)
+			http.Error(w, "访问凭证无效，请从 Eden 应用重新打开。", http.StatusUnauthorized)
 			return
 		}
 		http.SetCookie(w, &http.Cookie{Name: s.cookieName(), Value: s.session, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 86400 * 30})
@@ -373,7 +309,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /api/status", s.status)
 	mux.HandleFunc("GET /api/environment/initialization", s.initialization)
 	mux.HandleFunc("POST /api/environment/initialization", s.initialization)
-	mux.HandleFunc("GET /api/remote/manifest", s.remoteManifest)
+	mux.HandleFunc("GET /api/controller/manifest", s.controllerManifest)
 	mux.HandleFunc("GET /api/projects/directories", s.projectDirectories)
 	mux.HandleFunc("POST /api/input", s.remoteInput)
 	mux.HandleFunc("GET /api/diagnostics", s.diagnosticStatus)
@@ -393,16 +329,9 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("POST /api/projects/save", s.saveProject)
 	mux.HandleFunc("POST /api/projects/remove", s.removeProject)
 	mux.HandleFunc("POST /api/projects/refresh", s.refreshProjectFiles)
-	mux.HandleFunc("POST /api/projects/client-share", s.guestClientShare)
-	mux.HandleFunc("GET /api/projects/client-share", s.guestClientShare)
 	mux.HandleFunc("GET /api/environment/versions", s.environmentVersions)
 	s.registerCacheMaintenance(mux)
 	mux.HandleFunc("GET /api/environment/guest-systems", s.guestInstallation)
-	mux.HandleFunc("GET /api/environment/guest-systems/clone", s.hostClone)
-	mux.HandleFunc("DELETE /api/environment/guest-systems", s.guestInstallation)
-	mux.HandleFunc("POST /api/environment/guest-systems/activate", s.guestInstallation)
-	mux.HandleFunc("GET /api/macos/install-recovery", s.macOSInstallRecovery)
-	mux.HandleFunc("POST /api/macos/install-recovery", s.macOSInstallRecovery)
 	mux.HandleFunc("GET /api/environment/storage", s.environmentStorage)
 	mux.HandleFunc("POST /api/environment/storage", s.environmentStorage)
 	mux.HandleFunc("POST /api/environment/storage/recover", s.recoverEnvironmentStorage)
@@ -432,7 +361,6 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("POST /api/tailscale/{action}", s.tailnet)
 	mux.HandleFunc("GET /api/browser/tabs", s.browser)
 	mux.HandleFunc("GET /api/browser/events", s.browserEvents)
-	mux.HandleFunc("POST /api/browser/clipboard", s.browserClipboard)
 	mux.HandleFunc("GET /api/browser/preferences", s.browserPreferences)
 	mux.HandleFunc("POST /api/browser/preferences", s.browserPreferences)
 	mux.HandleFunc("POST /api/browser/extensions/upload", s.browserExtensionUpload)
@@ -460,7 +388,7 @@ func (s *Server) handler() http.Handler {
 		}
 		// A Linux guest scrolls its page by the viewer's distance, outside the
 		// display stream. The native guests negotiate it inside theirs.
-		jsonReply(w, map[string]any{"password": s.credentials.VNCPassword, "display_scale": s.credentials.DisplayScale, "dynamic_scale": s.credentials.DynamicScale, "pixel_wheel": s.macosGuest == nil && s.windowsGuest == nil})
+		jsonReply(w, map[string]any{"password": s.credentials.VNCPassword, "display_scale": s.credentials.DisplayScale, "dynamic_scale": s.credentials.DynamicScale, "pixel_wheel": true})
 	})
 	mux.HandleFunc("GET /api/vnc", s.vnc)
 	mux.HandleFunc("GET /api/claude-desktop", s.claudeDesktopStatus)
@@ -468,19 +396,9 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /api/claude-desktop/vnc", s.claudeDesktopVNC)
 	mux.HandleFunc("POST /api/claude-desktop/resize", s.claudeDesktopResize)
 	mux.HandleFunc("POST /api/claude-desktop/{action}", s.claudeDesktopAction)
-	if s.macosGuest != nil {
-		mux.HandleFunc("POST /api/macos/first-setup", s.macOSLoginWindow)
-		mux.HandleFunc("POST /api/macos/login", s.macOSLoginWindow)
-		mux.HandleFunc("POST /api/macos/maintenance", s.macOSLoginWindow)
-		s.registerMacOSClaudeRoutes(mux)
-		s.registerMacOSBrowserRoutes(mux)
-		mux.HandleFunc("POST /api/macos/project-approval", s.macOSProjectApproval)
-		mux.HandleFunc("POST /api/macos/exit-policy", s.bindMacOSExit)
-	}
 	mux.HandleFunc("GET /api/terminals", s.listTerminals)
 	mux.HandleFunc("GET /api/audio", s.audio)
 	mux.HandleFunc("GET /api/clipboard", s.sharedClipboard)
-	mux.HandleFunc("POST /api/clipboard/copy", s.clipboardCopy)
 	mux.HandleFunc("POST /api/clipboard/files", s.clipboardArchive)
 	mux.HandleFunc("GET /api/clipboard/files/{id}", s.clipboardArchive)
 	mux.HandleFunc("DELETE /api/clipboard/files/{id}", s.clipboardArchive)
@@ -511,103 +429,58 @@ func (s *Server) handler() http.Handler {
 		// Launcher-token routes are handled only by this listener, never by a
 		// selected workload. They perform their own authentication.
 		if strings.HasPrefix(r.URL.Path, "/api/desktop-local/") || r.URL.Path == "/api/desktop-owner" {
-			if (strings.HasPrefix(r.URL.Path, "/api/desktop-local/") && (s.desktopEntry || s.clientOnly)) || (r.URL.Path == "/api/desktop-owner" && !s.desktopEntry) {
+			if (strings.HasPrefix(r.URL.Path, "/api/desktop-local/") && s.desktopEntry) || (r.URL.Path == "/api/desktop-owner" && !s.desktopEntry) {
 				http.NotFound(w, r)
 				return
 			}
 			mux.ServeHTTP(w, r)
 			return
 		}
-		if r.URL.Path == "/api/remote/manifest" && (s.desktopEntry || s.clientOnly) {
+		if r.URL.Path == "/api/controller/manifest" && s.desktopEntry {
 			http.NotFound(w, r)
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/api/session" && r.URL.Path != "/api/launch" && r.URL.Path != "/api/handoff" {
 			c, e := r.Cookie(s.cookieName())
 			if e != nil || !equalSecret(c.Value, s.session) {
-				http.Error(w, "请从 Cage 应用重新打开工作台", 401)
+				http.Error(w, "请从 Eden 应用重新打开工作台", 401)
 				return
 			}
 		}
-		// App metadata belongs to this executable, even while an SSH workload
-		// is selected. Like client/context, it uses local session authentication.
+		// App metadata belongs to this executable and uses the desktop session.
 		if r.URL.Path == "/api/client/about" {
 			mux.ServeHTTP(w, r)
 			return
-		}
-		if s.macosGuest == nil && !s.desktopEntry && !s.clientOnly && strings.HasPrefix(r.URL.Path, "/api/") {
-			pending, err := guestos.LoadInstallation(s.profile)
-			if err != nil {
-				if !macOSInstallRecoveryRoute(r.Method, r.URL.Path) {
-					http.Error(w, "安装记录无法读取，请保留现有数据", http.StatusConflict)
-					return
-				}
-			}
-			if pending != nil && pending.System == guestos.MacOS && !macOSInstallRecoveryRoute(r.Method, r.URL.Path) {
-				http.Error(w, "macOS 客机尚未完成安装", http.StatusConflict)
-				return
-			}
 		}
 		if strings.HasPrefix(r.URL.Path, "/api/agent/native") || r.URL.Path == "/api/agent/routes" {
 			mux.ServeHTTP(w, r)
 			return
 		}
-		if s.windowsGuest != nil && !windowsWorkbenchRoute(r.URL.Path) {
-			s.windowsUnavailable(w)
-			return
-		}
-		if s.macosGuest != nil && (!macOSWorkbenchRoute(r.URL.Path) || s.macSetupPending() && !macOSSetupRoute(r.URL.Path)) {
-			http.Error(w, "此功能尚未接入 macOS 客机", http.StatusConflict)
-			return
-		}
-		if strings.HasPrefix(r.URL.Path, "/api/mobile/") {
-			// Device trust is scoped to this host. Never forward a paired phone
-			// into a different host selected by the desktop SSH client.
-			if s.desktopEntry && !s.clientOnly && s.remote != nil && s.remote.desktop != nil && r.Header.Get(connectionHeader) != "" {
-				// The desktop's own viewer pins the selected local workload's
-				// connection generation. routeRemote checks the acquired target.
-				if s.routeRemote(w, r) {
-					return
-				}
-			}
-			if s.clientOnly || s.desktopEntry {
-				http.Error(w, "请连接运行 Cage 环境的主机", http.StatusConflict)
-				return
-			}
-		} else if s.macosGuest == nil && s.windowsGuest == nil && s.routeRemote(w, r) {
+		if s.routeController(w, r) {
 			return
 		}
 		ctx, finish, err := s.beginActivity(r.Context())
 		if err != nil {
-			http.Error(w, "后台正在更新，请重新打开 Cage。", http.StatusServiceUnavailable)
+			http.Error(w, "后台正在更新，请重新打开 Eden。", http.StatusServiceUnavailable)
 			return
 		}
 		defer finish()
 		r = r.WithContext(ctx)
 		accountRoute := r.URL.Path == "/api/account" || strings.HasPrefix(r.URL.Path, "/api/account/")
-		bootstrapRoute := r.URL.Path == "/api/session" || r.URL.Path == "/api/launch" || r.URL.Path == "/api/handoff" || r.URL.Path == "/api/remote/manifest"
+		bootstrapRoute := r.URL.Path == "/api/session" || r.URL.Path == "/api/launch" || r.URL.Path == "/api/handoff" || r.URL.Path == "/api/controller/manifest"
 		trustedDesktop := s.hasTrustedView(r)
-		phoneRoom := s.pairedPhoneRoom(r)
-		if (s.windowsGuest != nil || s.macosGuest != nil) && strings.HasPrefix(r.URL.Path, "/api/") && !bootstrapRoute && !trustedDesktop && phoneRoom == nil {
-			http.Error(w, "请通过本机 Cage 窗口或当前配对手机打开客机", http.StatusForbidden)
-			return
-		}
 		if strings.HasPrefix(r.URL.Path, "/api/") && !accountRoute && !bootstrapRoute && !strings.HasPrefix(r.URL.Path, "/api/diagnostics") && !(r.Method == "GET" && r.URL.Path == "/api/appearance") {
-			epoch, unlocked := s.account.accessFor(trustedDesktop, phoneRoom != nil)
+			epoch, unlocked := s.account.accessFor(trustedDesktop)
 			if !unlocked {
-				http.Error(w, "Cage 已锁定，请先登录", http.StatusLocked)
+				http.Error(w, "Eden 已锁定，请先登录", http.StatusLocked)
 				return
 			}
 			ctx, cancel := context.WithCancel(r.Context())
-			if strings.HasPrefix(r.URL.Path, "/api/mobile/") || strings.HasPrefix(r.URL.Path, "/api/cli/") {
-				ctx = context.WithValue(ctx, mobileEpochKey{}, epoch)
+			if strings.HasPrefix(r.URL.Path, "/api/cli/") {
+				ctx = context.WithValue(ctx, cliEpochKey{}, epoch)
 			}
 			stop := context.AfterFunc(epoch, cancel)
 			defer func() { stop(); cancel() }()
-			if phoneRoom != nil {
-				stopPhone := context.AfterFunc(phoneRoom, cancel)
-				defer stopPhone()
-			}
 			r = r.WithContext(ctx)
 		}
 		defer interruptHTTPOnCancel(w, r)()
@@ -664,9 +537,6 @@ func requestError(w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), http.StatusBadRequest)
 }
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
-	if s.windowsGuest != nil && !s.storageRecoveryStatus().Required {
-		s.refreshWindowsComponents()
-	}
 	projects, err := s.projectPaths()
 	if err != nil {
 		requestError(w, errors.New("无法读取项目列表，请检查项目配置"))
@@ -685,31 +555,19 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	if len(s.projectErrors) > 0 {
 		projectError = "部分项目文件夹尚未连接，环境和浏览器可继续使用。"
 	}
-	if m := s.clientMounts[s.clientWorkspace]; s.clientWorkspace != "" && (m == nil || !m.live()) {
-		projectError = "当前本机项目已断开，请重新共享或选择其他项目。"
-	}
 	view := map[string]any{
 		"projects": projects, "project_groups": groups, "ready": s.ready, "vm_running": running,
 		"workspace": s.workspaceLocked(), "environment_directory": s.environmentDir(),
-		"environment_identity_directory": cage.EnvironmentIdentityDir(s.profile),
-		"local_vm_storage":               s.localVMStorage(), "project_error": projectError, "project_errors": s.projectErrors,
+		"environment_identity_directory": eden.EnvironmentIdentityDir(s.profile),
+		"local_vm_storage":               true, "project_error": projectError, "project_errors": s.projectErrors,
 		"storage_recovery": s.storageRecoveryStatusLocked(),
 		"keyboard":         s.preferences.Keyboard, "auto_timezone": s.preferences.AutoTimezone, "job": s.jobs.snapshot(),
 		"location": s.location, "network_error": s.currentNetworkErrorLocked(), "can_restore": e == nil,
 		"safety": s.safety, "environment_update_required": s.guestUpdateRequired, "environment_update_error": s.guestUpdateError,
 	}
-	if s.windowsGuest != nil {
-		view["guest_system"] = guestos.Windows11
-		view["guest_capabilities"] = s.windowsCapabilitiesLocked()
-		view["location"] = nil
-		if s.safety.Gate == nil && view["network_error"] == "" {
-			view["network_error"] = "Windows 客机网络组件尚未连接，外网保持关闭"
-		}
-	} else if s.macosGuest != nil {
-		view["guest_system"] = guestos.MacOS
-	} else if system, err := s.installedLinuxSystem(); err != nil {
+	if system, err := s.installedLinuxSystem(); err != nil {
 		view["guest_system_error"] = err.Error()
-	} else if system != guestos.Debian13 {
+	} else {
 		view["guest_system"] = system
 	}
 	jsonReply(w, view)
@@ -729,7 +587,6 @@ func (s *Server) proposed(w http.ResponseWriter, r *http.Request) (savedProfile,
 	var input Settings
 	// Older clients omit preferences introduced after their release.
 	s.mu.Lock()
-	input.MobileRelay = s.preferences.MobileRelay
 	input.BalancedDisplay = s.preferences.BalancedDisplay
 	input.ProjectFileCache = s.preferences.ProjectFileCache
 	input.BrowserHomeURL = browserHomeURL(s.preferences)
@@ -808,53 +665,13 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 	if r.ContentLength != 0 && !readJSON(w, r, &input) {
 		return
 	}
-	if s.windowsGuest != nil {
-		if input.System != "" && input.System != guestos.Windows11 {
-			http.Error(w, "此配置已绑定 Windows 客机", http.StatusConflict)
-			return
-		}
-		s.launch(w, "start", s.startWindowsGuest)
-		return
-	}
-	if s.macosGuest != nil {
-		if input.System != "" && input.System != guestos.MacOS {
-			http.Error(w, "此配置已绑定 macOS 客机", http.StatusConflict)
-			return
-		}
-		s.launch(w, "start", s.startMacOSGuest)
-		return
-	}
-	if input.System == guestos.MacOS {
-		pending, err := guestos.LoadInstallation(s.profile)
-		if err != nil {
-			requestError(w, err)
-			return
-		}
-		if pending != nil && pending.System == guestos.MacOS {
-			if recovery, loadErr := guestos.LoadMacOSInstallRecovery(s.profile); loadErr != nil {
-				requestError(w, loadErr)
-				return
-			} else if recovery != nil {
-				s.resumePendingMacOSInstall(w, r, pending.ID)
-				return
-			}
-		}
-	}
-	if input.System == guestos.MacOS || input.System == guestos.Windows11 || input.CloneKey != "" {
-		s.beginGuestInstall(w, r, input)
+	if input.System != "" && input.System != "debian-13" {
+		http.Error(w, "当前版本仅支持 Debian 13 客户机", http.StatusBadRequest)
 		return
 	}
 	pending, err := guestos.LoadInstallation(s.profile)
 	if err != nil {
 		http.Error(w, "客户机安装记录无法读取，请保留现有数据", http.StatusConflict)
-		return
-	}
-	if pending != nil && pending.System == guestos.MacOS {
-		s.resumePendingMacOSInstall(w, r, pending.ID)
-		return
-	}
-	if pending != nil && !hostimage.IsLinux(pending.System) {
-		http.Error(w, "已有原生客户机安装，请继续原安装", http.StatusConflict)
 		return
 	}
 	if pending != nil && input.System != "" && pending.System != input.System {
@@ -866,17 +683,13 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 		s.beginGuestInstall(w, r, input)
 		return
 	}
-	boundSystem, err := s.installedLinuxSystem()
+	startupSystem, err := s.startupLinuxSystem()
 	if err != nil {
 		requestError(w, err)
 		return
 	}
-	if input.System != "" && input.System != boundSystem {
-		if canInstallCatalogLinux(input.System) {
-			s.beginGuestInstall(w, r, input)
-		} else {
-			http.Error(w, "当前环境无法启动所选客户机系统，请保留原环境并重新检查安装选择", http.StatusConflict)
-		}
+	if input.System != "" && input.System != startupSystem {
+		http.Error(w, "当前环境的客户机记录与 Debian 13 不符，请保留数据并检查环境配置", http.StatusConflict)
 		return
 	}
 	s.launch(w, "start", func() error {
@@ -895,22 +708,16 @@ func (s *Server) requestStop(w http.ResponseWriter, logout bool) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	for _, name := range []string{cage.InstanceName(s.profile, s.environmentDir()), "base-building"} {
-		if owner := cage.InstanceJobID(filepath.Join(s.profile, "state"), name); owner != "" {
-			_ = cage.RequestJobStop(s.profile, owner)
+	for _, name := range []string{eden.InstanceName(s.profile, s.environmentDir()), "base-building"} {
+		if owner := eden.InstanceJobID(filepath.Join(s.profile, "state"), name); owner != "" {
+			_ = eden.RequestJobStop(s.profile, owner)
 		}
 	}
 	jobID := s.jobs.cancelRunning()
 	if jobID != "" {
-		_ = cage.RequestJobStop(s.profile, jobID)
+		_ = eden.RequestJobStop(s.profile, jobID)
 	}
-	if s.macosGuest != nil {
-		// Stopping the guest revokes its current grant. A user's saved pause
-		// remains distinct so the next Mac start can honor the same intent.
-		_ = s.revokeNetworkNow("正在停止环境", false)
-	} else if s.windowsGuest == nil {
-		_ = s.pauseNetworkNow("正在停止环境")
-	}
+	_ = s.pauseNetworkNow("正在停止环境")
 	kind := "stop"
 	if logout {
 		kind = "logout"

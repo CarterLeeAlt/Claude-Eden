@@ -40,13 +40,13 @@ export function TerminalMenu({ choice, busy, onClose, onSelect }) {
     const closeCommand = () => dismiss(true);
     document.addEventListener("click", outside, true);
     document.addEventListener("keydown", keydown, true);
-    document.addEventListener("cage-close-modal", closeCommand);
+    document.addEventListener("eden-close-modal", closeCommand);
     return () => {
       anchor.setAttribute("aria-expanded", "false");
       anchor.removeAttribute("aria-controls");
       document.removeEventListener("click", outside, true);
       document.removeEventListener("keydown", keydown, true);
-      document.removeEventListener("cage-close-modal", closeCommand);
+      document.removeEventListener("eden-close-modal", closeCommand);
     };
   }, [choice]);
 

@@ -8,7 +8,7 @@ const { api, cdp, evaluate, waitFor, origin, directory } = fixture;
 const checks = [];
 try {
   const one = await api('/settings', { mode: 'general' });
-  assert.equal(one.kind, 'browser-settings'); assert.equal(one.url, 'cage://settings#general');
+  assert.equal(one.kind, 'browser-settings'); assert.equal(one.url, 'workbench://settings#general');
   const two = await api('/settings', { mode: 'extensions' });
   assert.equal(two.id, one.id);
   assert.equal((await api('/tabs')).tabs.find(tab => tab.id === one.id).kind, 'browser-settings');
@@ -17,11 +17,11 @@ try {
   const bytes = execFileSync('uv', ['run', '--no-project', 'python', '-c', `import io,zipfile,json,sys
 b=io.BytesIO()
 with zipfile.ZipFile(b,'w') as z:
- z.writestr('manifest.json',json.dumps({'manifest_version':3,'name':'Cage test extension','version':'1.0','permissions':['storage'],'content_scripts':[{'matches':['http://localhost/*'],'js':['content.js']}]}))
- z.writestr('content.js','document.documentElement.dataset.cageExtension="active"; chrome.storage.local.set({persisted:"retained"});')
+ z.writestr('manifest.json',json.dumps({'manifest_version':3,'name':'Workbench test extension','version':'1.0','permissions':['storage'],'content_scripts':[{'matches':['http://localhost/*'],'js':['content.js']}]}))
+ z.writestr('content.js','document.documentElement.dataset.workbenchExtension="active"; chrome.storage.local.set({persisted:"retained"});')
 sys.stdout.buffer.write(b.getvalue())`], { maxBuffer: 1 << 20, stdio: ['ignore', 'pipe', 'ignore'] });
   const selected = await fixture.uploadExtension(bytes);
-  assert.equal(selected.name, 'Cage test extension'); assert.deepEqual(selected.permissions, ['storage']);
+  assert.equal(selected.name, 'Workbench test extension'); assert.deepEqual(selected.permissions, ['storage']);
   assert.ok(selected.hostPermissions.includes('http://localhost/*'));
   assert.equal((await api('/extensions', { mode: 'list' })).items.length, 0);
   const source = 'a'.repeat(32) + ':' + 'b'.repeat(32);
@@ -30,24 +30,24 @@ sys.stdout.buffer.write(b.getvalue())`], { maxBuffer: 1 << 20, stdio: ['ignore',
   assert.ok(extension?.enabled); assert.ok(extension.managed);
   assert.equal(extension.source, source);
   const tab = await api('/new', { url: origin + '/extension-test' });
-  await waitFor(() => evaluate(tab.id, 'document.documentElement.dataset.cageExtension === "active"'), 'real extension content script');
+  await waitFor(() => evaluate(tab.id, 'document.documentElement.dataset.workbenchExtension === "active"'), 'real extension content script');
   checks.push('ZIP review does not install until confirmed; declared and content-script permissions shown; installed extension executes in a real page');
   await fixture.restart();
   let list = await api('/extensions', { mode: 'list' });
   assert.equal(list.items.find(item => item.id === extension.id).enabled, true);
   assert.equal(list.items.find(item => item.id === extension.id).source, source);
   let page = await api('/new', { url: origin + '/after-restart' });
-  await waitFor(() => evaluate(page.id, 'document.documentElement.dataset.cageExtension === "active"'), 'extension restored after restart');
+  await waitFor(() => evaluate(page.id, 'document.documentElement.dataset.workbenchExtension === "active"'), 'extension restored after restart');
   await api('/extensions', { mode: 'disable', id: extension.id });
   page = await api('/new', { url: origin + '/disabled' });
   await waitFor(() => evaluate(page.id, 'document.readyState === "complete"'), 'disabled fixture ready');
-  assert.equal(await evaluate(page.id, 'document.documentElement.dataset.cageExtension || ""'), '');
+  assert.equal(await evaluate(page.id, 'document.documentElement.dataset.workbenchExtension || ""'), '');
   await fixture.restart();
   list = await api('/extensions', { mode: 'list' });
   assert.equal(list.items.find(item => item.id === extension.id).enabled, false);
   await api('/extensions', { mode: 'enable', id: extension.id });
   page = await api('/new', { url: origin + '/enabled-again' });
-  await waitFor(() => evaluate(page.id, 'document.documentElement.dataset.cageExtension === "active"'), 'enabled fixture');
+  await waitFor(() => evaluate(page.id, 'document.documentElement.dataset.workbenchExtension === "active"'), 'enabled fixture');
   const storage = await cdp(page.id, 'Extensions.getStorageItems', { id: extension.id, storageArea: 'local' });
   assert.equal(storage.data.persisted, 'retained');
   checks.push('enabled extensions restore after restart; disable survives restart; re-enable preserves extension storage');
@@ -58,7 +58,7 @@ sys.stdout.buffer.write(b.getvalue())`], { maxBuffer: 1 << 20, stdio: ['ignore',
   const registry = JSON.parse(await readFile(join(directory, 'extensions/registry.json'), 'utf8'));
   assert.deepEqual(registry, []);
   checks.push('uninstall removes the extension and persistent installation record');
-  const helper = (await cdp(null, 'Extensions.getExtensions')).extensions.find(item => item.name === 'Cage browser panes');
+  const helper = (await cdp(null, 'Extensions.getExtensions')).extensions.find(item => item.name === 'Workbench browser panes');
   const control = (await cdp(null, 'Target.getTargets')).targetInfos.find(item => item.url.endsWith('/control.html'));
   const { sessionId } = await cdp(null, 'Target.attachToTarget', { targetId: control.targetId, flatten: true });
   await api('/__privacy-test', { sessionId, method: 'Runtime.evaluate', params: { expression: `chrome.management.setEnabled(${JSON.stringify(helper.id)}, false)`, userGesture: true } }).catch(() => {});

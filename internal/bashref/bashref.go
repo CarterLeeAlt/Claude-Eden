@@ -214,8 +214,8 @@ func evalOr(p string) string {
 
 // out makes s portable.
 func (p *paths) out(s string) string {
-	s = strings.ReplaceAll(s, Root(), "{ROOT}")
-	return p.re.ReplaceAllStringFunc(s, func(m string) string {
+	// Temporary roots may be inside the repository; normalize them first.
+	s = p.re.ReplaceAllStringFunc(s, func(m string) string {
 		sub := p.re.FindStringSubmatch(m)
 		i := slices.Index(p.dirs, sub[2])
 		if i < 0 {
@@ -225,6 +225,7 @@ func (p *paths) out(s string) string {
 		}
 		return fmt.Sprintf("{T%d}", i)
 	})
+	return strings.ReplaceAll(s, Root(), "{ROOT}")
 }
 
 var placeholder = regexp.MustCompile(`\{T\d+\}`)

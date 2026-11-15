@@ -19,26 +19,25 @@ import "./claude-desktop.css";
 
 const desktopZooms = [0.75, 0.9, 1, 1.1, 1.25, 1.5];
 
-export function useDesktopZoom(automatic = false) {
+export function useDesktopZoom() {
   const [zoom, setZoom] = useState(() => {
     try {
-      const stored = localStorage.getItem(automatic ? "cage-windows-desktop-zoom" : "cage-desktop-zoom");
-      if (automatic && (stored === null || stored === "auto")) return "auto";
+      const stored = localStorage.getItem("eden-desktop-zoom");
       const value = Number(stored);
-      return desktopZooms.includes(value) ? value : automatic ? "auto" : 1;
-    } catch { return automatic ? "auto" : 1; }
+      return desktopZooms.includes(value) ? value : 1;
+    } catch { return 1; }
   });
   return [zoom, setZoom];
 }
 
-export function DesktopToolbar({ desktop, platform, title = "Claude Desktop", zoom, setZoom, onConfirm, onStop, busy, refresh, sidebarCollapsed, onExpand, children, automatic = false }) {
+export function DesktopToolbar({ desktop, platform, title = "Claude Desktop", zoom, setZoom, onConfirm, onStop, busy, refresh, sidebarCollapsed, onExpand, children }) {
   const [hidden, setHidden] = useState(() => {
-    try { return localStorage.getItem("cage-desktop-toolbar-hidden") === "true"; }
+    try { return localStorage.getItem("eden-desktop-toolbar-hidden") === "true"; }
     catch { return false; }
   });
   const toggleToolbar = (value) => {
     setHidden(value);
-    try { localStorage.setItem("cage-desktop-toolbar-hidden", String(value)); }
+    try { localStorage.setItem("eden-desktop-toolbar-hidden", String(value)); }
     catch { /* Keep the preference for this session. */ }
   };
   if (hidden && desktop?.running) {
@@ -71,11 +70,10 @@ export function DesktopToolbar({ desktop, platform, title = "Claude Desktop", zo
           <label className="desktop-display-size">
             显示大小
             <InlineSelect aria-label="Desktop 显示大小" value={zoom} onValueChange={(next) => {
-              const value = next === "auto" ? "auto" : Number(next);
+              const value = Number(next);
               setZoom(value);
-              try { localStorage.setItem(automatic ? "cage-windows-desktop-zoom" : "cage-desktop-zoom", String(value)); } catch { /* Session-only preference. */ }
+              try { localStorage.setItem("eden-desktop-zoom", String(value)); } catch { /* Session-only preference. */ }
             }}>
-              {automatic && <option value="auto">自适应（推荐）</option>}
               {desktopZooms.map((value) => <option key={value} value={value}>{Math.round(value * 100)}%{value === 1 ? "（默认）" : ""}</option>)}
             </InlineSelect>
           </label>
@@ -88,7 +86,7 @@ export function DesktopToolbar({ desktop, platform, title = "Claude Desktop", zo
               if (
                 await onConfirm({
                   title: "关闭 Claude Desktop？",
-                  body: "请先保存应用内的工作。浏览器和 Cage 终端会继续运行。",
+                  body: "请先保存应用内的工作。浏览器和 Eden 终端会继续运行。",
                   confirm: "关闭应用",
                 })
               )
@@ -127,8 +125,7 @@ export function ClaudeDesktop({
 }) {
   const [closedChooser, setClosedChooser] = useState("");
   const directoryRequest = uploads.find((item) => item.directory && item.id !== closedChooser);
-  const automatic = status.guest_system?.startsWith("windows");
-  const [zoom, setZoom] = useDesktopZoom(automatic);
+  const [zoom, setZoom] = useDesktopZoom();
   const windowVisible = useWindowVisibility();
   const screenVisible = visible && windowVisible;
   const [desktop, setDesktop] = useState(null);
@@ -218,9 +215,9 @@ export function ClaudeDesktop({
           await onProjectOpened(workspace);
         }}
       />}
-      <DesktopToolbar desktop={desktop} platform={status.guest_system === "windows-11" ? "Windows" : "Linux"} zoom={zoom} setZoom={setZoom} automatic={automatic}
+      <DesktopToolbar desktop={desktop} platform="Linux" zoom={zoom} setZoom={setZoom}
         onConfirm={onConfirm} onStop={() => run("stop")} busy={busy} refresh={() => refresh()} sidebarCollapsed={sidebarCollapsed} onExpand={onExpand}>
-        {desktop?.installed && !status.guest_system?.startsWith("windows") && <button className="quiet-button" disabled={busy} onClick={async () => {
+        {desktop?.installed && <button className="quiet-button" disabled={busy} onClick={async () => {
           if (!desktop.running || await onConfirm({ title: "更新 Claude Desktop？", body: "请先保存应用内的工作。更新会关闭 Claude Desktop，从官方软件源安装可用版本，再重新打开；登录资料继续保留。", confirm: "更新应用" })) run("update");
         }}>更新应用</button>}
       </DesktopToolbar>
@@ -232,7 +229,7 @@ export function ClaudeDesktop({
           <button onClick={onDetails}>操作详情</button>
         </div>
       )}
-      {desktop?.running && desktop.managed === false && !desktop.native_user_session && <div className="connection-banner" role="status">当前应用尚未接入 Cage 账户解锁。请先保存并关闭应用，再重新打开。</div>}
+      {desktop?.running && desktop.managed === false && <div className="connection-banner" role="status">当前应用尚未接入 Eden 账户解锁。请先保存并关闭应用，再重新打开。</div>}
       {busy && ownJob && (
         <div className="desktop-progress" role="status">
           <RefreshCw size={16} className="spin" />
@@ -250,7 +247,6 @@ export function ClaudeDesktop({
             zoom={zoom}
             visible={visible}
             keyboard={status.keyboard}
-            guestPlatform={status.guest_system?.startsWith("windows") ? "windows" : status.guest_system}
             onStatus={onStatus}
             onFallback={onFallback}
           />
@@ -260,15 +256,15 @@ export function ClaudeDesktop({
             <h2>
               {desktop?.installed
                 ? "Claude Desktop"
-                : "在 Cage 中使用 Claude Desktop"}
+                : "在 Eden 中使用 Claude Desktop"}
             </h2>
             <p>
-              Chat 和 Code 共用一个官方应用。在 Cage
+              Chat 和 Code 共用一个官方应用。在 Eden
               内安装、登录并使用，项目文件来自已打开的文件夹。
             </p>
             {!desktop?.installed && (
               <p>
-                首次使用时从 Anthropic 官方源下载，不增加 Cage 默认安装包体积。
+                首次使用时从 Anthropic 官方源下载，不增加 Eden 默认安装包体积。
               </p>
             )}
             <div className="desktop-actions">
@@ -286,7 +282,7 @@ export function ClaudeDesktop({
                   {desktop.installed ? "打开 Claude Desktop" : "下载并安装"}
                 </button>
               )}
-              {desktop?.installed && !status.guest_system?.startsWith("windows") && (
+              {desktop?.installed && (
                 <button
                   className="quiet-button"
                   disabled={busy}
@@ -305,11 +301,9 @@ export function ClaudeDesktop({
                 </button>
               )}
             </div>
-            {desktop?.installed && <p>{status.guest_system?.startsWith("windows")
-              ? "在 Claude Desktop 应用内检查并安装更新。"
-              : "Linux 版通过系统软件源更新。可点击上方“更新应用”，或在 Cage 终端运行 sudo apt update && sudo apt install --only-upgrade claude-desktop。"}</p>}
+            {desktop?.installed && <p>Linux 版通过系统软件源更新。可点击上方“更新应用”，或在 Eden 终端运行 sudo apt update && sudo apt install --only-upgrade claude-desktop。</p>}
             <p className="desktop-note">
-              关闭应用后释放图形会话资源，登录状态保留在 Cage
+              关闭应用后释放图形会话资源，登录状态保留在 Eden
               环境中。需要额外虚拟机的 Cowork 功能暂未适配。
             </p>
           </div>

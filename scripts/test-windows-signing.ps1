@@ -1,14 +1,14 @@
 #requires -Version 7.0
 # Offline orchestration checks; Windows trust is exercised separately on Windows.
 . (Join-Path $PSScriptRoot 'windows-common.ps1')
-$stage = Join-Path ([IO.Path]::GetTempPath()) ('cage-signing-test-' + [guid]::NewGuid().ToString('N'))
+$stage = Join-Path ([IO.Path]::GetTempPath()) ('eden-signing-test-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $stage | Out-Null
-$names = @('CAGE_WINDOWS_SIGNING_PROVIDER', 'CAGE_ESIGNER_CERTIFICATE_SERIAL', 'CAGE_WINDOWS_CERT_SHA1')
+$names = @('EDEN_WINDOWS_SIGNING_PROVIDER', 'EDEN_ESIGNER_CERTIFICATE_SERIAL', 'EDEN_WINDOWS_CERT_SHA1')
 $saved = @{}
 foreach ($name in $names) { $saved[$name] = [Environment]::GetEnvironmentVariable($name) }
 try {
-    $env:CAGE_WINDOWS_SIGNING_PROVIDER = 'esigner'
-    $env:CAGE_ESIGNER_CERTIFICATE_SERIAL = '7' * 32
+    $env:EDEN_WINDOWS_SIGNING_PROVIDER = 'esigner'
+    $env:EDEN_ESIGNER_CERTIFICATE_SERIAL = '7' * 32
     function Assert-WindowsSigningConfiguration {}
     function Get-BuildCommand { return 'fixture-node' }
     $script:mode = 'valid'
@@ -29,12 +29,12 @@ try {
             }
         }
     }
-    $inputFile = Join-Path $stage 'Cage 空格.exe'
+    $inputFile = Join-Path $stage 'Eden 空格.exe'
     foreach ($script:mode in @('valid', 'untrusted', 'no-timestamp', 'wrong-serial', 'wrong-key')) {
         [IO.File]::WriteAllText($inputFile, 'original fixture')
-        $env:CAGE_WINDOWS_CERT_SHA1 = 'a' * 40
+        $env:EDEN_WINDOWS_CERT_SHA1 = 'a' * 40
         $rejected = $false
-        try { Sign-CageFile $inputFile 'fixture-signtool' } catch { $rejected = $true }
+        try { Sign-EdenFile $inputFile 'fixture-signtool' } catch { $rejected = $true }
         if ($script:mode -eq 'valid') {
             if ($rejected -or [IO.File]::ReadAllText($inputFile) -ne 'signed fixture') { throw 'Valid signed copy was not promoted.' }
         } else {

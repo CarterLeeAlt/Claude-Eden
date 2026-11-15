@@ -3,7 +3,7 @@ using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
-using Cage.Windows;
+using Eden.Windows;
 
 internal static class NativeInputTests
 {
@@ -15,7 +15,7 @@ internal static class NativeInputTests
         var thread = new Thread(() => {
             try { RunOnInputThread(); }
             catch (Exception error) { failure = error; }
-        }) { IsBackground = true, Name = "Cage native input regression" };
+        }) { IsBackground = true, Name = "Eden native input regression" };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         if (!thread.Join(TimeSpan.FromSeconds(15))) throw new TimeoutException("Native input regression did not complete");

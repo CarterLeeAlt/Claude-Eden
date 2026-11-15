@@ -52,7 +52,7 @@ export class PCMQueue {
 }
 
 if (typeof globalThis.registerProcessor === "function") {
-  class CageAudioProcessor extends globalThis.AudioWorkletProcessor {
+  class EdenAudioProcessor extends globalThis.AudioWorkletProcessor {
     constructor() {
       super();
       this.queue = new PCMQueue();
@@ -67,5 +67,5 @@ if (typeof globalThis.registerProcessor === "function") {
       return true;
     }
   }
-  globalThis.registerProcessor("cage-audio", CageAudioProcessor);
+  globalThis.registerProcessor("eden-audio", EdenAudioProcessor);
 }

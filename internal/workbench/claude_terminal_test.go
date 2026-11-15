@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func TestClaudeTerminalRunsSavedCommandOnceAndReturnsToShell(t *testing.T) {
@@ -39,7 +39,7 @@ func TestClaudeTerminalRunsSavedCommandOnceAndReturnsToShell(t *testing.T) {
 
 func TestClaudeTerminalPreferenceValidationAndPersistence(t *testing.T) {
 	s := testServer(t)
-	cfg, _ := cage.Load(s.configPath)
+	cfg, _ := eden.Load(s.configPath)
 	if settingsView(cfg, s.preferences).ClaudeTerminalCommand != "claude" {
 		t.Fatal("missing default")
 	}
@@ -56,7 +56,7 @@ func TestClaudeTerminalPreferenceValidationAndPersistence(t *testing.T) {
 	if err != nil || !strings.Contains(string(data), input.ClaudeTerminalCommand) {
 		t.Fatalf("command not saved: %v", err)
 	}
-	after, _ := cage.Load(s.configPath)
+	after, _ := eden.Load(s.configPath)
 	if after != cfg {
 		t.Fatal("terminal preference modified environment configuration")
 	}
@@ -106,10 +106,10 @@ func TestManagedTerminalPreservesTheSelectedProfileInTheGuestShell(t *testing.T)
 	const managed = "111111111111111111111111"
 	for _, tc := range []struct{ guestID, want string }{
 		{"default", home + "/custom-config"},
-		{managed, home + "/.local/share/cage/claude-accounts/" + managed + "/config"},
+		{managed, home + "/.local/share/workbench/claude-accounts/" + managed + "/config"},
 	} {
 		work := t.TempDir()
-		cmd := exec.Command("bash", "-c", managedClaudeTerminalScript(work, `printf '%s' "$CLAUDE_CONFIG_DIR/$CAGE_CLAUDE_ACCOUNT_ID/$CAGE_CLAUDE_SUBJECT" > observed`, tc.guestID, "expected", false))
+		cmd := exec.Command("bash", "-c", managedClaudeTerminalScript(work, `printf '%s' "$CLAUDE_CONFIG_DIR/$WORKBENCH_CLAUDE_ACCOUNT_ID/$WORKBENCH_CLAUDE_SUBJECT" > observed`, tc.guestID, "expected", false))
 		cmd.Env = []string{"HOME=" + home, "PATH=" + os.Getenv("PATH"), "CLAUDE_CONFIG_DIR=" + home + "/custom-config"}
 		cmd.Stdin = strings.NewReader("exit\n")
 		if b, err := cmd.CombinedOutput(); err != nil {
@@ -146,14 +146,14 @@ func TestDefaultClaudeProbeUsesRegularLoginEnvironment(t *testing.T) {
 		t.Skip("guest Bash integration runs on Unix")
 	}
 	home := t.TempDir()
-	profile := "echo startup-banner\nexport CAGE_FIXTURE_AUTH=shell-route\n"
+	profile := "echo startup-banner\nexport WORKBENCH_FIXTURE_AUTH=shell-route\n"
 	if err := os.WriteFile(filepath.Join(home, ".bash_profile"), []byte(profile), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, "show-environment"), []byte("#!/bin/sh\nprintf '%s' \"$CAGE_FIXTURE_AUTH|$PWD|$1|$2\"\n"), 0700); err != nil {
+	if err := os.WriteFile(filepath.Join(home, "show-environment"), []byte("#!/bin/sh\nprintf '%s' \"$WORKBENCH_FIXTURE_AUTH|$PWD|$1|$2\"\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	script := strings.Replace(claudeSnapshotCommand("default"), "/usr/local/bin/cage-claude-account", `"$HOME/show-environment"`, 1)
+	script := strings.Replace(claudeSnapshotCommand("default"), "/usr/local/bin/workbench-claude-account", `"$HOME/show-environment"`, 1)
 	cmd := exec.Command("bash", "-c", script)
 	cmd.Dir = t.TempDir()
 	cmd.Env = []string{"HOME=" + home, "PATH=" + os.Getenv("PATH")}

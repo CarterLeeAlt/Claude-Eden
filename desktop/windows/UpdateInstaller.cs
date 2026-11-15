@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
 
-namespace Cage.Windows;
+namespace Eden.Windows;
 
 internal static class UpdateInstaller
 {
@@ -18,7 +18,7 @@ internal static class UpdateInstaller
             throw new IOException("安装包下载后发生变化，请重新下载");
         Authenticode.SamePublisher(path, publisher);
         var metadata = FileVersionInfo.GetVersionInfo(path);
-        if (metadata.ProductName != "Cage" || metadata.ProductVersion != version)
+        if (metadata.ProductName != "Claude Eden" || metadata.ProductVersion != version)
             throw new IOException("安装包产品身份或版本不匹配");
     }
 
@@ -44,9 +44,9 @@ internal static class UpdateInstaller
             // Also release an inherited install-directory lock when this helper
             // is invoked by a launcher that did not choose a safe directory.
             Directory.SetCurrentDirectory(AppUpdater.Root);
-            if (File.ReadAllText(Path.Combine(plan.Target, "Cage.install-id")).Trim() != "io.github.lee-xeo.claude-cage")
-                throw new IOException("请先使用 Cage 安装程序安装应用，再自动更新");
-            var original = Path.Combine(plan.Target, "Cage.exe");
+            if (File.ReadAllText(Path.Combine(plan.Target, "Eden.install-id")).Trim() != "io.github.carterleealt.claude-eden")
+                throw new IOException("请先使用 Claude Eden 安装程序安装应用，再自动更新");
+            var original = Path.Combine(plan.Target, "Eden.exe");
             var ownPublisher = Authenticode.Publisher(Environment.ProcessPath!);
             if (plan.Publisher != ownPublisher) throw new IOException("安装计划发布者不匹配");
             Authenticode.SamePublisher(original, ownPublisher);
@@ -92,8 +92,8 @@ internal static class UpdateInstaller
             var marker = Path.Combine(AppUpdater.Root, "launch-" + plan.Confirmation + ".json");
             if (File.Exists(marker)) File.Delete(marker);
             var launch = new ProcessStartInfo(original) { UseShellExecute = false, WorkingDirectory = plan.Target };
-            launch.Environment["CAGE_UPDATE_CONFIRMATION"] = plan.Confirmation;
-            launched = Process.Start(launch) ?? throw new IOException("新版 Cage 无法启动");
+            launch.Environment["EDEN_UPDATE_CONFIRMATION"] = plan.Confirmation;
+            launched = Process.Start(launch) ?? throw new IOException("新版 Claude Eden 无法启动");
             var deadline = DateTime.UtcNow.AddSeconds(120);
             var ready = false;
             while (DateTime.UtcNow < deadline && !launched.HasExited)
@@ -113,7 +113,7 @@ internal static class UpdateInstaller
             }
             if (!ready) throw new IOException("新版工作台未能完成启动确认");
             succeeded = true;
-            Result(true, "Cage 已更新至 " + plan.Version);
+            Result(true, "Claude Eden 已更新至 " + plan.Version);
             // The currently executing helper cannot delete itself on Windows.
             // Keep this small signed file; the next successful update may remove it.
             return 0;
@@ -129,29 +129,29 @@ internal static class UpdateInstaller
                 {
                     // NSIS and this helper both require a newly created named
                     // object and retain its handle for the entire transaction.
-                    using var installationLock = new Mutex(false, "Global\\Cage.Installation", out var ownsInstallation);
+                    using var installationLock = new Mutex(false, "Global\\Eden.Installation", out var ownsInstallation);
                     if (!ownsInstallation) throw new IOException("另一个安装或卸载正在进行，已保留更新备份，请等待完成后恢复。");
                     EnsureInstallationComplete(plan.Target);
                     if (UpdateRecovery.OriginalIntact(plan.Target, backup))
                     {
-                        Authenticode.SamePublisher(Path.Combine(plan.Target, "Cage.exe"), plan.Publisher);
+                        Authenticode.SamePublisher(Path.Combine(plan.Target, "Eden.exe"), plan.Publisher);
                         Result(false, "更新未完成，原应用已保留：" + detail);
-                        Process.Start(new ProcessStartInfo(Path.Combine(plan.Target, "Cage.exe")) { UseShellExecute = false, WorkingDirectory = plan.Target });
+                        Process.Start(new ProcessStartInfo(Path.Combine(plan.Target, "Eden.exe")) { UseShellExecute = false, WorkingDirectory = plan.Target });
                         UpdateRecovery.CleanupDirectory(backup); backup = null;
                         return 1;
                     }
                     if (!installerStarted) throw new IOException("原应用在安装前发生变化，备份已保留，请核对安装目录后重试。");
                     // Stop the exact new controller through its lifecycle API before
-                    // restoring files. Never kill other Cage instances by name.
+                    // restoring files. Never kill other Eden instances by name.
                     Authenticode.SamePublisher(UpdateRecovery.BackendPath(backup), plan.Publisher);
                     await UpdateRecovery.PrepareRollback(backup);
                     if (launched is { HasExited: false }) { launched.Kill(); await launched.WaitForExitAsync(); }
                     var restored = plan.Target + ".restore-" + plan.Confirmation;
                     var failed = plan.Target + ".failed-" + plan.Confirmation;
                     CopyTree(backup, restored);
-                    var receipt = plan.Target + ".cage-installation.json";
+                    var receipt = plan.Target + ".eden-installation.json";
                     await PreserveFiles("prepare", plan.Target, restored, receipt, failed);
-                    // The installation folder and its CageData stay in place,
+                    // The installation folder and its EdenData stay in place,
                     // as in NSIS: only the other top-level entries move.
                     await PreserveFiles("detach", plan.Target, failed, receipt);
                     try
@@ -170,20 +170,20 @@ internal static class UpdateInstaller
                     EnsureInstallationComplete(plan.Target);
                     UpdateRecovery.CleanupDirectory(backup); backup = null;
                     Result(false, "更新未完成，已恢复原应用：" + detail);
-                    Process.Start(new ProcessStartInfo(Path.Combine(plan.Target, "Cage.exe")) { UseShellExecute = false, WorkingDirectory = plan.Target });
+                    Process.Start(new ProcessStartInfo(Path.Combine(plan.Target, "Eden.exe")) { UseShellExecute = false, WorkingDirectory = plan.Target });
                     return 1;
                 }
                 catch (Exception recovery)
                 {
                     recoveryIncomplete = true;
                     detail += "。自动恢复未完成。" + recovery.Message;
-                    if (File.Exists(plan.Target + ".cage-installation.json"))
-                        detail += "。恢复目录记录在 " + plan.Target + ".cage-installation.json";
+                    if (File.Exists(plan.Target + ".eden-installation.json"))
+                        detail += "。恢复目录记录在 " + plan.Target + ".eden-installation.json";
                     if (backup != null) detail += "。程序备份保留在 " + backup;
                 }
             }
             Result(false, "更新未完成：" + detail);
-            if (recoveryIncomplete && OperatingSystem.IsWindows()) MessageBoxW(IntPtr.Zero, detail, "Cage 更新需要恢复", 0x00010010);
+            if (recoveryIncomplete && OperatingSystem.IsWindows()) MessageBoxW(IntPtr.Zero, detail, "Claude Eden 更新需要恢复", 0x00010010);
             return 1;
         }
         finally
@@ -208,7 +208,7 @@ internal static class UpdateInstaller
 
     private static void EnsureInstallationComplete(string target)
     {
-        var receipt = target + ".cage-installation.json";
+        var receipt = target + ".eden-installation.json";
         if (!File.Exists(receipt) && Directory.Exists(target)) return;
         var message = "安装目录或个人文件仍需恢复，已停止自动启动。请保留并检查 " + receipt;
         if (File.Exists(receipt) && new FileInfo(receipt).Length <= 16 * 1024 * 1024)
@@ -231,16 +231,16 @@ internal static class UpdateInstaller
         var script = Path.Combine(directory, "installation-files.ps1");
         try
         {
-            await using (var resource = typeof(UpdateInstaller).Assembly.GetManifestResourceStream("Cage.InstallationFiles.ps1")
+            await using (var resource = typeof(UpdateInstaller).Assembly.GetManifestResourceStream("Eden.InstallationFiles.ps1")
                 ?? throw new IOException("缺少安装文件保留组件"))
             await using (var output = File.Create(script)) { await resource.CopyToAsync(output); }
-            await using (var resource = typeof(UpdateInstaller).Assembly.GetManifestResourceStream("Cage.VerifiedFileDeletion.cs")
+            await using (var resource = typeof(UpdateInstaller).Assembly.GetManifestResourceStream("Eden.VerifiedFileDeletion.cs")
                 ?? throw new IOException("缺少安装文件校验组件"))
             await using (var output = File.Create(Path.Combine(directory, "verified-file-deletion.cs"))) { await resource.CopyToAsync(output); }
             using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(10));
             var executable = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
             var arguments = new List<string> { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
-                "-Operation", operation, "-Source", source, "-Target", target, "-Receipt", receipt, "-LegacyTarget", "-KeepInPlace", "CageData" };
+                "-Operation", operation, "-Source", source, "-Target", target, "-Receipt", receipt, "-LegacyTarget", "-KeepInPlace", "EdenData" };
             if (backupPath != null) { arguments.Add("-Backup"); arguments.Add(backupPath); }
             using var process = new Process { StartInfo = Backend.StartInfo(executable, arguments.ToArray()) };
             if (!process.Start()) throw new IOException("无法启动安装文件保留组件");
@@ -267,7 +267,7 @@ internal static class UpdateInstaller
             throw new InvalidDataException("更新备份目录位于程序目录内，无法安全备份。请使用完整安装包手动更新。");
         UpdatePolicy.PlainPath(source); UpdatePolicy.PlainPath(target); Directory.CreateDirectory(target);
         HashSet<string>? owned = null;
-        var manifest = Path.Combine(source, "Cage.install-files.json");
+        var manifest = Path.Combine(source, "Eden.install-files.json");
         if (File.Exists(manifest) && (File.GetAttributes(manifest) & FileAttributes.ReparsePoint) == 0)
         {
             try
@@ -285,7 +285,7 @@ internal static class UpdateInstaller
                             throw new JsonException("Invalid installation file record");
                         paths.Add(path);
                     }
-                    if (paths.Count > 0) { paths.Add("Cage.install-files.json"); owned = paths; }
+                    if (paths.Count > 0) { paths.Add("Eden.install-files.json"); owned = paths; }
                 }
             }
             catch (Exception error) when (error is IOException or JsonException or InvalidOperationException or KeyNotFoundException or FormatException) { }

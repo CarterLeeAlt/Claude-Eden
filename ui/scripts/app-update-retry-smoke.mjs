@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
 const epoch = new Date("2026-11-07T14:00:00Z");
-for (const platform of ["darwin", "windows", "linux"]) {
+for (const platform of ["windows"]) {
   const calls = [];
   let update = platform === "linux" ? { phase: "manual", message: "使用系统包更新" } : {
     phase: "failed", message: "更新源请求受限，请稍后重试", currentVersion: "0.1.0", latestVersion: "0.2.0",

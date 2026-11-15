@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/managedproxy"
 )
 
 // Keep the real request, job, source persistence and gate-control paths. Only
 // external subscription traffic and the installed proxy process are replaced.
-func pendingProxyApply(t *testing.T) (*Server, *cage.EgressGate, <-chan struct{}, func()) {
+func pendingProxyApply(t *testing.T) (*Server, *eden.EgressGate, <-chan struct{}, func()) {
 	t.Helper()
 	s, gate := interfaceMonitorServer(t)
 	p, err := managedproxy.Load(s.profile)
@@ -70,7 +70,7 @@ func pauseProxyNetwork(t *testing.T, s *Server) {
 	}
 }
 
-func assertProxyStayedPaused(t *testing.T, s *Server, gate *cage.EgressGate) {
+func assertProxyStayedPaused(t *testing.T, s *Server, gate *eden.EgressGate) {
 	t.Helper()
 	s.op.Lock()
 	defer s.op.Unlock()
@@ -80,7 +80,7 @@ func assertProxyStayedPaused(t *testing.T, s *Server, gate *cage.EgressGate) {
 	if job.Running || job.Error != "" {
 		t.Fatalf("proxy update did not complete: %+v", job)
 	}
-	if !paused || gate.Status().Mode != cage.GateClosed {
+	if !paused || gate.Status().Mode != eden.GateClosed {
 		t.Fatal("proxy update revoked manual pause")
 	}
 	p, err := managedproxy.Load(s.profile)
@@ -143,7 +143,7 @@ func TestManualProxySelectionMayResumeExistingPause(t *testing.T) {
 	pauseProxyNetwork(t, s)
 	// No VM is running in this case, so selecting a node may prepare networking
 	// without trying to start a real guest as part of this unit test.
-	path := filepath.Join(s.profile, "state", "lima", cage.InstanceName(s.profile, s.environmentDir()), "cage-running.json")
+	path := filepath.Join(s.profile, "state", "lima", eden.InstanceName(s.profile, s.environmentDir()), "eden-running.json")
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}

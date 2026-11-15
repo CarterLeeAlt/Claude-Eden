@@ -66,10 +66,10 @@
  .browser-settings-section { animation: none; }
  .browser-settings-nav button { transition: none; }
 }
-/* Browser settings also fit beside Cage's sidebar and vertical browser tabs. */
-.browser-lane { container: cage-browser / inline-size; }
+/* Browser settings also fit beside Eden's sidebar and vertical browser tabs. */
+.browser-lane { container: eden-browser / inline-size; }
 .browser-settings-nav button { justify-content: flex-start; white-space: normal; }
-@container cage-browser (max-width: 760px) {
+@container eden-browser (max-width: 760px) {
  .browser-settings-layout { display: block; }
  .browser-settings-nav { width: 100%; display: flex; flex-wrap: wrap; gap: 4px; padding: 12px 16px; position: static; border-bottom: 1px solid var(--line); }
  .browser-settings-nav button { padding: 8px 10px; max-width: 100%; }
@@ -78,7 +78,7 @@
  .browser-settings-search { min-width: 0; }
 }
 .browser-settings-compact-nav { display: none; }
-@container cage-browser (max-width: 450px) {
+@container eden-browser (max-width: 450px) {
  .browser-settings-nav { display: none; }
  .browser-settings-compact-nav { display: block; padding: 12px 20px; border-bottom: 1px solid var(--line); }
  .browser-settings-compact-nav > .inline-select { width: 100%; }

@@ -5,14 +5,10 @@ package osutil
 
 import (
 	"context"
-	"fmt"
-	"os/exec"
 	"os/user"
 	"regexp"
 	"runtime"
 	"strconv"
-	"strings"
-	"sync"
 
 	"github.com/sirupsen/logrus"
 
@@ -97,59 +93,23 @@ const (
 
 var currentUser = Must(user.Current())
 
-var (
-	once     = new(sync.Once)
-	limaUser *user.User
-	warnings []string
-)
+func LimaUser(_ context.Context, limaVersion string, warn bool, guestOS *limatype.OS) *user.User {
+	return guestUserForHost(*currentUser, runtime.GOOS, limaVersion, warn, guestOS)
+}
 
-func LimaUser(ctx context.Context, limaVersion string, warn bool, guestOS *limatype.OS) *user.User {
-	once.Do(func() {
-		limaUser = currentUser
-		if !regexUsername.MatchString(limaUser.Username) {
-			warning := fmt.Sprintf("local username %#q is not a valid Linux username (must match %#q); using %#q instead",
-				limaUser.Username, regexUsername.String(), fallbackUser)
-			warnings = append(warnings, warning)
-			limaUser.Username = fallbackUser
+func guestUserForHost(hostUser user.User, hostOS, limaVersion string, warn bool, guestOS *limatype.OS) *user.User {
+	// Windows accounts and SIDs identify the host, not a POSIX guest. The
+	// guest's bootstrap/development account has its own name and numeric IDs.
+	// Work on values so neither normalization nor caller edits mutate the host.
+	u := hostUser
+	if hostOS == "windows" {
+		u = user.User{Username: "developer", Name: "Development user", Uid: formatUidGid(fallbackUid), Gid: formatUidGid(fallbackGid)}
+	} else if !regexUsername.MatchString(u.Username) {
+		if warn {
+			logrus.Warnf("local username %#q is not a valid Linux username (must match %#q); using %#q instead", u.Username, regexUsername.String(), fallbackUser)
 		}
-		if runtime.GOOS == "windows" {
-			idu, err := call(ctx, []string{"id", "-u"})
-			if err != nil {
-				logrus.Debug(err)
-			}
-			uid, err := parseUidGid(idu)
-			if err != nil {
-				uid = fallbackUid
-			}
-			if _, err := parseUidGid(limaUser.Uid); err != nil {
-				warning := fmt.Sprintf("local uid %#q is not a valid Linux uid (must be integer); using %d uid instead",
-					limaUser.Uid, uid)
-				warnings = append(warnings, warning)
-				limaUser.Uid = formatUidGid(uid)
-			}
-			idg, err := call(ctx, []string{"id", "-g"})
-			if err != nil {
-				logrus.Debug(err)
-			}
-			gid, err := parseUidGid(idg)
-			if err != nil {
-				gid = fallbackGid
-			}
-			if _, err := parseUidGid(limaUser.Gid); err != nil {
-				warning := fmt.Sprintf("local gid %#q is not a valid Linux gid (must be integer); using %d gid instead",
-					limaUser.Gid, gid)
-				warnings = append(warnings, warning)
-				limaUser.Gid = formatUidGid(gid)
-			}
-		}
-	})
-	if warn {
-		for _, warning := range warnings {
-			logrus.Warn(warning)
-		}
+		u.Username = fallbackUser
 	}
-	// Make sure we return a pointer to a COPY of limaUser
-	u := *limaUser
 	// "" and "<unknown>" both mean the version is unknown, but "" marks an instance created
 	// before Lima v0.20 and counts as old, while "<unknown>" is a development build assumed
 	// current.
@@ -172,15 +132,6 @@ func LimaUser(ctx context.Context, limaVersion string, warn bool, guestOS *limat
 		}
 	}
 	return &u
-}
-
-func call(ctx context.Context, args []string) (string, error) {
-	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
 }
 
 // parseUidGid converts string value to Linux uid or gid.

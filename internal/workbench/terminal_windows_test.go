@@ -20,12 +20,12 @@ func TestWindowsTerminalInputResizeAndExit(t *testing.T) {
 	}
 	output := make(chan string, 1)
 	go func() { b, _ := io.ReadAll(terminal); output <- string(b) }()
-	if _, err = io.WriteString(terminal, "cage-terminal\r"); err != nil {
+	if _, err = io.WriteString(terminal, "workbench-terminal\r"); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case text := <-output:
-		if !strings.Contains(text, "received:cage-terminal") {
+		if !strings.Contains(text, "received:workbench-terminal") {
 			t.Fatalf("ConPTY input did not reach child: %q", text)
 		}
 		if err := terminal.Wait(); err != nil {

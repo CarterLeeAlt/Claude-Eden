@@ -135,28 +135,12 @@ func BrowserFileForConnection(configPath, connectionID, action, id, destination 
 	if connection.DesktopGateway && connection.Mode == "local" {
 		profile = filepath.Dir(profile)
 	}
-	saveProfile, err := clientDownloadProfile(profile, connection)
-	if err != nil {
-		return result, err
-	}
 	var item browserDownloadInfo
-	if connection.Mode == "remote" && action != "save" {
-		saved, readErr := readSavedDownload(saveProfile, id)
-		if readErr != nil || saved.InstanceID != connection.InstanceID {
-			return result, errors.New("请先将文件另存为到本机，再打开或显示所在位置")
-		}
-		result = saved
-	} else {
-		status, err = client.call("GET", "/api/browser/files/downloads/"+id, nil, &item)
-		if err != nil || status != 200 {
-			return result, errors.New("下载文件不可用，请确认 Cage 已解锁且下载已完成")
-		}
-		result = SavedDownload{ID: id, Name: item.Name, Path: item.Path}
-		if connection.Mode == "remote" {
-			result.Path = ""
-			result.InstanceID = connection.InstanceID
-		}
+	status, err = client.call("GET", "/api/browser/files/downloads/"+id, nil, &item)
+	if err != nil || status != 200 {
+		return result, errors.New("下载文件不可用，请确认 Claude Eden 已解锁且下载已完成")
 	}
+	result = SavedDownload{ID: id, Name: item.Name, Path: item.Path}
 	if action == "save" {
 		if !filepath.IsAbs(destination) || filepath.Base(destination) == "." {
 			return result, errors.New("保存位置无效")
@@ -182,7 +166,7 @@ func BrowserFileForConnection(configPath, connectionID, action, id, destination 
 		}
 		result.Path = destination
 		result.Name = filepath.Base(destination)
-		if err = rememberDownload(saveProfile, result, false); err != nil {
+		if err = rememberDownload(profile, result, false); err != nil {
 			return result, err
 		}
 	} else {
@@ -202,7 +186,7 @@ func saveDownloadedStream(destination string, source io.Reader, size int64) erro
 	if existing, err := os.Lstat(destination); err == nil && !existing.Mode().IsRegular() {
 		return errors.New("请选择普通文件保存位置")
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(destination), ".cage-download-*.part")
+	temporary, err := os.CreateTemp(filepath.Dir(destination), ".eden-download-*.part")
 	if err != nil {
 		return errors.New("无法写入所选文件夹")
 	}

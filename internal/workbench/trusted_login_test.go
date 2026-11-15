@@ -188,8 +188,8 @@ func TestTrustedLocalUnlockIsPrivateToDesktop(t *testing.T) {
 	if !a.viewFor(true).Unlocked || a.viewFor(false).Unlocked {
 		t.Fatal("trusted login escaped desktop view")
 	}
-	if _, allowed := a.accessFor(false, true); allowed {
-		t.Fatal("legacy passwordless workspace granted phone access")
+	if _, allowed := a.accessFor(false); allowed {
+		t.Fatal("trusted workspace granted access without a desktop view")
 	}
 	if response := request(s, "GET", "/api/favorites", "", "", true); response.Code != http.StatusLocked {
 		t.Fatalf("session cookie alone opened favorites: %d", response.Code)
@@ -239,8 +239,8 @@ func TestTrustedLocalDesktopEntryAndWorkload(t *testing.T) {
 	}
 	defer session.Close()
 	gateway := testServer(t)
-	gateway.remote = newDesktopGateway(gateway.profile, local)
-	d := gateway.remote.desktop
+	gateway.gateway = newDesktopGateway(local)
+	d := gateway.gateway.desktop
 	d.active = &desktopTarget{id: d.generation, mode: "local", ctx: life, session: session}
 	body, _ := json.Marshal(trustedLoginRequest{Action: "create", ConnectionID: d.generation})
 	w := request(gateway, "POST", "/api/client/trusted-login", gateway.origin, string(body), true)
@@ -255,7 +255,7 @@ func TestTrustedLocalDesktopEntryAndWorkload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = workload.account.trustedLogin("create", "", filepath.Join(base, "Cage", "trusted-local")); err != nil {
+	if err = workload.account.trustedLogin("create", "", filepath.Join(base, "Eden", "trusted-local")); err != nil {
 		t.Fatal(err)
 	}
 	read := gatewayRequest(gateway, "/api/account", d.generation)

@@ -12,6 +12,10 @@ for (const file of ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES"]) {
   cpSync(join(root, file), join(target, file));
 }
 cpSync(join(root, "internal/exitpolicy/data"), join(target, "exit-country-data"), { recursive: true });
+mkdirSync(join(target, "guestidentity"), { recursive: true });
+for (const file of ["LICENSE", "hostname-sources.json"]) {
+  cpSync(join(root, "shared/guestidentity", file), join(target, "guestidentity", file));
+}
 const lock = JSON.parse(readFileSync(join(root, "ui/package-lock.json"), "utf8"));
 const notices = [];
 for (const [path, entry] of Object.entries(lock.packages)) {
@@ -27,7 +31,7 @@ for (const [path, entry] of Object.entries(lock.packages)) {
 }
 writeFileSync(join(target, "npm", "NOTICE.txt"), `${notices.join("\n")}\n`);
 const novnc = join(root, "ui/vendor/novnc");
-for (const file of ["LICENSE.txt", "AUTHORS", "NOTICE.cage", "docs", "vendor/pako/LICENSE"]) {
+for (const file of ["LICENSE.txt", "AUTHORS", "NOTICE.eden", "docs", "vendor/pako/LICENSE"]) {
   mkdirSync(join(target, "novnc", file.includes("/") ? file.slice(0, file.lastIndexOf("/")) : ""), { recursive: true });
   cpSync(join(novnc, file), join(target, "novnc", file), { recursive: true });
 }
@@ -36,7 +40,7 @@ cpSync(join(root, "ui/.generated/novnc"), join(target, "novnc-source"), { recurs
 
 // The embedded Tailscale node is a separate guest executable and module.
 const tailnetModules = new Set();
-for (const [os, arch] of [["linux", "amd64"], ["darwin", "arm64"], ["windows", "amd64"]]) {
+for (const [os, arch] of [["linux", "amd64"], ["linux", "arm64"]]) {
   const dirs = execFileSync("go", ["list", "-deps", "-f", "{{if .Module}}{{.Module.Dir}}{{end}}", "."], {
     cwd: join(root, "tools/tailnet"), env: { ...process.env, GOOS: os, GOARCH: arch, CGO_ENABLED: "0", GOFLAGS: "" }, encoding: "utf8",
   });

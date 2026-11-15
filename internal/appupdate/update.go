@@ -21,8 +21,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
 	"github.com/sylvinus/agent-vm/internal/diagnostics"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/host"
 	"github.com/sylvinus/agent-vm/internal/managedproxy"
 	"github.com/sylvinus/agent-vm/internal/usererror"
@@ -30,7 +30,7 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-const repository = "Lee-xeo/Claude-Cage"
+const repository = "CarterLeeAlt/Claude-Eden"
 const releasesURL = "https://api.github.com/repos/" + repository + "/releases?per_page=100"
 const maxArchive = 512 << 20
 const maxMetadata = 4 << 20
@@ -140,11 +140,7 @@ func Run(configPath string, args []string, output io.Writer) int {
 	if err = host.EnsurePrivateDir(job); err != nil {
 		return fail(err)
 	}
-	localName := "Cage.dmg"
-	if runtime.GOOS == "windows" {
-		localName = "Cage-setup.exe"
-	}
-	archive := filepath.Join(job, localName)
+	archive := filepath.Join(job, "Eden-setup.exe")
 	state.Phase, state.Message, state.TotalBytes = "downloading", "正在下载更新", c.Archive.Size
 	emit()
 	err = download(ctx, client, c.Archive, digest, archive, func(n int64) {
@@ -161,19 +157,19 @@ func Run(configPath string, args []string, output io.Writer) int {
 }
 
 func managedClient(ctx context.Context, configPath string) (*http.Client, error) {
-	cfg, err := cage.Load(configPath)
+	cfg, err := eden.Load(configPath)
 	if err != nil {
-		return nil, errors.New("Cage 所选代理尚未配置")
+		return nil, errors.New("Claude Eden 所选代理尚未配置")
 	}
 	profile := filepath.Dir(configPath)
 	p, err := managedproxy.Applied(profile, cfg.ProxyURL, cfg.ProxyRevision)
 	if err != nil {
-		return nil, &proxyUnavailableError{"Cage 所选代理尚未应用"}
+		return nil, &proxyUnavailableError{"Claude Eden 所选代理尚未应用"}
 	}
 	if !managedproxy.Running(ctx, profile, p) {
-		return nil, &proxyUnavailableError{"Cage 所选代理未运行"}
+		return nil, &proxyUnavailableError{"Claude Eden 所选代理未运行"}
 	}
-	egress, err := cage.NewEgress(cfg)
+	egress, err := eden.NewEgress(cfg)
 	if err != nil {
 		return nil, errors.New("更新代理配置无效")
 	}
@@ -209,7 +205,7 @@ func allowedURL(u *url.URL, redirect bool) bool {
 func request(ctx context.Context, client *http.Client, raw string) (*http.Response, error) {
 	u, err := url.Parse(raw)
 	if err != nil || !allowedURL(u, false) {
-		return nil, errors.New("更新地址不属于 Cage 的受信发布源")
+		return nil, errors.New("更新地址不属于 Claude Eden 的受信发布源")
 	}
 	req, err := http.NewRequestWithContext(ctx, "GET", raw, nil)
 	if err != nil {
@@ -228,7 +224,7 @@ func request(ctx context.Context, client *http.Client, raw string) (*http.Respon
 		if errors.As(err, &unavailable) {
 			return nil, unavailable
 		}
-		return nil, usererror.Wrap("连接应用更新源", errors.Join(ctx.Err(), err), "请检查主机网络与系统代理；主机连接失败时还会尝试 Cage 所选代理。恢复网络后可重新检测更新。")
+		return nil, usererror.Wrap("连接应用更新源", errors.Join(ctx.Err(), err), "请检查主机网络与系统代理；主机连接失败时还会尝试 Claude Eden 所选代理。恢复网络后可重新检测更新。")
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
@@ -237,7 +233,7 @@ func request(ctx context.Context, client *http.Client, raw string) (*http.Respon
 			if strings.Contains(u.Path, "/compare/") {
 				return nil, errors.New("当前构建提交未被源码仓库收录，无法核对提交关系")
 			}
-			return nil, errors.New("更新源找不到请求的版本或安装包（HTTP 404）。请稍后检查更新；需要手动安装时，请核对 Cage 发布页面中的对应平台文件。")
+			return nil, errors.New("更新源找不到请求的版本或安装包（HTTP 404）。请稍后检查更新；需要手动安装时，请核对 Claude Eden 发布页面中的对应平台文件。")
 		case 403, 429:
 			return nil, updateSourceError(resp, time.Now())
 		default:
@@ -281,12 +277,10 @@ func selectRelease(releases []release, current string) (*candidate, error) {
 
 func archiveName(version, goos, goarch string) (string, error) {
 	switch {
-	case goos == "darwin" && goarch == "arm64":
-		return "Cage-" + version + "-macos-arm64.dmg", nil
 	case goos == "windows" && goarch == "amd64":
-		return "Cage-" + version + "-windows-amd64-setup.exe", nil
+		return "Eden-" + version + "-windows-amd64-setup.exe", nil
 	default:
-		return "", errors.New("此平台尚无 Cage 应用内更新发行包")
+		return "", errors.New("应用内更新仅支持 Windows x64 桌面客户端")
 	}
 }
 

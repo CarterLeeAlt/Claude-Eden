@@ -56,7 +56,7 @@ func TestProtocolOptionsSurviveImportStoreAndRuntime(t *testing.T) {
 			if !reflect.DeepEqual(generated.Proxies[0], want) {
 				t.Fatal("protocol fields changed during import, persistence or runtime generation")
 			}
-			if os.Getenv("CAGE_PROXY_INTEGRATION") == "1" {
+			if os.Getenv("EDEN_PROXY_INTEGRATION") == "1" {
 				if err := Validate(context.Background(), profile, loaded); err != nil {
 					t.Fatal(err)
 				}
@@ -99,12 +99,12 @@ func TestImportBoundaryRecognizesCoreKeyVariants(t *testing.T) {
 		t.Fatal("valid key variants rejected", err)
 	}
 	if nodes[0].Config["udp"] != false || nodes[0].Config["UDP"] != nil || nodes[1].Config["dialer-proxy"] != nodes[0].ID || nodes[1].Config["DIALER_PROXY"] != nil {
-		t.Fatal("key variants escaped Cage's UDP policy or chain namespacing")
+		t.Fatal("key variants escaped Eden's UDP policy or chain namespacing")
 	}
 }
 
 func TestCoreRejectsInvalidProtocolParameterAfterImport(t *testing.T) {
-	if os.Getenv("CAGE_PROXY_INTEGRATION") != "1" {
+	if os.Getenv("EDEN_PROXY_INTEGRATION") != "1" {
 		t.Skip("requires a test binary beside the bundled Mihomo")
 	}
 	profile := t.TempDir()

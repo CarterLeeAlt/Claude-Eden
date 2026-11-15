@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/paths"
 )
 
@@ -34,7 +34,7 @@ func (s *Server) projectDirectories(w http.ResponseWriter, r *http.Request) {
 		home, err = os.UserHomeDir()
 		if err == nil {
 			var other []string
-			other, err = privateProjectDirectories(filepath.Join(home, ".claude-cage"))
+			other, err = privateProjectDirectories(filepath.Join(home, ".eden"))
 			reserved = append(reserved, other...)
 		}
 	}
@@ -44,14 +44,14 @@ func (s *Server) projectDirectories(w http.ResponseWriter, r *http.Request) {
 	}
 	private := func(path string) bool {
 		for _, dir := range reserved {
-			if cage.StorageContains(dir, path) {
+			if eden.StorageContains(dir, path) {
 				return true
 			}
 		}
 		return false
 	}
 	if private(real) {
-		http.Error(w, "Cage 配置目录不能作为项目浏览", 403)
+		http.Error(w, "Eden 配置目录不能作为项目浏览", 403)
 		return
 	}
 	directory, err := os.Open(real)

@@ -7,8 +7,8 @@ import { isAbsolute, join } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 
 const binary = process.argv[2];
-assert.ok(binary && isAbsolute(binary), 'Pass an absolute Cage CLI binary path.');
-const profile = await mkdtemp(join(tmpdir(), 'cage-agent-cli-'));
+assert.ok(binary && isAbsolute(binary), 'Pass an absolute Eden CLI binary path.');
+const profile = await mkdtemp(join(tmpdir(), 'eden-agent-cli-'));
 const config = join(profile, 'profile', 'config.json');
 let controllerPID;
 function call(args, input, expectedCode = 0) {

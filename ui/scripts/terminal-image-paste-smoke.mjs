@@ -31,7 +31,7 @@ for (const platform of ["MacIntel", "Win32", "Linux x86_64"]) {
       images.push(route.request().postDataJSON());
       await new Promise(resolve => { release = resolve; });
       await route.fulfill(fail ? { status: 502, contentType: "text/plain", body: "测试：图片传递失败" }
-        : { json: { path: "/guest/attachments/image-test.png" } });
+        : { json: { path: "/guest/attachments/图片 O'Brien.png" } });
     });
     await page.routeWebSocket("**/api/**", socket => {
       if (!socket.url().includes("/terminals/")) return socket.close();
@@ -39,12 +39,12 @@ for (const platform of ["MacIntel", "Win32", "Linux x86_64"]) {
       socket.send(Buffer.from("\x1b[?2004hClaude image paste\r\n> "));
     });
     await page.reload();
-    await page.getByRole("button", { name: "启动 Cage 环境", exact: true }).click();
+    await page.getByRole("button", { name: "启动 Eden 环境", exact: true }).click();
     await page.getByRole("button", { name: "新建终端", exact: true }).first().click();
     await page.getByRole("menuitem", { name: /Claude/ }).first().click();
     await page.waitForFunction(() => document.querySelector(".xterm-rows")?.textContent.includes("Claude"));
     await page.locator(".xterm-helper-textarea").focus();
-    const expected = "\x1b[200~'/guest/attachments/image-test.png' \x1b[201~";
+    const expected = "\x1b[200~'/guest/attachments/图片 O'\\''Brien.png' \x1b[201~";
     // Claude's Ctrl+V reads the host image; Enter waits for its guest path.
     await page.keyboard.press("Control+v");
     await wait(() => images.length === 1);
@@ -65,7 +65,7 @@ for (const platform of ["MacIntel", "Win32", "Linux x86_64"]) {
     assert.equal(reads, 2);
 
     // The desktop Edit > Paste action shares the same image path.
-    assert.equal(await page.evaluate(() => window.cageEditAction("paste")), true);
+    assert.equal(await page.evaluate(() => window.edenEditAction("paste")), true);
     await wait(() => images.length === 3);
     release();
     await wait(() => inputs.length === 4);

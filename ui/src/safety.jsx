@@ -39,11 +39,6 @@ const diagnostics = [
   },
 ];
 
-export async function bindDetectedMacOSExit(ip, onConfirm) {
-  if (!(await onConfirm({ title: "绑定固定出口？", body: `客机终端、浏览器和代理均测得 ${ip}。保存后请重启客机并重新检测。`, confirm: "绑定固定出口" }))) return null;
-  return api("/macos/exit-policy", { ip });
-}
-
 export function SafetyPanel({
   status,
   onClose,
@@ -134,10 +129,6 @@ export function SafetyPanel({
       }
     >
       <div className="modal-body safety-body">
-        {safety.macos_exit_candidate?.ip && <button disabled={busy} onClick={async () => {
-          try { if (await bindDetectedMacOSExit(safety.macos_exit_candidate.ip, onConfirm)) setNotice("固定出口已提交，请在保存完成后重启客机并重新检测。"); }
-          catch (e) { setError(e.message); }
-        }}>绑定检测到的固定出口 {safety.macos_exit_candidate.ip}</button>}
         <div className={`safety-summary ${network.mode}`}>
           {online ? (
             <ShieldCheck size={27} />
@@ -258,7 +249,7 @@ export function SafetyPanel({
               <small>{site.source}</small>
               <p>{site.description}</p>
               <button disabled={!online || busy} onClick={() => open(site.url)}>
-                在 Cage 中打开
+                在 Eden 中打开
                 <ArrowUpRight size={14} />
               </button>
               {site.attribution && (
@@ -283,7 +274,7 @@ export function SafetyPanel({
           ))}
         </div>
         <p className="field-help">
-          点击后才访问第三方站点。站点会收到 Cage 的出口
+          点击后才访问第三方站点。站点会收到 Eden 的出口
           IP，并可读取该页面可访问的浏览器信息。评分属于社区参考。
         </p>
         <details className="safety-scope">

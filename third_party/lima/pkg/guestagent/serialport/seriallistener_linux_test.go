@@ -16,6 +16,15 @@ func TestListenerCloseInterruptsSerialRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer master.Close()
+	// Opening the PTY multiplexer allocates a temporary kernel terminal. Check
+	// the opened descriptor before ioctl; a regular file is never a fixture.
+	info, err := master.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&(os.ModeDevice|os.ModeCharDevice) != os.ModeDevice|os.ModeCharDevice {
+		t.Fatalf("/dev/ptmx is not a character device: %s", info.Mode())
+	}
 	if err := unix.IoctlSetPointerInt(int(master.Fd()), unix.TIOCSPTLCK, 0); err != nil {
 		t.Fatal(err)
 	}

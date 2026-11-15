@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/sylvinus/agent-vm/internal/cage"
-	"github.com/sylvinus/agent-vm/internal/host"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -16,6 +14,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"github.com/sylvinus/agent-vm/internal/eden"
+	"github.com/sylvinus/agent-vm/internal/host"
 )
 
 type DesktopOptions struct{ CompleteUpdate, UseExisting bool }
@@ -39,11 +40,10 @@ var errControllerUnavailable = errors.New("control service is unavailable")
 const (
 	// Ordinary launcher requests only read controller memory.
 	controllerRequestTimeout = 5 * time.Second
-	// Status and handoff probe the VM synchronously. A bound Windows guest is
-	// queried through Hyper-V, so their budget must outlast that probe.
-	controllerVMRequestTimeout = windowsVMProbeTimeout + 5*time.Second
+	// Status and handoff allow the bounded Linux container state probe to finish.
+	controllerVMRequestTimeout = 8 * time.Second
 	// Release probes once for its decision and once more before handing off.
-	controllerReleaseRequestTimeout = 2*windowsVMProbeTimeout + 5*time.Second
+	controllerReleaseRequestTimeout = 11 * time.Second
 	// Connecting may start a controller and then wait for its first status.
 	localBootstrapTimeout = controllerVMRequestTimeout + 12*time.Second
 )
@@ -224,7 +224,7 @@ func desktopLaunch(profile string, gateway bool, options DesktopOptions, start f
 	if err == nil {
 		defer current.close()
 		if current.launch.DesktopGateway != gateway {
-			return DesktopResult{}, errors.New("此目录已被另一种 Cage 服务使用，请核对配置路径")
+			return DesktopResult{}, errors.New("此目录已被另一种 Eden 服务使用，请核对配置路径")
 		}
 		if options.CompleteUpdate {
 			if current.launch.DesktopGateway {
@@ -318,7 +318,7 @@ func PrepareUpdate(configPath string, stop bool) (DesktopResult, error) {
 		// Routine status probes also hold the operation lock. Retry briefly.
 		// every request still checks running jobs, terminals and VM ownership.
 		// The retry window bounds conflicts only: each request keeps its own
-		// VM probe budget, which a Windows guest needs in full.
+		// VM probe budget.
 		retryUntil := time.Now().Add(3 * time.Second)
 		for {
 			status, err := c.call("POST", "/api/handoff", map[string]string{"token": c.record.Token}, nil)
@@ -340,16 +340,8 @@ func PrepareUpdate(configPath string, stop bool) (DesktopResult, error) {
 	return DesktopResult{Status: "stop_required", Message: "请保存文件后确认停止环境并安装更新。终端任务会结束，项目和登录状态会保留。"}, nil
 }
 func (c *controllerClient) stopAndHandoff() error {
-	legacy := c.launch.Controller.Protocol == 0
-	var owner legacyProcessIdentity
-	var err error
-	if legacy {
-		owner, err = identifyLegacyController(c.profile, c.record)
-		if err != nil {
-			return err
-		}
-	} else if c.launch.Controller.Protocol != controlProtocol {
-		return errors.New("当前后台协议不受此版本支持，已保留运行环境。请使用匹配的 Cage 版本停止环境。")
+	if c.launch.Controller.Protocol != controlProtocol {
+		return errors.New("当前后台协议不受此版本支持，已保留运行环境。请使用匹配的 Eden 版本停止环境。")
 	}
 	u, _ := url.Parse(c.launch.URL)
 	status, err := c.call("POST", "/api/session", map[string]string{"token": u.Fragment}, nil)
@@ -361,28 +353,11 @@ func (c *controllerClient) stopAndHandoff() error {
 	}
 	var clientContext ClientContext
 	contextStatus, contextErr := c.call("GET", "/api/client/context", nil, &clientContext)
-	if contextErr == nil && contextStatus == http.StatusOK && (clientContext.Mode == "remote" || clientContext.ClientOnly) {
-		path := "/api/client/local"
-		if clientContext.ClientOnly {
-			path = "/api/client/disconnect"
-		}
-		status, err = c.call("POST", path, map[string]string{"connection_id": clientContext.ConnectionID}, nil)
-		if err != nil || status != http.StatusOK {
-			return errors.New("无法断开本地远程连接，未继续更新")
-		}
-		if clientContext.ClientOnly {
-			status, err = c.call("POST", "/api/handoff", map[string]string{"token": c.record.Token}, nil)
-			if err != nil || status != http.StatusOK {
-				return errors.New("本地连接服务尚未退出，请稍后重试")
-			}
-			return c.waitForExit()
-		}
-	} else if !legacy && !c.launch.DesktopGateway && !c.launch.ClientOnly &&
+	if !c.launch.DesktopGateway &&
 		c.launch.ConfigPath != "" && filepath.Dir(c.launch.ConfigPath) == filepath.Clean(c.profile) &&
 		contextErr == nil && contextStatus == http.StatusOK && !clientContext.DesktopGateway &&
 		clientContext.Mode == "local" && clientContext.ConnectionID == "local" {
-		// A selection change after the context request must not send the
-		// stop request to a remote workload.
+		// Pin this workload identity through the entire stop and handoff.
 		c.connectionID = clientContext.ConnectionID
 		c.setTrustedViewCookie(u)
 	}
@@ -433,30 +408,12 @@ func (c *controllerClient) stopAndHandoff() error {
 			return errors.New("仍有终端运行，未继续更新。")
 		}
 	}
-	if legacy {
-		verified, err := identifyLegacyController(c.profile, c.record)
-		if err != nil || verified != owner {
-			return errors.New("旧后台进程身份已变化，未发送退出信号；请重试更新。")
-		}
-		var final struct {
-			VMRunning *bool `json:"vm_running"`
-			Job       Job   `json:"job"`
-		}
-		status, err = c.call("GET", "/api/status", nil, &final)
-		if err != nil || status != http.StatusOK || final.VMRunning == nil || *final.VMRunning || final.Job.ID != requested.ID || final.Job.Running || final.Job.Error != "" || controllerHasVM(c.profile) {
-			return errors.New("停止后又有环境工作，未终止旧后台；请保存停止后重试。")
-		}
-		if err = terminateLegacy(owner.PID); err != nil {
-			return errors.New("旧后台未能退出，未替换应用。")
-		}
-	} else {
-		status, err = c.call("POST", "/api/handoff", map[string]string{"token": c.record.Token}, nil)
-		if err != nil {
-			return err
-		}
-		if status != http.StatusOK {
-			return errors.New("后台仍在执行工作，未继续更新。请保存并停止后重试。")
-		}
+	status, err = c.call("POST", "/api/handoff", map[string]string{"token": c.record.Token}, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return errors.New("后台仍在执行工作，未继续更新。请保存并停止后重试。")
 	}
 	return c.waitForExit()
 }
@@ -490,7 +447,7 @@ func startControllerExecutable(configPath, exe string, extraEnv ...string) error
 	}
 	cmd := exec.Command(exe, "log-relay", "controller")
 	cmd.Dir = profile
-	cmd.Env = append(os.Environ(), cage.ConfigEnv+"="+configPath)
+	cmd.Env = append(os.Environ(), eden.ConfigEnv+"="+configPath)
 	cmd.Env = append(cmd.Env, extraEnv...)
 	detachController(cmd)
 	if err := cmd.Start(); err != nil {

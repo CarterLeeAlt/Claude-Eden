@@ -18,7 +18,7 @@
 
 作为一个只是想和 Claude 对话与合作的正常用户，受够了折腾各种 VPS，指纹浏览器，环境检测，面对封号的担惊受怕和财产损失。我们提出 **Claude Eden** 项目：**一个桌面工作台，配置好自己的网络代理，集中管理隔离环境、时区语言和环境检查。**
 
-Claude Eden 在 Windows 10 桌面上提供独立的 Linux 客机，也可以通过 SSH 使用自己的 Linux 云端环境。终端、浏览器、编辑器和官方 Claude Desktop 汇集在同一个工作台，项目按需共享，网络独立管理；还可以用 Android 手机接续电脑上的任务。客机能力和主机要求见系统指南。支持以下几个重点功能：
+Claude Eden 在 Windows 10 桌面上管理独立的本地 Debian 13 客机。终端、浏览器、编辑器和官方 Claude Desktop 汇集在同一个工作台，项目按需共享，网络独立管理。宿主条件、资源和存储路径按实际电脑检测。支持以下几个重点功能：
 
 - 和主机隔离的网络设置，Claude Eden 自己接管和代理内部的所有网络流量
 - 和主机隔离的指纹设置，包括时区、语言等，支持自动与代理 IP 同步
@@ -28,13 +28,11 @@ Claude Eden 在 Windows 10 桌面上提供独立的 Linux 客机，也可以通�
 ## 你可以用它做什么
 
 - **在一个窗口里完成工作。** 用终端运行 Claude Code，用编辑器查看改动，用 Workbench 浏览器预览服务和完成登录。
-- **使用独立的 Linux 开发环境。** 选择 Debian 或 Ubuntu，使用 Linux 工具链，共享明确授权的项目目录；系统、工具和登录资料保存在独立环境中。 [选择客机系统](docs/guide/guest-systems.md)
+- **使用独立的 Linux 开发环境。** 在本地 Debian 13 中使用 Linux 工具链，共享明确授权的项目目录；系统、工具和登录资料保存在独立环境中。 [Debian 13 客机](docs/guide/guest-systems.md)
 - **控制共享范围。** 只共享默认工作区和明确打开的项目文件夹；主机的 Claude 登录、浏览器配置和 SSH 密钥不会自动导入。
 - **看清网络状态。** 内置代理管理支持导入订阅、选择节点和检查出口。关键检查未通过时，环境保持离线；代理不可用时没有直连回退。
 - **下次继续使用。** 工具、文件和登录状态保存在虚拟磁盘里，关闭窗口可以保留后台任务。
 - **管理多个 Claude Code 订阅。** 查看额度、为新会话分配账号，并在明确授权后切换账号接续历史。 [Claude Code](docs/guide/accounts.md)
-- **从手机继续处理任务。** Android 手机配对电脑，接续 Claude Code 对话与工具审批，或操作远程浏览器和 Claude Desktop。[手机连接](docs/guide/mobile.md)
-- **把环境放到自己的服务器。** 通过 SSH 部署或连接 Linux VPS，工具、任务和数据留在服务器，无需 KVM。[云端部署与 SSH](docs/guide/cloud.md)
 - **通过私网连接设备。** 在 Claude Eden 内登录 Tailscale，查看网络中的设备，使用 SSH、Web 与其他 TCP 服务。 [Tailscale 私网](docs/guide/tailscale.md)
 
 浏览器收藏、无痕会话、Cookie、扩展、密码保险箱，以及外观、资源、存储和工具更新，见[完整使用文档](docs/guide/index.md)。
@@ -51,15 +49,15 @@ Claude Eden 在 Windows 10 桌面上提供独立的 Linux 客机，也可以通�
 
 ## 下载与安装
 
-Claude Eden 的桌面宿主为 Windows 10，当前安装包为 x64。本机客机使用 Debian 13 或 Ubuntu 22.04，也可连接 Linux 云端后端。系统与虚拟化能力、资源和路径按实际电脑检测。 [Windows](docs/windows.md) · [Linux 云端](docs/guide/cloud.md)。
+Claude Eden 的桌面宿主为 Windows 10，当前安装包为 x64，客机固定为本地 Debian 13。系统与虚拟化能力、资源和路径按实际电脑检测。 [Windows](docs/windows.md) · [Debian 13 客机](docs/guide/guest-systems.md)。
 
 1. 查看 [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases) 中实际发布的 Windows 安装包；没有已发布安装包时按[构建说明](docs/windows.md)从源码构建。
-2. 运行 Windows 安装程序，再启动 **Claude Eden**。服务器部署见 [Linux 云端说明](docs/guide/cloud.md)。
+2. 运行 Windows 安装程序，再启动 **Claude Eden**。
 3. 按应用内引导配置自己的代理，启动环境后打开项目。
 
-安装包随附工作台和代理核心，无需先安装 Go、Node.js、Docker 或 Clash。首次创建环境时选择 Linux 发行版与存储位置，再下载并校验对应官方镜像、安装开发工具。代理服务和 Claude 账户由用户自行准备。
+安装包随附工作台和代理核心，无需先安装 Go、Node.js、Docker 或 Clash。首次创建环境时选择存储位置，再下载并校验 Debian 13 官方镜像、安装开发工具。代理服务和 Claude 账户由用户自行准备。
 
-源码在本仓库公开，已发布安装包的版本说明和校验文件见 [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases)。系统选择、镜像来源与数据保留方式见[客机系统指南](docs/guide/guest-systems.md)。
+源码在本仓库公开，已发布安装包的版本说明和校验文件见 [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases)。镜像来源与数据保留方式见[客机系统指南](docs/guide/guest-systems.md)。
 
 功能以所用构建为准，公开安装包的能力与验证范围以发行说明为准。
 
@@ -73,7 +71,7 @@ Claude Eden 的桌面宿主为 Windows 10，当前安装包为 x64。本机客�
 
 ### 2. 启动环境
 
-首次选择 Debian 或 Ubuntu Linux 客机，再选择存储位置。点击“开始安装”或启动环境，按引导完成安装与检查；进度和错误可在“操作详情”查看。以后启动复用原环境。
+首次为 Debian 13 客机选择存储位置。点击“开始安装”或启动环境，按引导完成安装与检查；进度和错误可在“操作详情”查看。以后启动复用原环境。
 
 ### 3. 打开项目，运行 Claude
 
@@ -82,7 +80,7 @@ Claude Eden 的桌面宿主为 Windows 10，当前安装包为 x64。本机客�
 ## 使用前了解这些边界
 
 - 共享项目中的修改和删除直接影响本机原文件，包括 Git 操作。请使用版本控制或备份，并核对提交结果。
-- 同一份 Claude Eden 配置中的项目共用所选客机系统、工具、账户与文件系统，项目之间没有独立隔离。更换客机系统需要独立安装，原环境的数据继续保留。
+- 同一份 Claude Eden 配置中的项目共用 Debian 13 客机、工具、账户与文件系统，项目之间没有独立隔离。
 - 默认公网出站支持 IPv4 TCP，DNS 通过同一代理；公网 UDP、IPv6、ICMP 及主机和局域网直连受限。主动启用 Tailscale 后，可按私网权限连接设备。
 - 网络检查展示当前配置和采样证据，无法保证账户不会受到平台限制，也不能代替完整的虚拟化安全审计。
 
@@ -96,10 +94,8 @@ Claude Eden 的桌面宿主为 Windows 10，当前安装包为 x64。本机客�
 |---|---|
 | 让自己的 Agent 下载、安装、配置和排查 Claude Eden | [Agent 使用指南](docs/guide/agent.md) |
 | 第一次安装、配置代理、打开项目 | [安装与首次启动](docs/guide/installation.md) |
-| 选择 Debian 13 或 Ubuntu 22.04 客机，使用 Linux 开发工具 | [选择客机系统](docs/guide/guest-systems.md) |
+| 准备 Debian 13 客机，使用 Linux 开发工具 | [Debian 13 客机](docs/guide/guest-systems.md) |
 | 添加多个订阅、查看额度和分配终端 | [多账号与额度](docs/guide/accounts.md) |
-| 手机扫码、工具审批、远程浏览器 | [手机连接与远程会话](docs/guide/mobile.md) |
-| 在自己的 VPS 部署和连接环境 | [云端部署与 SSH](docs/guide/cloud.md) |
 | 了解每一项设置及何时生效 | [设置参考](docs/guide/settings.md) |
 | 维护存储、资源、更新与备份 | [维护、资源与数据](docs/guide/maintenance.md) |
 | 处理下载、启动、联网和登录问题 | [故障排查](docs/guide/troubleshooting.md) |

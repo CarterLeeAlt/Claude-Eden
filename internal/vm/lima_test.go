@@ -25,14 +25,23 @@ import (
 	"github.com/lima-vm/lima/v2/pkg/portfwd"
 	"github.com/lima-vm/lima/v2/pkg/registry"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/limaembed"
 	"github.com/sylvinus/agent-vm/internal/paths"
 )
 
 func newTestLima(t *testing.T) *Lima {
 	t.Helper()
-	home := t.TempDir()
+	// Socket paths have the host's sockaddr_un limit, independent of test names.
+	home, err := os.MkdirTemp(os.TempDir(), "lima-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(home); err != nil {
+			t.Error(err)
+		}
+	})
 	t.Setenv("LIMA_HOME", home)
 	t.Setenv("LIMA_TEMPLATES_PATH", "")
 	l, err := NewLima(home, t.TempDir())
@@ -47,17 +56,17 @@ func newTestLima(t *testing.T) *Lima {
 	return l
 }
 
-func TestCageDebianMirrors(t *testing.T) {
+func TestEdenDebianMirrors(t *testing.T) {
 	l := newTestLima(t)
 	config := filepath.Join(t.TempDir(), "config.json")
-	data, err := json.Marshal(cage.DefaultConfig())
+	data, err := json.Marshal(eden.DefaultConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(config, data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(cage.ConfigEnv, config)
+	t.Setenv(eden.ConfigEnv, config)
 	none := []Mount{}
 	ctx := context.Background()
 	if err := l.Create(ctx, "base", "template:debian-13", Settings{Mounts: &none}, io.Discard); err != nil {
@@ -69,7 +78,7 @@ func TestCageDebianMirrors(t *testing.T) {
 	}
 	earlyAPT := false
 	for _, step := range instance.Config.Provision {
-		if step.Mode == limatype.ProvisionModeDependency && step.Script != nil && *step.Script == cage.DebianPrepareScript {
+		if step.Mode == limatype.ProvisionModeDependency && step.Script != nil && *step.Script == eden.DebianPrepareScript {
 			earlyAPT = true
 		}
 	}
@@ -145,9 +154,9 @@ func TestLimaLifecycle(t *testing.T) {
 		t.Errorf("MaxName = %d: the test's Lima home is long, it should be less than 76", m)
 	}
 
-	proj := t.TempDir()
+	proj := paths.Host(t.TempDir())
 	off := false
-	mounts := []Mount{{Location: proj, MountPoint: proj, Writable: true,
+	mounts := []Mount{{Location: proj, MountPoint: paths.Guest(proj), Writable: true,
 		SSHFS: &SSHFS{SFTPDriver: "builtin", Cache: &off, ReadonlyNames: []string{".git", ".hg"}}}}
 	rev := ReverseSSHFS
 	port := 23456
@@ -164,18 +173,21 @@ func TestLimaLifecycle(t *testing.T) {
 
 	// A path Lima reads as written; those it would read as another (a Go
 	// template, what JSON escapes) refused, nothing written.
-	amp := filepath.Join(t.TempDir(), "R&D <x>")
-	os.MkdirAll(amp, 0o755)
-	withAmp := []Mount{{Location: amp, MountPoint: amp, Writable: true, SSHFS: &SSHFS{SFTPDriver: "builtin", ReadonlyNames: []string{".git", "a&b"}}}}
+	amp := paths.Host(filepath.Join(t.TempDir(), "R&D"))
+	if err := os.MkdirAll(amp, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Angle brackets are valid in the Linux target, not a Windows host filename.
+	withAmp := []Mount{{Location: amp, MountPoint: paths.Guest(amp) + " <x>", Writable: true, SSHFS: &SSHFS{SFTPDriver: "builtin", ReadonlyNames: []string{".git", "a&b"}}}}
 	if err := l.Edit(ctx, "p-12345678", Settings{Mounts: &withAmp}); err != nil {
 		t.Fatal(err)
 	}
-	if p, _ := l.Get(ctx, "p-12345678"); len(p.Mounts) != 1 || p.Mounts[0].Location != amp || p.Mounts[0].SSHFS.ReadonlyNames[1] != "a&b" {
+	if p, _ := l.Get(ctx, "p-12345678"); len(p.Mounts) != 1 || p.Mounts[0].Location != amp || p.Mounts[0].MountPoint != withAmp[0].MountPoint || p.Mounts[0].SSHFS.ReadonlyNames[1] != "a&b" {
 		t.Errorf("& and <>: %+v", p.Mounts)
 	}
 	before0, _ := os.ReadFile(filepath.Join(p.Dir, "lima.yaml"))
 	for _, name := range []string{"t{{.Home}}", "q{{.Foo}}", "bad\xffbyte", "line\u2028sep"} {
-		odd := []Mount{{Location: "/tmp/" + name, MountPoint: "/tmp/x", Writable: true, SSHFS: &SSHFS{SFTPDriver: "builtin", ReadonlyNames: []string{".git"}}}}
+		odd := []Mount{{Location: proj + "/" + name, MountPoint: "/tmp/x", Writable: true, SSHFS: &SSHFS{SFTPDriver: "builtin", ReadonlyNames: []string{".git"}}}}
 		if err := l.Edit(ctx, "p-12345678", Settings{Mounts: &odd}); !errors.Is(err, ErrUnmountable) {
 			t.Errorf("%q: %v", name, err)
 		}
@@ -190,7 +202,7 @@ func TestLimaLifecycle(t *testing.T) {
 	// Lima refuses a name with a slash: nothing is written.
 	yaml := filepath.Join(p.Dir, "lima.yaml")
 	before, _ := os.ReadFile(yaml)
-	bad := []Mount{{Location: proj, Writable: true, SSHFS: &SSHFS{SFTPDriver: "builtin", ReadonlyNames: []string{"a/b"}}}}
+	bad := []Mount{{Location: proj, MountPoint: paths.Guest(proj), Writable: true, SSHFS: &SSHFS{SFTPDriver: "builtin", ReadonlyNames: []string{"a/b"}}}}
 	if err := l.Edit(ctx, "p-12345678", Settings{Mounts: &bad}); err == nil {
 		t.Error("a name with a slash was accepted")
 	}
@@ -225,8 +237,8 @@ func TestLimaLifecycle(t *testing.T) {
 	}
 
 	// Never started with a share not confined to its folder.
-	plain := []Mount{{Location: proj, Writable: true}}
-	builtin := []Mount{{Location: proj, Writable: true, SSHFS: &SSHFS{SFTPDriver: "builtin"}}}
+	plain := []Mount{{Location: proj, MountPoint: paths.Guest(proj), Writable: true}}
+	builtin := []Mount{{Location: proj, MountPoint: paths.Guest(proj), Writable: true, SSHFS: &SSHFS{SFTPDriver: "builtin"}}}
 	for _, set := range []Settings{{Mounts: &plain, MountType: &rev}, {Mounts: &builtin, MountType: &def}} {
 		if err := l.Edit(ctx, "p-12345678", set); err != nil {
 			t.Fatal(err)
@@ -561,5 +573,46 @@ func TestLimaEditConcurrent(t *testing.T) {
 		if strings.HasSuffix(e.Name(), ".tmp") {
 			t.Errorf("left behind: %s", e.Name())
 		}
+	}
+}
+
+// Independent updates all survive, and readers always see a valid config.
+func TestLimaEditConcurrentFields(t *testing.T) {
+	l := newTestLima(t)
+	ctx := t.Context()
+	none := []Mount{}
+	if err := l.Create(ctx, "base", "template:debian-13", Settings{CPUs: 1, MemoryGiB: 2, Mounts: &none}, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	port := 23456
+	updates := []Settings{{CPUs: 3}, {MemoryGiB: 4}, {SSHLocalPort: &port}}
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for _, update := range updates {
+		wg.Go(func() {
+			<-start
+			if err := l.Edit(ctx, "base", update); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	wg.Go(func() {
+		<-start
+		for range 12 {
+			p, err := l.Get(ctx, "base")
+			if err != nil || p.Status == Broken {
+				t.Errorf("concurrent read: %v %+v", err, p)
+				return
+			}
+		}
+	})
+	close(start)
+	wg.Wait()
+	p, err := l.Get(ctx, "base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.CPUs != 3 || p.Memory != 4<<30 || p.SSHPortConfig != port {
+		t.Fatalf("concurrent updates lost: %+v", p)
 	}
 }

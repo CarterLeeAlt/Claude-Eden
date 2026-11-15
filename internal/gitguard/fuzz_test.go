@@ -43,7 +43,7 @@ func FuzzHops(f *testing.F) {
 				t.Fatal(err)
 			}
 		}
-		targets := []string{"d0", "../d1", "l1", root + "/d2", "/", ".", "..", "l0", root + "/l3/d0", "d0/d0", "missing", "../l2"}
+		targets := []string{"d0", "../d1", "l1", root + "/d2", root, ".", "..", "l0", root + "/l3/d0", "d0/d0", "missing", "../l2"}
 		var links []string
 		for _, l := range []string{"l0", "l1", "l2", "l3", "d0/l0", "d1/l1"} {
 			p := root + "/" + l

@@ -17,11 +17,11 @@ import (
 	"github.com/sylvinus/agent-vm/internal/version"
 )
 
-func TestHostUpdateUsesProxyWithoutCageProfile(t *testing.T) {
+func TestHostUpdateUsesProxyWithoutEdenProfile(t *testing.T) {
 	var connects atomic.Int32
 	commit := strings.Repeat("a", 40)
 	origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.UserAgent(), "Cage") {
+		if strings.Contains(r.UserAgent(), "Eden") {
 			t.Error("product identity in request")
 		}
 		if strings.HasSuffix(r.URL.Path, "/commits/main") {
@@ -164,9 +164,9 @@ func TestUpdateHostDeadlineStopsAfterHeaders(t *testing.T) {
 	}
 }
 
-func TestLiveAboutWithStoppedCageProxy(t *testing.T) {
-	if os.Getenv("CAGE_TEST_APP_UPDATE_LIVE") == "" {
-		t.Skip("set CAGE_TEST_APP_UPDATE_LIVE=1 for host network verification")
+func TestLiveAboutWithStoppedEdenProxy(t *testing.T) {
+	if os.Getenv("EDEN_TEST_APP_UPDATE_LIVE") == "" {
+		t.Skip("set EDEN_TEST_APP_UPDATE_LIVE=1 for host network verification")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
@@ -174,5 +174,5 @@ func TestLiveAboutWithStoppedCageProxy(t *testing.T) {
 	if got.Source.Status == "failed" || !validCommit(got.Source.Commit) || got.Release.Status == "failed" || got.Release.Version == "" {
 		t.Fatalf("host-only check: %+v", got)
 	}
-	t.Logf("Host-only update check succeeded with no Cage profile: source=%s release=%s prerelease=%t", got.Source.Status, got.Release.Version, got.Release.Prerelease)
+	t.Logf("Host-only update check succeeded with no Eden profile: source=%s release=%s prerelease=%t", got.Source.Status, got.Release.Version, got.Release.Prerelease)
 }

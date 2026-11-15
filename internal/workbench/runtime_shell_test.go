@@ -6,13 +6,14 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"github.com/sylvinus/agent-vm/internal/cage"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/sylvinus/agent-vm/internal/eden"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -110,11 +111,11 @@ command_not_found_handler() { return 127; }
 		}
 	}()
 	s := testServer(t)
-	dir := filepath.Join(s.profile, "state", "lima", cage.InstanceName(s.profile, s.environmentDir()))
+	dir := filepath.Join(s.profile, "state", "lima", eden.InstanceName(s.profile, s.environmentDir()))
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	clientConfig := fmt.Sprintf("Host *\n HostName 127.0.0.1\n Port %d\n User cage\n StrictHostKeyChecking no\n UserKnownHostsFile %s\n", listener.Addr().(*net.TCPAddr).Port, os.DevNull)
+	clientConfig := fmt.Sprintf("Host *\n HostName 127.0.0.1\n Port %d\n User developer\n StrictHostKeyChecking no\n UserKnownHostsFile %s\n", listener.Addr().(*net.TCPAddr).Port, os.DevNull)
 	if err := os.WriteFile(filepath.Join(dir, "ssh.config"), []byte(clientConfig), 0600); err != nil {
 		t.Fatal(err)
 	}

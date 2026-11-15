@@ -5,7 +5,7 @@ import { createWorkbench } from "./workbench-fixture.mjs";
 import { startDisplay } from "./rfb-wire-fixture.mjs";
 
 const writes = [];
-const display = await startDisplay(process.env.CAGE_UI_URL || "http://127.0.0.1:5198");
+const display = await startDisplay(process.env.EDEN_UI_URL || "http://127.0.0.1:5198");
 const { browser, page, state, errors } = await createWorkbench({
   mockWebSockets: false, url: display.url,
   nativeRequest: body => { if (body.action === "clipboardWrite") writes.push(body.text); return true; },

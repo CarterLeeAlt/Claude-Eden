@@ -1,7 +1,6 @@
 package workbench
 
 import (
-	"github.com/sylvinus/agent-vm/internal/host"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -9,7 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/host"
+
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 func reloadedIntentServer(t *testing.T, previous *Server) *Server {
@@ -94,7 +95,7 @@ func TestExplicitResumePersistsAcrossServiceReload(t *testing.T) {
 			if reloaded.networkPaused {
 				t.Fatal("explicit resume was not persisted")
 			}
-			if gate.Status().Mode != cage.GateClosed {
+			if gate.Status().Mode != eden.GateClosed {
 				t.Fatal("recording intent itself granted networking")
 			}
 		})
@@ -119,7 +120,7 @@ func TestPauseAndResumeStorageFailuresKeepGateClosed(t *testing.T) {
 			if response.Code != 400 || !strings.Contains(response.Body.String(), "无法保存") {
 				t.Fatalf("storage failure not reported: %d %s", response.Code, response.Body.String())
 			}
-			if !s.networkPaused || gate.Status().Mode != cage.GateClosed {
+			if !s.networkPaused || gate.Status().Mode != eden.GateClosed {
 				t.Fatal("storage failure left external networking enabled")
 			}
 		})
@@ -130,7 +131,7 @@ func TestQueuedSettingsApplyCannotClearLaterPersistentPause(t *testing.T) {
 	s, gate := interfaceMonitorServer(t)
 	pauseProxyNetwork(t, s)
 	// Keep the real settings write, but there is no live VM to stop in this fixture.
-	if err := os.Remove(filepath.Join(s.profile, "state", "lima", cage.InstanceName(s.profile, s.environmentDir()), "cage-running.json")); err != nil {
+	if err := os.Remove(filepath.Join(s.profile, "state", "lima", eden.InstanceName(s.profile, s.environmentDir()), "eden-running.json")); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := loadConfig(s.configPath)
@@ -159,7 +160,7 @@ func TestQueuedSettingsApplyCannotClearLaterPersistentPause(t *testing.T) {
 	}
 	s.op.Lock()
 	s.op.Unlock()
-	if !s.networkPaused || gate.Status().Mode != cage.GateClosed {
+	if !s.networkPaused || gate.Status().Mode != eden.GateClosed {
 		t.Fatal("older settings action cleared a later pause")
 	}
 	reloaded := reloadedIntentServer(t, s)

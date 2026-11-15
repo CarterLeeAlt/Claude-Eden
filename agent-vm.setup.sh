@@ -8,6 +8,12 @@
 
 set -euo pipefail
 
+. /etc/os-release
+if [[ "$ID" != debian || "${VERSION_ID:-}" != 13 ]]; then
+  echo 'The workbench requires Debian 13.' >&2
+  exit 1
+fi
+
 export DEBIAN_FRONTEND=noninteractive
 
 # apt under sudo, with the noninteractive frontend actually reaching it.
@@ -26,7 +32,7 @@ export DEBIAN_FRONTEND=noninteractive
 # would swallow the lines after it, which then never run.
 apt_get() {
   local status before='' retries=3 timeout=60
-  if [[ "${CLAUDE_CAGE:-}" == 1 ]]; then
+  if [[ "${WORKBENCH_SETUP:-}" == 1 ]]; then
     before="$(awk '$1 == "oom_kill" {print $2}' /proc/vmstat)"
     retries=1
     timeout=15
@@ -36,7 +42,7 @@ apt_get() {
   else
     status=$?
   fi
-  if [[ "${CLAUDE_CAGE:-}" == 1 ]]; then
+  if [[ "${WORKBENCH_SETUP:-}" == 1 ]]; then
     printf 'APT failed (exit %s); guest memory evidence follows. oom_kill before=%s\n' "$status" "$before" >&2
     apt-get --version | head -n 1 >&2 || true
     awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree):/' /proc/meminfo >&2 || true
@@ -55,9 +61,9 @@ install_repository_key() (
   local url="$1" target="$2" stage replacement='' attempt status=1
   stage="$(mktemp)"
   trap 'rm -f "$stage"; if [ -n "$replacement" ]; then sudo rm -f "$replacement"; fi' EXIT
-  if [[ "${CLAUDE_CAGE:-}" == 1 ]]; then
+  if [[ "${WORKBENCH_SETUP:-}" == 1 ]]; then
     for attempt in 1 2 3 4; do
-      if cage_curl_download "$stage" --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --location --show-error --silent \
+      if workbench_curl_download "$stage" --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --location --show-error --silent \
         --connect-timeout 15 "$url" -o "$stage" </dev/null; then
         status=0
         break
@@ -133,11 +139,13 @@ export PATH="$HOME/.local/bin:$PATH"
 # apt-get` below went out without the proxy and failed (#25). Keeping them
 # through sudo covers this script and every VM cloned from this base. Checked
 # with visudo before it is installed: a broken sudoers file breaks sudo.
-printf 'Defaults env_keep += "http_proxy https_proxy ftp_proxy no_proxy HTTP_PROXY HTTPS_PROXY FTP_PROXY NO_PROXY"\n' \
-  > /tmp/agent-vm-proxy.sudoers
-sudo visudo -cqf /tmp/agent-vm-proxy.sudoers
-sudo install -m 0440 -o root -g root /tmp/agent-vm-proxy.sudoers /etc/sudoers.d/10-agent-vm-proxy
-rm -f /tmp/agent-vm-proxy.sudoers
+(
+  proxy_sudoers=$(mktemp -t agent-vm-proxy.XXXXXX)
+  trap 'rm -f "$proxy_sudoers"' EXIT
+  printf 'Defaults env_keep += "http_proxy https_proxy ftp_proxy no_proxy HTTP_PROXY HTTPS_PROXY FTP_PROXY NO_PROXY"\n' > "$proxy_sudoers"
+  sudo visudo -cqf "$proxy_sudoers"
+  sudo install -m 0440 -o root -g root "$proxy_sudoers" /etc/sudoers.d/10-agent-vm-proxy
+)
 
 # Disable needrestart's interactive prompts
 sudo mkdir -p /etc/needrestart/conf.d
@@ -154,14 +162,13 @@ echo '$nrconf{restart} = '"'"'a'"'"';' | sudo tee /etc/needrestart/conf.d/no-pro
 # avahi-daemon, upower, Vulkan drivers), some of them running daemons. The
 # recommended packages that are used are listed by name instead.
 echo "Installing base packages..."
-if [[ "${CLAUDE_CAGE:-}" == 1 ]]; then
+if [[ "${WORKBENCH_SETUP:-}" == 1 ]]; then
   # This runs in the guest, through its configured DNS and proxy-only route.
-  package_host=$(. /etc/os-release; if [ "$ID" = ubuntu ]; then printf '%s' archive.ubuntu.com; else printf '%s' deb.debian.org; fi)
   echo "Checking guest DNS for system packages..."
   if ! timeout 15 getent ahostsv4 mirrors.nju.edu.cn >/dev/null &&
      ! timeout 15 getent ahostsv4 mirrors.ustc.edu.cn >/dev/null &&
-     ! timeout 15 getent ahostsv4 "$package_host" >/dev/null; then
-    echo 'Guest DNS could not resolve the system download sources. Check Cage Network & Proxy / DNS settings, apply and retry.' >&2
+     ! timeout 15 getent ahostsv4 deb.debian.org >/dev/null; then
+    echo 'Guest DNS could not resolve the system download sources. Check Network & Proxy / DNS settings, apply and retry.' >&2
     exit 1
   fi
 fi
@@ -174,9 +181,9 @@ apt_get install -y --no-install-recommends \
   ca-certificates sshfs \
   libssl-dev libreadline-dev zlib1g-dev libyaml-dev libffi-dev
 
-# Cage's download inactivity monitor needs Python even when an optional
+# The managed download inactivity monitor needs Python even when an optional
 # language preinstall is disabled. Keep standalone agent-vm choices intact.
-if [[ "${CLAUDE_CAGE:-}" == 1 ]]; then
+if [[ "${WORKBENCH_SETUP:-}" == 1 ]]; then
   apt_get install -y --no-install-recommends python3
 fi
 
@@ -251,8 +258,8 @@ echo '[ -f "$HOME/.agent-vm.env" ] && { set -a; . "$HOME/.agent-vm.env"; set +a;
 # Always installed so users can `mise install ruby@latest`, etc., even when
 # they've opted out of preinstalled Node.
 echo "Installing mise..."
-if [[ "${CLAUDE_CAGE:-}" == "1" ]]; then
-  cage_install_tool mise
+if [[ "${WORKBENCH_SETUP:-}" == "1" ]]; then
+  workbench_install_tool mise
 else
   curl -fsSL https://mise.run | sh
 fi
@@ -262,11 +269,9 @@ if [[ "$INSTALL_DOCKER" == "1" ]]; then
   # Install Docker from official repo (includes docker compose)
   echo "Installing Docker..."
   sudo install -m 0755 -d /etc/apt/keyrings
-  docker_distribution=$(. /etc/os-release && printf '%s' "$ID")
-  case "$docker_distribution" in debian|ubuntu) ;; *) echo "Unsupported Docker distribution: $docker_distribution" >&2; exit 1;; esac
-  install_repository_key "https://download.docker.com/linux/$docker_distribution/gpg" /etc/apt/keyrings/docker.asc
+  install_repository_key https://download.docker.com/linux/debian/gpg /etc/apt/keyrings/docker.asc
   sudo chmod a+r /etc/apt/keyrings/docker.asc
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/$docker_distribution $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian trixie stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   apt_get update
   # buildx and pigz are Recommends: `docker build` needs buildx, pigz speeds
   # up layer decompression. docker-ce-rootless-extras is left out: the user is
@@ -301,15 +306,10 @@ if [[ "$INSTALL_CHROMIUM" == "1" ]]; then
   # Disposable browser contexts use the application locale's language defaults.
   # Debian ships the non-English locale resources in this separate package.
   chromium_binary=/usr/bin/chromium
-  if [[ "${CLAUDE_CAGE:-}" == 1 ]] && cage_is_ubuntu; then
-    cage_install_chromium
-    chromium_binary=/usr/local/lib/workbench-browser/chromium
+  if [[ "${WORKBENCH_SETUP:-}" == 1 ]]; then
+    workbench_install_chromium fonts-liberation fonts-dejavu-core xvfb xauth
   else
-    chromium_packages=(chromium chromium-l10n fonts-liberation fonts-dejavu-core xvfb xauth)
-    if [[ "${CLAUDE_CAGE:-}" == 1 ]]; then
-      cage_cache_chromium --no-install-recommends "${chromium_packages[@]}"
-    fi
-    apt_get install -y --no-install-recommends "${chromium_packages[@]}"
+    apt_get install -y --no-install-recommends chromium chromium-l10n fonts-liberation fonts-dejavu-core xvfb xauth
   fi
   sudo mkdir -p /opt/google/chrome
   for alias in /usr/bin/google-chrome /usr/bin/google-chrome-stable /opt/google/chrome/chrome; do
@@ -320,8 +320,8 @@ if [[ "$INSTALL_CHROMIUM" == "1" ]]; then
 fi
 
 if [[ "$INSTALL_GH" == "1" ]]; then
-  if [[ "${CLAUDE_CAGE:-}" == 1 ]]; then
-    cage_install_tool gh
+  if [[ "${WORKBENCH_SETUP:-}" == 1 ]]; then
+    workbench_install_tool gh
   else
     # Install GitHub CLI from official repo
     echo "Installing GitHub CLI..."
@@ -336,10 +336,10 @@ fi
 
 if [[ "$INSTALL_CLAUDE" == "1" ]]; then
   echo "Installing Claude Code..."
-  if [[ "${CLAUDE_CAGE:-}" == "1" ]]; then
+  if [[ "${WORKBENCH_SETUP:-}" == "1" ]]; then
     # Resolve the official npm latest version when the guest installs it.
     # npm retries interrupted package transfers and verifies registry integrity.
-    cage_install_tool claude
+    workbench_install_tool claude
   else
     curl -fsSL https://claude.ai/install.sh | bash
   fi
@@ -526,8 +526,8 @@ if [[ "$INSTALL_CODE_SERVER" == "1" ]]; then
   # The editor of `agent-vm code` (internal/cli/code.go). No password here: every VM
   # is a copy of this disk, so each one makes its own on first use.
   echo "Installing code-server..."
-  if [[ "${CLAUDE_CAGE:-}" == "1" ]]; then
-    cage_install_tool code-server
+  if [[ "${WORKBENCH_SETUP:-}" == "1" ]]; then
+    workbench_install_tool code-server
   else
     curl -fsSL https://code-server.dev/install.sh | sh
   fi

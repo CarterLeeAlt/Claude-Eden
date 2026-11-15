@@ -19,26 +19,25 @@ import (
 
 	"al.essio.dev/pkg/shellescape"
 	"github.com/google/uuid"
-	"github.com/sylvinus/agent-vm/internal/cage"
 	"github.com/sylvinus/agent-vm/internal/clipboardfiles"
-	"github.com/sylvinus/agent-vm/internal/guestos"
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 const clipboardWireLimit = 30 << 20
 
-// 保留当前后端配套的客机脚本，使已有 Linux 客机也能建立剪贴板连接。
+// 使用当前后端配套的客机脚本建立 Linux 剪贴板连接。
 // 将脚本压缩为单个参数，避免完整脚本经过两层转义后超出 Windows 进程命令行上限。
 var linuxClipboardCommand = sync.OnceValues(func() (string, error) {
 	var compressed bytes.Buffer
 	writer := zlib.NewWriter(&compressed)
-	if _, err := io.WriteString(writer, cage.SharedClipboardHelper); err != nil {
+	if _, err := io.WriteString(writer, eden.SharedClipboardHelper); err != nil {
 		return "", err
 	}
 	if err := writer.Close(); err != nil {
 		return "", err
 	}
 	// 移除载荷参数后，辅助脚本仍收到原有操作参数，stdin 也仍用于剪贴板协议。
-	const bootstrap = `import base64,sys,zlib; exec(compile(zlib.decompress(base64.b64decode(sys.argv.pop(1))), '<cage-shared-clipboard>', 'exec'))`
+	const bootstrap = `import base64,sys,zlib; exec(compile(zlib.decompress(base64.b64decode(sys.argv.pop(1))), '<workbench-shared-clipboard>', 'exec'))`
 	return "exec sudo -n /usr/bin/python3 -c " + shellescape.Quote(bootstrap) + " " +
 		base64.StdEncoding.EncodeToString(compressed.Bytes()), nil
 })
@@ -67,40 +66,6 @@ type clipboardHello struct {
 // The profile chooses the transport. A guest file selection can never choose
 // an executable, account, remote command or host path.
 func (s *Server) clipboardCommand(ctx context.Context, operation string, selection clipboardFileSelection) (*exec.Cmd, string, error) {
-	win, err := guestos.LoadWindowsProfile(s.profile)
-	if err != nil {
-		return nil, "", err
-	}
-	if win != nil {
-		if s.macosGuest != nil {
-			return nil, "", errors.New("客机绑定冲突")
-		}
-		args := []string{}
-		if operation == "export" {
-			args = append(args, "--paths-stdin")
-		}
-		cmd, err := guestos.WindowsRelayCommand(ctx, s.profile, operation, args...)
-		if err == nil && operation == "export" {
-			data, _ := json.Marshal(selection.Paths)
-			cmd.Stdin = bytes.NewReader(data)
-		}
-		return cmd, "guest", err
-	}
-	if s.macosGuest != nil {
-		if operation != "stream" && operation != "import" && operation != "export" && operation != "upload" && operation != "request" {
-			return nil, "", errors.New("剪贴板操作无效")
-		}
-		if operation == "export" && selection.User != "guest" {
-			return nil, "", errors.New("剪贴板文件来源无效")
-		}
-		command := "exec '/Applications/Cage Guest Clipboard.app/Contents/MacOS/CageGuestClipboard' --client " + operation
-		cmd := s.sshCommand(ctx, "-T", s.sshTarget(), "--", command)
-		if operation == "export" {
-			data, _ := json.Marshal(selection.Paths)
-			cmd.Stdin = bytes.NewReader(data)
-		}
-		return cmd, "guest", nil
-	}
 	command, err := linuxClipboardCommand()
 	if err != nil {
 		return nil, "", err
@@ -113,7 +78,7 @@ func (s *Server) clipboardCommand(ctx context.Context, operation string, selecti
 		s.mu.Unlock()
 		command += " --import --session " + shellescape.Quote(session)
 	case "export":
-		if selection.User != "cage" && selection.User != "cage-browser" {
+		if selection.User != "developer" && selection.User != "browser" {
 			return nil, "", errors.New("剪贴板文件来源无效")
 		}
 		command += " --export-user " + selection.User + " --paths-stdin"
@@ -125,7 +90,7 @@ func (s *Server) clipboardCommand(ctx context.Context, operation string, selecti
 		data, _ := json.Marshal(selection.Paths)
 		cmd.Stdin = bytes.NewReader(data)
 	}
-	return cmd, "cage", nil
+	return cmd, "developer", nil
 }
 
 type clipboardFileSelection struct {
@@ -309,9 +274,6 @@ func (s *Server) sharedClipboard(w http.ResponseWriter, r *http.Request) {
 				expectedOS := "linux"
 				if source == "guest" {
 					expectedOS = "windows"
-					if s.macosGuest != nil {
-						expectedOS = "darwin"
-					}
 				}
 				if hello.Version != 1 || hello.OS != expectedOS || len(hello.Session) == 0 || len(hello.Session) > 256 {
 					return
@@ -336,7 +298,7 @@ func (s *Server) sharedClipboard(w http.ResponseWriter, r *http.Request) {
 				if json.Unmarshal(payload.Files, &paths) != nil || len(paths) == 0 || len(paths) > 100 {
 					return
 				}
-				if payload.Source != source && !(source == "cage" && payload.Source == "cage-browser") {
+				if payload.Source != source && !(source == "developer" && payload.Source == "browser") {
 					return
 				}
 				payload.Files, _ = json.Marshal(s.registerClipboardFiles(paths, payload.Source))
@@ -415,7 +377,7 @@ func (s *Server) clipboardArchive(w http.ResponseWriter, r *http.Request) {
 		}
 		defer out.Close()
 		w.Header().Set("Content-Type", "application/x-tar")
-		w.Header().Set("Trailer", "X-Cage-Clipboard-Status")
+		w.Header().Set("Trailer", "X-Eden-Clipboard-Status")
 		_, copied := io.Copy(w, out)
 		if copied != nil {
 			cancel()
@@ -425,7 +387,7 @@ func (s *Server) clipboardArchive(w http.ResponseWriter, r *http.Request) {
 		if copied == nil && finished == nil {
 			status = "ok"
 		}
-		w.Header().Set("X-Cage-Clipboard-Status", status)
+		w.Header().Set("X-Eden-Clipboard-Status", status)
 		return
 	}
 	cmd, source, err := s.clipboardCommand(ctx, "import", clipboardFileSelection{})
@@ -452,58 +414,6 @@ func (s *Server) clipboardArchive(w http.ResponseWriter, r *http.Request) {
 	jsonReply(w, map[string]string{"files": s.registerClipboardFiles(result.Paths, source)})
 }
 
-// clipboardCopy reads only the new text produced by an explicit web copy.
-// The UI sends the keys on its existing window input queue between both phases.
-func (s *Server) clipboardCopy(w http.ResponseWriter, r *http.Request) {
-	if s.macosGuest == nil {
-		http.NotFound(w, r)
-		return
-	}
-	var request struct {
-		Phase    string `json:"phase"`
-		Session  string `json:"session"`
-		Revision *int   `json:"revision"`
-	}
-	if !readJSON(w, r, &request) {
-		return
-	}
-	if request.Phase != "prepare" && request.Phase != "read" ||
-		request.Phase == "read" && (request.Revision == nil || *request.Revision < 0 || len(request.Session) == 0 || len(request.Session) > 256) {
-		http.Error(w, "剪贴板复制请求无效", http.StatusBadRequest)
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
-	defer cancel()
-	cmd, _, err := s.clipboardCommand(ctx, "request", clipboardFileSelection{})
-	if err != nil {
-		http.Error(w, "无法连接客机剪贴板", http.StatusBadGateway)
-		return
-	}
-	body, _ := json.Marshal(map[string]any{"operation": "copy-" + request.Phase, "revision": request.Revision, "session": request.Session})
-	cmd.Stdin = bytes.NewReader(append(body, '\n'))
-	out, err := cmd.StdoutPipe()
-	if err != nil || cmd.Start() != nil {
-		http.Error(w, "无法连接客机剪贴板", http.StatusBadGateway)
-		return
-	}
-	data, readErr := io.ReadAll(io.LimitReader(out, clipboardWireLimit+1))
-	out.Close()
-	finished := cmd.Wait()
-	var result struct {
-		Text     *string `json:"text,omitempty"`
-		Session  string  `json:"session"`
-		Revision int     `json:"revision"`
-		Error    string  `json:"error,omitempty"`
-	}
-	if readErr != nil || finished != nil || len(data) > clipboardWireLimit || json.Unmarshal(data, &result) != nil || result.Error != "" ||
-		len(result.Session) == 0 || request.Phase == "read" && (result.Text == nil || len(*result.Text) > 2<<20 || result.Session != request.Session || result.Revision == *request.Revision) {
-		http.Error(w, "未收到新的选中文本，请确认客机已解锁并重新复制", http.StatusConflict)
-		return
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	jsonReply(w, result)
-}
-
 func writeClipboardArchive(output io.Writer, paths []string) error {
 	return clipboardfiles.Write(output, paths)
 }
@@ -519,7 +429,7 @@ func receiveClipboardArchive(response *http.Response, cache clipboardfiles.Cache
 	if err == nil {
 		_, err = io.Copy(io.Discard, response.Body)
 	}
-	if err == nil && response.Trailer.Get("X-Cage-Clipboard-Status") != "ok" {
+	if err == nil && response.Trailer.Get("X-Eden-Clipboard-Status") != "ok" {
 		err = errors.New("剪贴板文件传递中断，请重新复制")
 	}
 	if err != nil {

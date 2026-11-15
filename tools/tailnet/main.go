@@ -1,4 +1,4 @@
-// Cage's unprivileged Tailscale node. Run only inside the guest: its normal
+// Workbench's unprivileged Tailscale node. Run only inside the guest: its normal
 // packet path enforces the selected proxy, public UDP denial and network pause.
 package main
 
@@ -13,7 +13,6 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -85,7 +84,7 @@ type node struct {
 
 func dataDir() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "cage-tailnet")
+	return filepath.Join(home, ".config", "workbench-tailnet")
 }
 func newNode(dir string) (*node, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -116,8 +115,10 @@ func (n *node) start() error {
 	if n.server != nil {
 		return nil
 	}
-	hostname, _ := os.Hostname()
-	hostname = "cage-" + strings.TrimPrefix(hostname, "cage-")
+	hostname, err := os.Hostname()
+	if err != nil {
+		return err
+	}
 	s := &tsnet.Server{Dir: n.dir, Hostname: hostname, UserLogf: func(string, ...any) {}}
 	return n.startServer(s)
 }
@@ -245,7 +246,7 @@ func applyStatus(out *state, status *ipnstate.Status) {
 func currentUser() string {
 	u, err := user.Current()
 	if err != nil {
-		return "cage"
+		return "developer"
 	}
 	return filepath.Base(strings.ReplaceAll(u.Username, `\`, "/"))
 }
@@ -415,13 +416,6 @@ func (n *node) sshServer() (*gliderssh.Server, error) {
 	return srv, nil
 }
 func command(ctx context.Context, command string) *exec.Cmd {
-	if runtime.GOOS == "windows" {
-		shell := filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
-		if command == "" {
-			return exec.CommandContext(ctx, shell, "-NoLogo")
-		}
-		return exec.CommandContext(ctx, shell, "-NoLogo", "-NonInteractive", "-Command", command)
-	}
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "/bin/bash"
@@ -442,7 +436,7 @@ func runSession(s gliderssh.Session) {
 func (n *node) writeSSHConfig(peers []peer) error {
 	var b strings.Builder
 	if len(peers) > 0 {
-		b.WriteString("# Managed by Cage Tailscale. Only known tailnet devices use this transport.\nHost")
+		b.WriteString("# Managed by Workbench Tailscale. Only known tailnet devices use this transport.\nHost")
 		for _, p := range peers {
 			b.WriteString(" " + p.IP)
 			if safeHost(p.Name) {
@@ -521,7 +515,7 @@ func main() {
 			os.Exit(2)
 		}
 		if err := dial(os.Args[2], os.Args[3]); err != nil {
-			fmt.Fprintln(os.Stderr, "Cage Tailscale 连接失败，请检查私网连接与目标 SSH 服务")
+			fmt.Fprintln(os.Stderr, "Workbench Tailscale 连接失败，请检查私网连接与目标 SSH 服务")
 			os.Exit(1)
 		}
 		return

@@ -1,18 +1,14 @@
 package workbench
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
-	"time"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
-	"github.com/sylvinus/agent-vm/internal/containerenv"
-	"github.com/sylvinus/agent-vm/internal/guestos"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/managedproxy"
 	"github.com/sylvinus/agent-vm/internal/version"
 )
@@ -37,7 +33,6 @@ func (identity ControllerIdentity) matches(other ControllerIdentity) bool {
 
 type launchResponse struct {
 	ConfigPath     string             `json:"config_path,omitempty"`
-	ClientOnly     bool               `json:"client_only,omitempty"`
 	DesktopGateway bool               `json:"desktop_gateway,omitempty"`
 	URL            string             `json:"url"`
 	Controller     ControllerIdentity `json:"controller"`
@@ -82,12 +77,11 @@ func (s *Server) handoffWithVMOwnerLocked(w http.ResponseWriter, permittedOwner 
 	if s.closing {
 		s.mu.Unlock()
 		s.op.Unlock()
-		http.Error(w, "后台正在更新，请重新打开 Cage。", http.StatusServiceUnavailable)
+		http.Error(w, "后台正在更新，请重新打开 Eden。", http.StatusServiceUnavailable)
 		return
 	}
 	busy := s.jobs.snapshot().Running || vmBusy
 	busy = busy || s.terminals.hasLive()
-	busy = busy || len(s.mobileCLI.activeAccounts()) != 0
 	if busy || s.shutdown == nil {
 		s.mu.Unlock()
 		s.op.Unlock()
@@ -127,44 +121,8 @@ func controllerVMState(profile string) (bool, error) {
 	return len(owners) != 0, err
 }
 
-// A bound Windows guest is probed through the Hyper-V host manager. A cold
-// Windows PowerShell start alone can take most of this budget.
-const windowsVMProbeTimeout = 15 * time.Second
-
 func controllerVMOwners(profile string) ([]string, error) {
-	binding, err := guestos.LoadWindowsProfile(profile)
-	if err != nil {
-		return nil, err
-	}
-	if binding != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), windowsVMProbeTimeout)
-		defer cancel()
-		state, err := guestos.WindowsVMResources(ctx, profile, 0, 0)
-		if err != nil {
-			return nil, err
-		}
-		if state.State == "" {
-			return nil, errors.New("无法确认已绑定 Windows 客机的运行状态，现有环境保持不变")
-		}
-		if state.State == "Off" || state.State == "Saved" {
-			return nil, nil
-		}
-		return []string{fmt.Sprintf("windows/%s/%s", binding.VMID, state.State)}, nil
-	}
-	if containerenv.Configured(profile) {
-		environment, err := containerenv.Load(profile)
-		if err != nil {
-			return nil, err
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		state, err := environment.State(ctx)
-		if err != nil || !state.Running {
-			return nil, err
-		}
-		return []string{fmt.Sprintf("%s/%d", state.ContainerID, state.PID)}, nil
-	}
-	records, err := filepath.Glob(filepath.Join(profile, "state", "lima", "*", "cage-running.json"))
+	records, err := filepath.Glob(filepath.Join(profile, "state", "lima", "*", "eden-running.json"))
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +139,7 @@ func controllerVMOwners(profile string) ([]string, error) {
 		if json.Unmarshal(b, &record) != nil || record.PID <= 0 {
 			return nil, errors.New("环境进程记录无效")
 		}
-		if processExists(record.PID) && cage.ProcessStartMatches(record.PID, record.Started) {
+		if processExists(record.PID) && eden.ProcessStartMatches(record.PID, record.Started) {
 			owners = append(owners, fmt.Sprintf("%s/%d", filepath.Base(filepath.Dir(path)), record.PID))
 		}
 	}

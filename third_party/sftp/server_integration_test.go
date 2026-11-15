@@ -638,7 +638,7 @@ func TestServerMkdirRmdir(t *testing.T) {
 	shutdown, hostGo, portGo := testServer(t, GolangSFTP, READONLY)
 	defer shutdown()
 
-	tmpDir := "/tmp/" + randName()
+	tmpDir := filepath.Join(t.TempDir(), randName())
 	defer os.RemoveAll(tmpDir)
 
 	// mkdir remote
@@ -668,13 +668,13 @@ func TestServerLink(t *testing.T) {
 
 	tmpFileLocalData := randData(999)
 
-	linkdest := "/tmp/" + randName()
+	linkdest := filepath.Join(t.TempDir(), randName())
 	defer os.RemoveAll(linkdest)
 	if err := ioutil.WriteFile(linkdest, tmpFileLocalData, 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	link := "/tmp/" + randName()
+	link := filepath.Join(t.TempDir(), randName())
 	defer os.RemoveAll(link)
 
 	// now create a hard link within the new directory
@@ -695,7 +695,7 @@ func TestServerSymlink(t *testing.T) {
 	shutdown, hostGo, portGo := testServer(t, GolangSFTP, READONLY)
 	defer shutdown()
 
-	link := "/tmp/" + randName()
+	link := filepath.Join(t.TempDir(), randName())
 	defer os.RemoveAll(link)
 
 	// now create a symbolic link within the new directory
@@ -715,8 +715,8 @@ func TestServerPut(t *testing.T) {
 	shutdown, hostGo, portGo := testServer(t, GolangSFTP, READONLY)
 	defer shutdown()
 
-	tmpFileLocal := "/tmp/" + randName()
-	tmpFileRemote := "/tmp/" + randName()
+	tmpFileLocal := filepath.Join(t.TempDir(), randName())
+	tmpFileRemote := filepath.Join(t.TempDir(), randName())
 	defer os.RemoveAll(tmpFileLocal)
 	defer os.RemoveAll(tmpFileRemote)
 
@@ -745,8 +745,8 @@ func TestServerResume(t *testing.T) {
 	shutdown, hostGo, portGo := testServer(t, GolangSFTP, READONLY)
 	defer shutdown()
 
-	tmpFileLocal := "/tmp/" + randName()
-	tmpFileRemote := "/tmp/" + randName()
+	tmpFileLocal := filepath.Join(t.TempDir(), randName())
+	tmpFileRemote := filepath.Join(t.TempDir(), randName())
 	defer os.RemoveAll(tmpFileLocal)
 	defer os.RemoveAll(tmpFileRemote)
 
@@ -792,8 +792,8 @@ func TestServerGet(t *testing.T) {
 	shutdown, hostGo, portGo := testServer(t, GolangSFTP, READONLY)
 	defer shutdown()
 
-	tmpFileLocal := "/tmp/" + randName()
-	tmpFileRemote := "/tmp/" + randName()
+	tmpFileLocal := filepath.Join(t.TempDir(), randName())
+	tmpFileRemote := filepath.Join(t.TempDir(), randName())
 	defer os.RemoveAll(tmpFileLocal)
 	defer os.RemoveAll(tmpFileRemote)
 
@@ -892,7 +892,7 @@ func TestServerPutRecursive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tmpDirRemote := "/tmp/" + randName()
+	tmpDirRemote := filepath.Join(t.TempDir(), randName())
 	defer os.RemoveAll(tmpDirRemote)
 
 	t.Logf("put recursive: local %v remote %v", dirLocal, tmpDirRemote)
@@ -919,7 +919,7 @@ func TestServerGetRecursive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tmpDirLocal := "/tmp/" + randName()
+	tmpDirLocal := filepath.Join(t.TempDir(), randName())
 	defer os.RemoveAll(tmpDirLocal)
 
 	t.Logf("get recursive: local %v remote %v", tmpDirLocal, dirRemote)

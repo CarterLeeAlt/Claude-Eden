@@ -1,14 +1,14 @@
 package workbench
 
 import (
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/managedproxy"
 )
 
 // config.json owns the active policy; the node manager stores inactive policies
 // for restoration on selection. Always snapshot the latest active settings.
-func selectProxyExitPolicy(next *managedproxy.Store, previous managedproxy.Store, active cage.ExitPolicy, explicit bool) cage.ExitPolicy {
-	policies := make(map[string]cage.ExitPolicy, len(next.ExitPolicies)+1)
+func selectProxyExitPolicy(next *managedproxy.Store, previous managedproxy.Store, active eden.ExitPolicy, explicit bool) eden.ExitPolicy {
+	policies := make(map[string]eden.ExitPolicy, len(next.ExitPolicies)+1)
 	for id, policy := range next.ExitPolicies {
 		policies[id] = policy
 	}
@@ -27,7 +27,7 @@ func selectProxyExitPolicy(next *managedproxy.Store, previous managedproxy.Store
 	if !exists {
 		// Legacy global anchors cannot be assigned to a node whose identity was
 		// never recorded. Keep the selected mode and scope for its first binding.
-		policy = cage.ExitPolicy{Mode: active.Mode, Scope: active.Scope}.Normalized()
+		policy = eden.ExitPolicy{Mode: active.Mode, Scope: active.Scope}.Normalized()
 	}
 	policies[next.Selected] = policy
 	return policy
@@ -35,7 +35,7 @@ func selectProxyExitPolicy(next *managedproxy.Store, previous managedproxy.Store
 
 // Save a user-confirmed or first-use binding with the applied final exit. If the
 // node store cannot be saved, restore the active configuration as well.
-func (s *Server) saveExitPolicyConfig(cfg cage.Config) error {
+func (s *Server) saveExitPolicyConfig(cfg eden.Config) error {
 	old, err := loadConfig(s.configPath)
 	if err != nil {
 		return err
@@ -45,7 +45,7 @@ func (s *Server) saveExitPolicyConfig(cfg cage.Config) error {
 		return err
 	}
 	if p.ExitPolicies == nil {
-		p.ExitPolicies = map[string]cage.ExitPolicy{}
+		p.ExitPolicies = map[string]eden.ExitPolicy{}
 	}
 	p.ExitPolicies[p.Selected] = cfg.ExitPolicy
 	if err := writePrivate(s.configPath, cfg); err != nil {

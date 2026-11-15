@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/sylvinus/agent-vm/internal/cage"
+	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/managedproxy"
 )
 
@@ -22,7 +22,7 @@ func TestProxySelectionKeepsExitBindingsWithTheirNodes(t *testing.T) {
 	}
 	cfg, _ := loadConfig(s.configPath)
 	// A legacy global anchor has no proven relationship to the selected node.
-	cfg.ExitPolicy = cage.ExitPolicy{Mode: "static", Scope: "country", IP: "8.8.8.8"}
+	cfg.ExitPolicy = eden.ExitPolicy{Mode: "static", Scope: "country", IP: "8.8.8.8"}
 	if err := writePrivate(s.configPath, cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestProxySelectionKeepsExitBindingsWithTheirNodes(t *testing.T) {
 		}
 		return nil
 	}
-	selectNode := func(id string) cage.Config {
+	selectNode := func(id string) eden.Config {
 		t.Helper()
 		if err := s.changeProxy("select", proxyInput{NodeID: id}, nil); err != nil {
 			t.Fatal(err)
@@ -50,7 +50,7 @@ func TestProxySelectionKeepsExitBindingsWithTheirNodes(t *testing.T) {
 	bind := func(ip string) {
 		t.Helper()
 		c, _ := loadConfig(s.configPath)
-		c.ExitPolicy = c.ExitPolicy.BindMissing(cage.ExitLocation{IP: ip, CountryCode: "US"})
+		c.ExitPolicy = c.ExitPolicy.BindMissing(eden.ExitLocation{IP: ip, CountryCode: "US"})
 		if err := s.saveExitPolicyConfig(c); err != nil {
 			t.Fatal(err)
 		}
@@ -93,9 +93,9 @@ func TestProxySelectionKeepsExitBindingsWithTheirNodes(t *testing.T) {
 	if got := selectNode(second); got.ExitPolicy.IP != "8.8.4.4" {
 		t.Fatalf("second binding was lost: %+v", got.ExitPolicy)
 	}
-	loc := cage.ExitLocation{IP: "9.9.9.9", CountryCode: "US"}
+	loc := eden.ExitLocation{IP: "9.9.9.9", CountryCode: "US"}
 	cfg, _ = loadConfig(s.configPath)
-	if state, _ := cfg.ExitPolicy.Evaluate(loc.IP, &loc); state != cage.CheckFailed {
+	if state, _ := cfg.ExitPolicy.Evaluate(loc.IP, &loc); state != eden.CheckFailed {
 		t.Fatal("same-node IP drift was accepted")
 	}
 	cfg.ExitPolicy.IP = "9.9.9.9"
