@@ -174,7 +174,7 @@ func TestBidirectionalSSHAndPersistentIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hostSSH := &gliderssh.Server{PublicKeyHandler: func(_ gliderssh.Context, k gliderssh.PublicKey) bool {
+	hostSSH := &gliderssh.Server{HostSigners: []gliderssh.Signer{signer}, PublicKeyHandler: func(_ gliderssh.Context, k gliderssh.PublicKey) bool {
 		return gliderssh.KeysEqual(k, signer.PublicKey())
 	}, Handler: func(s gliderssh.Session) { _, _ = io.WriteString(s, "host-outbound-ok"); _ = s.Exit(0) }}
 	go func() { _ = hostSSH.Serve(hostListener) }()

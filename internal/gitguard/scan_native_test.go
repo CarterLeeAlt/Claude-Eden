@@ -148,7 +148,7 @@ func TestScanHookHardLink(t *testing.T) {
 	b.write(b.proj+"/.git/hooks/post-commit", "#!/bin/sh\n")
 	b.write(b.proj+"/scripts/sample", "#!/bin/sh\n")
 	b.write(b.proj+"/scripts/hidden", "#!/bin/sh\n")
-	for hook, file := range map[string]string{"pre-commit": "pre-commit", "pre-push.sample": "sample", ".dot": "hidden"} {
+	for hook, file := range map[string]string{"pre-commit": "pre-commit", "hardlink-fixture.sample": "sample", ".dot": "hidden"} {
 		if err := os.Link(b.proj+"/scripts/"+file, b.proj+"/.git/hooks/"+hook); err != nil {
 			t.Skip("no hard links here:", err)
 		}

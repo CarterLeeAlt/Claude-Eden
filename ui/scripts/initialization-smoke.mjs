@@ -117,6 +117,76 @@ for (const system of ["debian-13"]) {
 }
 
 {
+  let stops = 0, starts = 0;
+  const stoppedMessage = "安装已停止，可继续安装";
+  const f = await createWorkbench({ initialization: { required: true, tracked: true, started: true, prepared: true }, waitForReady: false, beforeNavigate: async (page, state) => {
+    state.status.job = { id: "install-before-stop", kind: "guest-install", running: true, setup_progress: { system: "debian-13", phase: "tools", label: "正在安装开发工具" } };
+    await page.route("**/api/stop", route => {
+      stops++;
+      state.status.job = { id: "stop-install", kind: "stop", running: true, message: "正在停止环境" };
+      return route.fulfill({ json: state.status.job });
+    });
+    await page.route("**/api/start", route => {
+      starts++;
+      assert.deepEqual(route.request().postDataJSON(), { guest_system: "debian-13" });
+      state.status.job = { id: "install-resumed", kind: "guest-install", running: true, setup_progress: { system: "debian-13", phase: "tools", label: "正在继续安装开发工具" } };
+      return route.fulfill({ json: state.status.job });
+    });
+  } });
+  try {
+    const { page, state } = f;
+    const progress = page.getByRole("region", { name: "环境安装进度" });
+    const stopped = page.getByText(stoppedMessage, { exact: true });
+    await progress.getByRole("button", { name: "停止安装", exact: true }).click();
+    const confirm = page.getByRole("dialog", { name: "停止当前安装？", exact: true });
+    await confirm.getByText("安装进度、已下载文件和虚拟磁盘会保留。你可以在此界面继续安装。", { exact: true }).waitFor();
+    await confirm.getByRole("button", { name: "取消", exact: true }).click();
+    assert.equal(stops, 0, "canceling the confirmation must not stop installation");
+    await progress.getByRole("progressbar").waitFor();
+    await progress.getByRole("button", { name: "停止安装", exact: true }).click();
+    await confirm.getByRole("button", { name: "停止安装", exact: true }).click();
+    await page.getByText("正在停止环境", { exact: true }).waitFor();
+    assert.equal(stops, 1);
+    assert.equal(await stopped.count(), 0, "a running stop was reported as completed");
+    const completed = { id: "stop-install", kind: "stop", running: false, message: "已完成" };
+    for (const test of [
+      { job: { ...completed, error: "停止环境失败：测试进程仍在退出", message: "停止环境失败" }, message: "停止环境失败" },
+      { job: { ...completed, canceled: true, message: "已取消" }, message: "已取消" },
+      { job: { ...completed, kind: "start" }, message: "已完成" },
+      { job: completed, ready: true, message: "已完成" },
+    ]) {
+      Object.assign(state.status, { job: test.job, ready: test.ready || false, vm_running: false });
+      await page.locator(".initialization-operation > p").filter({ hasText: new RegExp("^" + test.message + "$") }).waitFor();
+      if (test.ready) await page.getByRole("button", { name: "重新启动并检查", exact: true }).waitFor();
+      assert.equal(await stopped.count(), 0, "unrelated job state was relabeled as a stopped installation");
+      if (test.job.error) await page.getByRole("alert").filter({ hasText: test.job.error }).waitFor();
+    }
+    Object.assign(state.status, { ready: true, vm_running: true, job: completed, safety: { gate: { mode: "open", until: new Date(Date.now() + 3600000).toISOString() } } });
+    await page.getByRole("button", { name: "进入工作台", exact: true }).waitFor();
+    assert.equal(await stopped.count(), 0, "a ready environment was relabeled as unfinished");
+    Object.assign(state.status, { ready: false, vm_running: false, job: { ...completed, canceled: false, error: "" } });
+    await stopped.waitFor();
+    assert.equal(await page.locator(".initialization-operation > p").textContent(), stoppedMessage);
+    assert.equal(await page.getByRole("button", { name: "继续安装", exact: true }).isEnabled(), true);
+    assert.equal(await page.getByText("已完成", { exact: true }).count(), 0);
+    if (evidence) await page.screenshot({ path: `${evidence}/debian-13-stopped.png`, fullPage: true });
+    await page.setViewportSize({ width: 600, height: 650 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    if (evidence) await page.screenshot({ path: `${evidence}/debian-13-stopped-compact.png`, fullPage: true });
+    state.status.job = { id: "stop-install", kind: "stop", message: "" };
+    await page.reload();
+    await stopped.waitFor();
+    assert.equal(stops, 1, "reload must not repeat stop");
+    await page.getByRole("button", { name: "继续安装", exact: true }).click();
+    await progress.getByRole("heading", { name: "正在继续安装开发工具", exact: true }).waitFor();
+    assert.equal(starts, 1);
+    assert.equal(await stopped.count(), 0, "resuming retained the stopped result");
+    assert.deepEqual(f.errors, []);
+    console.log("PASS installation stop: cancel/confirm, stopping/failure/canceled/ready/non-stop semantics, success text, compact layout, reload and resume");
+  } finally { await f.browser.close(); }
+}
+
+{
   let location = { directory: "/preview/default-state", has_environment: false }, writes = 0, fail = true;
   const f = await createWorkbench({ initialization: { required: true, tracked: true }, beforeNavigate: async (page, state) => {
     state.status.local_vm_storage = true;
