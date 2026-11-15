@@ -18,25 +18,17 @@ async function releaseNames() {
   const version = (await readFile(new URL('../VERSION', import.meta.url), 'utf8')).trim();
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error('Invalid repository VERSION');
   const dependencies = JSON.parse(await readFile(new URL('../packaging/windows/dependencies.json', import.meta.url), 'utf8'));
-  const linuxDependencies = JSON.parse(await readFile(new URL('../packaging/linux/dependencies.json', import.meta.url), 'utf8'));
-  const macCoreScript = await readFile(new URL('./fetch-proxy-core.sh', import.meta.url), 'utf8');
-  const macCore = macCoreScript.match(/^version=(v[\d.]+)$/m)?.[1];
-  if (!macCore || !/^v[\d.]+$/.test(dependencies.mihomo.version) || !/^[\d.]+$/.test(dependencies.qemu.version)) {
+  if (!/^v[\d.]+$/.test(dependencies.mihomo.version) || !/^[\d.]+$/.test(dependencies.qemu.version)) {
     throw new Error('Cannot identify the pinned release dependencies');
   }
   return {
     version,
-    mac: `Cage-${version}-macos-arm64.dmg`,
-    windows: `Cage-${version}-windows-amd64-setup.exe`,
-    linux: `Cage-${version}-linux-amd64.deb`,
-    linuxSource: linuxDependencies.mihomoSource.file,
-    macSource: `mihomo-${macCore}-source.tar.gz`,
-    macGuestSource: `cage-macos-guest-${version}-source.tar.gz`,
+    windows: `Eden-${version}-windows-amd64-setup.exe`,
     windowsSource: `mihomo-${dependencies.mihomo.version}-source.tar.gz`,
     qemuPrefix: `qemu-${dependencies.qemu.version}-windows-full-source.`,
     qemuSource: `${dependencies.qemuSource.file}.gz`,
     qemuKeymap: `qemu-keycodemapdb-${dependencies.qemuKeycodemap.version}-source.tar.gz`,
-    qemuChanges: `qemu-${dependencies.qemu.version}-cage-changes-source.tar.gz`,
+    qemuChanges: `qemu-${dependencies.qemu.version}-eden-changes-source.tar.gz`,
   };
 }
 
@@ -107,23 +99,18 @@ export async function prepareReleaseAssets({ inputs, output }) {
     const info = await lstat(directory);
     if (!info.isDirectory() || info.isSymbolicLink()) throw new Error(`Expected a platform release directory: ${directory}`);
     const files = await readdir(directory);
-    if (files.some(name => /^Cage-.*-windows-.*-unsigned\.exe$/i.test(name) || name === 'DEVELOPMENT-BUILD.txt')) {
+    if (files.some(name => /^Eden-.*-windows-.*-unsigned\.exe$/i.test(name) || name === 'DEVELOPMENT-BUILD.txt')) {
       throw new Error(`Unsigned Windows development build cannot be prepared for release: ${directory}`);
     }
     const entries = await readManifest(directory);
-    const mac = entries.has(names.mac);
     const windows = entries.has(names.windows);
-    const linux = entries.has(names.linux);
-    if (!mac && !windows && !linux) throw new Error(`No supported package name for VERSION ${names.version}: ${directory}`);
-    if (linux && !entries.has(names.linuxSource)) throw new Error(`Missing Linux Mihomo source in SHA256SUMS: ${directory}`);
-    if (mac && !entries.has(names.macSource)) throw new Error(`Missing macOS Mihomo source in SHA256SUMS: ${directory}`);
-    if (mac && !entries.has(names.macGuestSource)) throw new Error(`Missing macOS guest corresponding source in SHA256SUMS: ${directory}`);
-    if (windows && (!entries.has(names.windowsSource) || ![...entries.keys()].some(name => isQemuArchive(name, names)))) {
+    if (!windows) throw new Error(`No supported package name for VERSION ${names.version}: ${directory}`);
+    if (!entries.has(names.windowsSource) || ![...entries.keys()].some(name => isQemuArchive(name, names))) {
       throw new Error(`Windows release requires its Mihomo and complete QEMU source archives in the same SHA256SUMS: ${directory}`);
     }
     for (const [name, digest] of entries) {
-      const installer = name === names.mac || name === names.windows || name === names.linux;
-      if (!installer && ![names.macSource, names.macGuestSource, names.windowsSource, names.linuxSource, names.qemuSource, names.qemuKeymap, names.qemuChanges].includes(name) && !isQemuArchive(name, names)) {
+      const installer = name === names.windows;
+      if (!installer && ![names.windowsSource, names.qemuSource, names.qemuKeymap, names.qemuChanges].includes(name) && !isQemuArchive(name, names)) {
         throw new Error(`Unsupported asset or version in SHA256SUMS: ${name}`);
       }
       const existing = all.get(name);
@@ -133,7 +120,7 @@ export async function prepareReleaseAssets({ inputs, output }) {
     }
   }
 
-  const staging = await mkdtemp(join(tmpdir(), 'cage-release-assets-'));
+  const staging = await mkdtemp(join(tmpdir(), 'eden-release-assets-'));
   const created = [];
   let ownsTarget = false;
   try {
@@ -172,11 +159,11 @@ async function main() {
     output: { type: 'string' }, help: { type: 'boolean', short: 'h' },
   } });
   if (values.help) {
-    console.log('Usage: node scripts/prepare-release-assets.mjs --output NEW_DIRECTORY PLATFORM_DIRECTORY [...]\nAccepts macOS, Windows and Linux release outputs with SHA256SUMS. Checks current VERSION, source archives and hashes; macOS/Windows signature verification belongs to their packagers. Linux packages use manual system installation. Never uploads or overwrites an existing output directory.');
+    console.log('Usage: node scripts/prepare-release-assets.mjs --output NEW_DIRECTORY PLATFORM_DIRECTORY [...]\nAccepts Windows release outputs with SHA256SUMS. Checks current VERSION, source archives and hashes; signature verification belongs to the Windows packager. Never uploads or overwrites an existing output directory.');
     return;
   }
   const result = await prepareReleaseAssets({ inputs: positionals, output: values.output });
-  console.log(`Prepared Cage ${result.version}: ${result.assets.length} verified assets and one SHA256SUMS in ${result.directory}`);
+  console.log(`Prepared Claude Eden ${result.version}: ${result.assets.length} verified assets and one SHA256SUMS in ${result.directory}`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

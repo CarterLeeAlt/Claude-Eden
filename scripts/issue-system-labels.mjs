@@ -2,7 +2,6 @@ import fs from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 const systems = [
-  ['macOS', /mac\s*os|macbook|\bmac\b|os\s*x/i],
   ['Windows', /windows|\bwin\s?1[01]\b/i],
   ['Linux', /linux|ubuntu|debian|fedora|centos|deepin/i],
 ];

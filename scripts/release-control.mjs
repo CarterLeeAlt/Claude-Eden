@@ -12,15 +12,15 @@ import { prepareReleaseAssets } from './prepare-release-assets.mjs';
 export const versionPaths = ['VERSION', 'ui/package.json', 'ui/package-lock.json', 'www/package.json', 'www/package-lock.json'];
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 const shaPattern = /^[0-9a-f]{40}$/;
-const platforms = ['macos', 'windows', 'linux'];
+const platforms = ['windows'];
 
 function checkContext(context) {
-  if (context.repository !== 'Lee-xeo/Claude-Cage' || !shaPattern.test(context.sourceSha) || !/^\d+$/.test(context.runId) || context.defaultBranch !== 'main') {
+  if (context.repository !== 'CarterLeeAlt/Claude-Eden' || !shaPattern.test(context.sourceSha) || !/^\d+$/.test(context.runId) || context.defaultBranch !== 'main') {
     throw new Error('Invalid release repository, source commit, run ID or default branch.');
   }
 }
-const marker = context => `<!-- cage-release-run:${context.runId}; commit:${context.commitSha} -->`;
-const message = (version, runId) => `chore(release): v${version}\n\nCage-Release-Run: ${runId}`;
+const marker = context => `<!-- eden-release-run:${context.runId}; commit:${context.commitSha} -->`;
+const message = (version, runId) => `chore(release): v${version}\n\nEden-Release-Run: ${runId}`;
 const branch = runId => `codex/release/${runId}`;
 const apiRoot = context => `/repos/${context.repository}`;
 async function optional(api, path) {
@@ -58,7 +58,7 @@ export async function releaseNotes(root, context) {
 // publish is checking out the candidate. This catches unrelated file edits.
 export async function expectedFiles(root, sourceSha, version) {
   if (!shaPattern.test(sourceSha)) throw new Error('Invalid source commit.');
-  const fixture = await mkdtemp(join(tmpdir(), 'cage-release-version-'));
+  const fixture = await mkdtemp(join(tmpdir(), 'eden-release-version-'));
   try {
     for (const path of versionPaths) {
       const content = execFileSync('git', ['show', `${sourceSha}:${path}`], { cwd: root, maxBuffer: 20 << 20 });
@@ -100,7 +100,7 @@ export async function prepareRelease({ api, root, ...context }) {
   const existing = await optional(api, `${base}/git/ref/heads/${branch(context.runId)}`);
   if (existing) {
     const commit = await api('GET', `${base}/git/commits/${existing.object.sha}`);
-    const version = /^chore\(release\): v([^\n]+)\n\nCage-Release-Run: \d+$/.exec(commit.message)?.[1];
+    const version = /^chore\(release\): v([^\n]+)\n\nEden-Release-Run: \d+$/.exec(commit.message)?.[1];
     parseVersion(version);
     if (context.requestedVersion && context.requestedVersion !== version) throw new Error('Existing candidate uses another requested version.');
     if (main.object.sha !== context.sourceSha && main.object.sha !== existing.object.sha) throw new Error('Main advanced; start a new explicitly requested release.');
@@ -154,8 +154,8 @@ export async function assembleRelease({ directory, output, version, commitSha, a
     }
   }
   const result = await assemble({ inputs: platforms.map(platform => join(directory, platform)), output });
-  const required = [`Cage-${version}-macos-arm64.dmg`, `Cage-${version}-windows-amd64-setup.exe`, `Cage-${version}-linux-amd64.deb`];
-  if (result.version !== version || required.some(name => !result.assets.includes(name))) throw new Error('All three verified platform installers are required.');
+  const required = `Eden-${version}-windows-amd64-setup.exe`;
+  if (result.version !== version || !result.assets.includes(required)) throw new Error('The verified Windows installer is required.');
   return result;
 }
 
@@ -218,8 +218,8 @@ export async function publishRelease({ api, upload, promote, root, files, ...con
     const notes = customNotes ? { body: customNotes } : await api('POST', `${base}/releases/generate-notes`, { tag_name: `v${context.version}`, target_commitish: context.commitSha });
     release = await api('POST', `${base}/releases`, {
       tag_name: `v${context.version}`, target_commitish: context.commitSha,
-      name: `Cage ${context.version}`, draft: true, prerelease: context.version.includes('-'),
-      body: `${marker(context)}\n\n${notes.body || ''}${customNotes ? '' : `\n\nThree platform builds, package verification and automated checks completed for ${context.commitSha}. Hardware virtualization and real Claude account acceptance are separate checks; see the platform guides.`}`,
+      name: `Claude Eden ${context.version}`, draft: true, prerelease: context.version.includes('-'),
+      body: `${marker(context)}\n\n${notes.body || ''}${customNotes ? '' : `\n\nWindows desktop packaging and Linux cloud server checks completed for ${context.commitSha}. The Windows application includes the Linux cloud deployment kit. Hardware virtualization and real Claude account acceptance are separate checks; see the platform guides.`}`,
     });
   }
   const assets = await api('GET', `${base}/releases/${release.id}/assets?per_page=100`);

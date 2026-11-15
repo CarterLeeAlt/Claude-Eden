@@ -10,17 +10,15 @@ import {
   verifyCandidate, versionPaths, workflowContext, releaseNotes,
 } from './release-control.mjs';
 
-const repository = 'Lee-xeo/Claude-Cage';
+const repository = 'CarterLeeAlt/Claude-Eden';
 const base = `/repos/${repository}`;
 const currentVersion = (await readFile(new URL('../VERSION', import.meta.url), 'utf8')).trim();
 const windowsDependencies = JSON.parse(await readFile(new URL('../packaging/windows/dependencies.json', import.meta.url), 'utf8'));
-const linuxDependencies = JSON.parse(await readFile(new URL('../packaging/linux/dependencies.json', import.meta.url), 'utf8'));
-const macCoreVersion = (await readFile(new URL('./fetch-proxy-core.sh', import.meta.url), 'utf8')).match(/^version=(v[\d.]+)$/m)[1];
 const digest = value => createHash('sha256').update(value).digest('hex');
 const copy = value => structuredClone(value);
 
 async function temporary(t) {
-  const root = await mkdtemp(join(tmpdir(), 'cage-release-control-'));
+  const root = await mkdtemp(join(tmpdir(), 'eden-release-control-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   return root;
 }
@@ -151,7 +149,7 @@ async function repositoryFixture(t) {
 async function uploadFiles(root, version) {
   const directory = join(root, 'publish');
   await mkdir(directory);
-  const names = [`Cage-${version}-macos-arm64.dmg`, `Cage-${version}-windows-amd64-setup.exe`, `Cage-${version}-linux-amd64.deb`];
+  const names = [`Eden-${version}-windows-amd64-setup.exe`, `mihomo-${windowsDependencies.mihomo.version}-source.tar.gz`, `qemu-${windowsDependencies.qemu.version}-windows-full-source.zip`];
   for (const name of names) await writeFile(join(directory, name), `fixture ${name}`);
   await writeFile(join(directory, 'SHA256SUMS'), names.map(name => `${digest(`fixture ${name}`)}  ${name}\n`).join(''));
   return releaseFiles(directory);
@@ -166,7 +164,7 @@ function published(fixture, candidate, files, runId = candidate.runId) {
   fixture.state.main = candidate.commitSha;
   fixture.state.refs.set(`tags/v${candidate.version}`, candidate.commitSha);
   fixture.state.release = { id: 42, tag_name: `v${candidate.version}`, draft: false,
-    body: `<!-- cage-release-run:${runId}; commit:${candidate.commitSha} -->` };
+    body: `<!-- eden-release-run:${runId}; commit:${candidate.commitSha} -->` };
   fixture.state.assets = files.map((file, index) => ({ id: index + 1, name: file.name, state: 'uploaded', size: file.size, digest: file.digest }));
 }
 
@@ -264,9 +262,7 @@ async function artifactFixture(t) {
   const root = await temporary(t);
   const commitSha = 'a'.repeat(40);
   const packages = {
-    macos: { [`Cage-${currentVersion}-macos-arm64.dmg`]: 'mac installer', [`mihomo-${macCoreVersion}-source.tar.gz`]: 'same core source', [`cage-macos-guest-${currentVersion}-source.tar.gz`]: 'mac guest corresponding source' },
-    windows: { [`Cage-${currentVersion}-windows-amd64-setup.exe`]: 'windows installer', [`mihomo-${windowsDependencies.mihomo.version}-source.tar.gz`]: 'same core source', [`qemu-${windowsDependencies.qemu.version}-windows-full-source.zip`]: 'complete qemu source' },
-    linux: { [`Cage-${currentVersion}-linux-amd64.deb`]: 'linux installer', [linuxDependencies.mihomoSource.file]: 'same core source' },
+    windows: { [`Eden-${currentVersion}-windows-amd64-setup.exe`]: 'windows installer', [`mihomo-${windowsDependencies.mihomo.version}-source.tar.gz`]: 'core source', [`qemu-${windowsDependencies.qemu.version}-windows-full-source.zip`]: 'complete qemu source' },
   };
   for (const [platform, entries] of Object.entries(packages)) {
     const directory = join(root, platform);
@@ -278,10 +274,10 @@ async function artifactFixture(t) {
   return { directory: root, output: join(root, 'assembled'), version: currentVersion, commitSha };
 }
 
-test('all three platform identities are required before any assets are assembled', async t => {
+test('Windows build identity is required before any assets are assembled', async t => {
   for (const kind of ['missing metadata', 'different commit', 'different version']) await t.test(kind, async t => {
     const f = await artifactFixture(t);
-    const path = join(f.directory, 'linux', 'build-metadata.json');
+    const path = join(f.directory, 'windows', 'build-metadata.json');
     if (kind === 'missing metadata') await rm(path);
     else {
       const metadata = JSON.parse(await readFile(path, 'utf8'));
@@ -295,18 +291,18 @@ test('all three platform identities are required before any assets are assembled
   });
 });
 
-test('assembly accepts matching platforms but excludes metadata from public assets', async t => {
+test('assembly accepts the matching Windows build but excludes metadata from public assets', async t => {
   const f = await artifactFixture(t);
   const result = await assembleRelease(f);
-  assert.ok(result.assets.includes(`Cage-${currentVersion}-linux-amd64.deb`));
+  assert.ok(result.assets.includes(`Eden-${currentVersion}-windows-amd64-setup.exe`));
   assert.ok(!result.assets.some(name => name.includes('metadata')));
   assert.ok((await releaseFiles(f.output)).length > 3);
 });
 
 test('an installer for an unsupported version cannot enter the public release', async t => {
   const f = await artifactFixture(t);
-  const wrong = 'Cage-99999.0.0-linux-amd64.deb';
-  const path = join(f.directory, 'linux');
+  const wrong = 'Eden-99999.0.0-windows-amd64-setup.exe';
+  const path = join(f.directory, 'windows');
   await writeFile(join(path, wrong), 'wrong version');
   const manifest = await readFile(join(path, 'SHA256SUMS'), 'utf8');
   await writeFile(join(path, 'SHA256SUMS'), manifest + `${digest('wrong version')}  ${wrong}\n`);

@@ -9,21 +9,17 @@ import { checksumFor } from '../www/scripts/sync-release.mjs';
 
 const version = (await readFile(new URL('../VERSION', import.meta.url), 'utf8')).trim();
 const dependencies = JSON.parse(await readFile(new URL('../packaging/windows/dependencies.json', import.meta.url), 'utf8'));
-const macCore = (await readFile(new URL('./fetch-proxy-core.sh', import.meta.url), 'utf8')).match(/^version=(v[\d.]+)$/m)[1];
 const names = {
-  mac: `Cage-${version}-macos-arm64.dmg`,
-  windows: `Cage-${version}-windows-amd64-setup.exe`,
-  macSource: `mihomo-${macCore}-source.tar.gz`,
-  macGuestSource: `cage-macos-guest-${version}-source.tar.gz`,
+  windows: `Eden-${version}-windows-amd64-setup.exe`,
   windowsSource: `mihomo-${dependencies.mihomo.version}-source.tar.gz`,
   qemu: `qemu-${dependencies.qemu.version}-windows-full-source.zip`,
 };
 const digest = data => createHash('sha256').update(data).digest('hex');
 
 async function fixture(t) {
-  const root = await mkdtemp(join(tmpdir(), 'cage-release-test-'));
+  const root = await mkdtemp(join(tmpdir(), 'eden-release-test-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  return { root, mac: join(root, 'mac'), windows: join(root, 'windows'), output: join(root, 'publish') };
+  return { root, windows: join(root, 'windows'), output: join(root, 'publish') };
 }
 
 async function platform(directory, assets) {
@@ -32,36 +28,21 @@ async function platform(directory, assets) {
   await writeFile(join(directory, 'SHA256SUMS'), Object.entries(assets).map(([name, data]) => `${digest(data)}  ${name}\n`).join(''));
 }
 
-const macAssets = () => ({ [names.mac]: 'mac package fixture', [names.macSource]: 'Mihomo source fixture', [names.macGuestSource]: 'macOS guest source fixture' });
 const windowsAssets = () => ({ [names.windows]: 'Windows package fixture', [names.windowsSource]: 'Mihomo source fixture', [names.qemu]: 'complete QEMU source fixture' });
 
-test('includes Linux deb only with its verified corresponding source and merges common sources', async t => {
-  const f = await fixture(t);
-  const linux = join(f.root, 'linux');
-  const dependencies = JSON.parse(await readFile(new URL('../packaging/linux/dependencies.json', import.meta.url), 'utf8'));
-  const deb = `Cage-${version}-linux-amd64.deb`;
-  await platform(linux, { [deb]: 'Linux package fixture' });
-  await assert.rejects(prepareReleaseAssets({ inputs: [linux], output: f.output }), /Missing Linux Mihomo source/);
-  await platform(linux, { [deb]: 'Linux package fixture', [dependencies.mihomoSource.file]: 'Mihomo source fixture' });
-  await platform(f.mac, macAssets());
-  const prepared = await prepareReleaseAssets({ inputs: [f.mac, linux], output: f.output });
-  assert.ok(prepared.assets.includes(deb));
-  assert.equal(await readFile(join(f.output, deb), 'utf8'), 'Linux package fixture');
-  assert.equal(prepared.assets.filter(name => name === dependencies.mihomoSource.file).length, 1);
-});
-
-test('combines both platforms, deduplicates identical sources and keeps website checksum lookup valid', async t => {
+test('deduplicates matching Windows inputs and keeps website checksum lookup valid', async t => {
   const f = await fixture(t);
   const extraSource = `${dependencies.qemuSource.file}.gz`;
   const packagedSources = {
     [extraSource]: 'QEMU repository source fixture',
     [`qemu-keycodemapdb-${dependencies.qemuKeycodemap.version}-source.tar.gz`]: 'keymap source fixture',
-    [`qemu-${dependencies.qemu.version}-cage-changes-source.tar.gz`]: 'Cage QEMU patch fixture',
+    [`qemu-${dependencies.qemu.version}-eden-changes-source.tar.gz`]: 'Eden QEMU patch fixture',
   };
-  await platform(f.mac, macAssets());
+  const second = join(f.root, 'second-windows');
+  await platform(second, windowsAssets());
   await platform(f.windows, { ...windowsAssets(), ...packagedSources });
-  const result = await prepareReleaseAssets({ inputs: [f.mac, f.windows], output: f.output });
-  const expected = new Map(Object.entries({ ...macAssets(), ...windowsAssets(), ...packagedSources }));
+  const result = await prepareReleaseAssets({ inputs: [second, f.windows], output: f.output });
+  const expected = new Map(Object.entries({ ...windowsAssets(), ...packagedSources }));
   assert.deepEqual(new Set(await readdir(f.output)), new Set([...expected.keys(), 'SHA256SUMS']));
   assert.equal(result.version, version);
   const sums = await readFile(join(f.output, 'SHA256SUMS'), 'utf8');
@@ -72,37 +53,35 @@ test('combines both platforms, deduplicates identical sources and keeps website 
   assert.equal(sums.trimEnd().split('\n').length, expected.size);
 });
 
-test('supports a single Windows or macOS platform with its corresponding sources', async t => {
+test('supports a Windows package with its corresponding sources', async t => {
   const f = await fixture(t);
-  await platform(f.mac, macAssets());
   await platform(f.windows, windowsAssets());
-  assert.equal((await prepareReleaseAssets({ inputs: [f.mac], output: f.output })).assets.length, 3);
-  assert.equal((await prepareReleaseAssets({ inputs: [f.windows], output: join(f.root, 'windows-only') })).assets.length, 3);
+  assert.equal((await prepareReleaseAssets({ inputs: [f.windows], output: f.output })).assets.length, 3);
 });
 
 test('rejects corrupted bytes before creating the output', async t => {
   const f = await fixture(t);
-  await platform(f.mac, macAssets());
-  await writeFile(join(f.mac, names.mac), 'changed after packaging');
-  await assert.rejects(prepareReleaseAssets({ inputs: [f.mac], output: f.output }), /SHA-256 mismatch/);
+  await platform(f.windows, windowsAssets());
+  await writeFile(join(f.windows, names.windows), 'changed after packaging');
+  await assert.rejects(prepareReleaseAssets({ inputs: [f.windows], output: f.output }), /SHA-256 mismatch/);
   await assert.rejects(lstat(f.output), { code: 'ENOENT' });
 });
 
 test('rejects conflicting contents under the same asset name', async t => {
   const f = await fixture(t);
-  const second = join(f.root, 'second-mac');
-  await platform(f.mac, macAssets());
-  await platform(second, { ...macAssets(), [names.macSource]: 'different source archive' });
-  await assert.rejects(prepareReleaseAssets({ inputs: [f.mac, second], output: f.output }), /Conflicting same-name/);
+  const second = join(f.root, 'second-windows');
+  await platform(f.windows, windowsAssets());
+  await platform(second, { ...windowsAssets(), [names.windowsSource]: 'different source archive' });
+  await assert.rejects(prepareReleaseAssets({ inputs: [f.windows, second], output: f.output }), /Conflicting same-name/);
 });
 
 test('checks duplicate input bytes even when their manifests claim identical digests', async t => {
   const f = await fixture(t);
-  const second = join(f.root, 'second-mac');
-  await platform(f.mac, macAssets());
-  await platform(second, macAssets());
-  await writeFile(join(second, names.macSource), 'corrupted duplicate');
-  await assert.rejects(prepareReleaseAssets({ inputs: [f.mac, second], output: f.output }), /SHA-256 mismatch/);
+  const second = join(f.root, 'second-windows');
+  await platform(f.windows, windowsAssets());
+  await platform(second, windowsAssets());
+  await writeFile(join(second, names.windowsSource), 'corrupted duplicate');
+  await assert.rejects(prepareReleaseAssets({ inputs: [f.windows, second], output: f.output }), /SHA-256 mismatch/);
 });
 
 test('rejects unsigned development installers including unlisted leftovers', async t => {
@@ -126,29 +105,29 @@ test('requires Windows complete QEMU source in the same verified manifest', asyn
   await assert.rejects(prepareReleaseAssets({ inputs: [f.windows], output: f.output }), /complete QEMU source/);
 });
 
-test('requires the shipped macOS guest corresponding source in the verified manifest', async t => {
+test('requires Windows Mihomo source in the same verified manifest', async t => {
   const f = await fixture(t);
-  const assets = macAssets();
-  delete assets[names.macGuestSource];
-  await platform(f.mac, assets);
-  await writeFile(join(f.mac, names.macGuestSource), 'unlisted source is not verified');
-  await assert.rejects(prepareReleaseAssets({ inputs: [f.mac], output: f.output }), /macOS guest corresponding source/);
+  const assets = windowsAssets();
+  delete assets[names.windowsSource];
+  await platform(f.windows, assets);
+  await writeFile(join(f.windows, names.windowsSource), 'unlisted source is not verified');
+  await assert.rejects(prepareReleaseAssets({ inputs: [f.windows], output: f.output }), /Mihomo and complete QEMU source/);
 });
 
 test('rejects wrong versions and manifest paths outside the release directory', async t => {
   const f = await fixture(t);
-  await platform(f.mac, { ...macAssets(), 'Cage-99.0.0-macos-arm64.dmg': 'wrong version' });
-  await assert.rejects(prepareReleaseAssets({ inputs: [f.mac], output: f.output }), /Unsupported asset or version/);
-  await writeFile(join(f.mac, 'SHA256SUMS'), `${digest('outside')}  ../escape.dmg\n`);
-  await assert.rejects(prepareReleaseAssets({ inputs: [f.mac], output: f.output }), /Invalid or duplicate/);
+  await platform(f.windows, { ...windowsAssets(), 'Eden-99.0.0-windows-amd64-setup.exe': 'wrong version' });
+  await assert.rejects(prepareReleaseAssets({ inputs: [f.windows], output: f.output }), /Unsupported asset or version/);
+  await writeFile(join(f.windows, 'SHA256SUMS'), `${digest('outside')}  ../escape.exe\n`);
+  await assert.rejects(prepareReleaseAssets({ inputs: [f.windows], output: f.output }), /Invalid or duplicate/);
 });
 
 test('never overwrites an existing output, including an empty one', async t => {
   const f = await fixture(t);
-  await platform(f.mac, macAssets());
+  await platform(f.windows, windowsAssets());
   await mkdir(f.output);
-  await assert.rejects(prepareReleaseAssets({ inputs: [f.mac], output: f.output }), /Output must be a new directory/);
+  await assert.rejects(prepareReleaseAssets({ inputs: [f.windows], output: f.output }), /Output must be a new directory/);
   await writeFile(join(f.output, 'published-asset'), 'keep');
-  await assert.rejects(prepareReleaseAssets({ inputs: [f.mac], output: f.output }), /Output must be a new directory/);
+  await assert.rejects(prepareReleaseAssets({ inputs: [f.windows], output: f.output }), /Output must be a new directory/);
   assert.equal(await readFile(join(f.output, 'published-asset'), 'utf8'), 'keep');
 });

@@ -8,7 +8,7 @@ import test from 'node:test';
 import { compareVersions, nextVersion, parseVersion, versionFiles } from './release-version.mjs';
 
 function fixture(t) {
-  const root = mkdtempSync(join(tmpdir(), 'cage-release-version-'));
+  const root = mkdtempSync(join(tmpdir(), 'eden-release-version-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   writeFileSync(join(root, 'VERSION'), '1.2.3-alpha.9\r\n');
   for (const directory of ['ui', 'www']) {
@@ -135,10 +135,10 @@ test('metadata CLI reads the repository root even from a different working direc
   const root = fileURLToPath(new URL('../', import.meta.url));
   const version = readFileSync(join(root, 'VERSION'), 'utf8').trim();
   const output = join(destination, 'artifacts', 'release-build.json');
-  const result = spawnSync(process.execPath, [modulePath, 'metadata', 'linux', output], { cwd: destination, encoding: 'utf8' });
+  const result = spawnSync(process.execPath, [modulePath, 'metadata', 'windows', output], { cwd: destination, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(JSON.parse(readFileSync(output, 'utf8')), {
-    schema: 1, platform: 'linux', version,
+    schema: 1, platform: 'windows', version,
     commitSha: execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
   });
   const invalidOutput = join(destination, 'invalid.json');

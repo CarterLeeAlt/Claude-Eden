@@ -6,16 +6,16 @@ import { appendFileSync, copyFileSync, lstatSync, mkdirSync, readFileSync, write
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const repo = 'Lee-xeo/Claude-Cage';
+const repo = 'CarterLeeAlt/Claude-Eden';
 const gh = args => execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
 const api = (path, args = []) => JSON.parse(gh(['api', `repos/${repo}/${path}`, ...args]));
 const digest = data => createHash('sha256').update(data).digest('hex');
 
-export function stagePreview(windows, linux, destination, version, dependencies) {
+export function stagePreview(windows, destination, version, dependencies) {
   assert.match(version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
   const expected = [
-    [windows, [`Cage-${version}-windows-amd64-setup-unsigned.exe`, dependencies.mihomoSource.file, `${dependencies.qemuSource.file}.gz`]],
-    [linux, [`Cage-${version}-linux-amd64.deb`, dependencies.mihomoSource.file]],
+    [windows, [`Eden-${version}-windows-amd64-setup-unsigned.exe`, dependencies.mihomoSource.file, `${dependencies.qemuSource.file}.gz`,
+      `qemu-keycodemapdb-${dependencies.qemuKeycodemap.version}-source.tar.gz`, `qemu-${dependencies.qemu.version}-eden-changes-source.tar.gz`]],
   ];
   const verified = new Map();
   for (const [directory, names] of expected) {
@@ -58,7 +58,7 @@ export function mergeReleaseChecksums(release, text, files, version) {
   }
   const assets = release.assets.filter(asset => asset.name !== 'SHA256SUMS');
   for (const name of entries.keys()) assert.ok(assets.some(asset => asset.name === name), 'Existing release is incomplete');
-  assert.ok(entries.has(`Cage-${version}-macos-arm64.dmg`));
+  assert.ok(entries.has(`Eden-${version}-windows-amd64-setup.exe`) || entries.has(`Eden-${version}-windows-amd64-setup-unsigned.exe`), 'Existing release must contain its Windows installer');
   for (const asset of assets) {
     assert.equal(asset.state, 'uploaded');
     // A retry may find uploaded platform files whose merged manifest is still pending.
@@ -78,7 +78,7 @@ async function main() {
   assert.equal(process.env.GITHUB_EVENT_NAME, 'workflow_dispatch');
   assert.equal(process.env.GITHUB_REPOSITORY, repo);
   assert.equal(process.env.GITHUB_REF, 'refs/heads/main');
-  const runID = process.env.CAGE_PREVIEW_RUN;
+  const runID = process.env.EDEN_PREVIEW_RUN;
   assert.match(runID || '', /^\d+$/);
   const run = api(`actions/runs/${runID}`);
   assert.equal(run.conclusion, 'success');
@@ -91,7 +91,7 @@ async function main() {
   const dependencies = JSON.parse(sourceFile('packaging/windows/dependencies.json'));
   const root = '_output/platform-publication';
   const destination = join(root, 'public');
-  const files = stagePreview(join(root, 'windows', version, 'windows'), join(root, 'linux', version, 'linux'), destination, version, dependencies);
+  const files = stagePreview(join(root, 'windows'), destination, version, dependencies);
   const tag = `v${version}`;
   let release = api(`releases/tags/${tag}`);
   const originalChecksums = release.assets.find(asset => asset.name === 'SHA256SUMS');
@@ -127,9 +127,9 @@ async function main() {
   release = api(`releases/${release.id}`);
   assert.equal(release.assets.find(asset => asset.name === 'SHA256SUMS').digest, `sha256:${digest(merged)}`);
   mergeReleaseChecksums(release, merged, files, version);
-  const marker = `<!-- cage-platform-packages source=${run.head_sha} ci=${runID} -->`;
+  const marker = `<!-- eden-platform-packages source=${run.head_sha} ci=${runID} -->`;
   if (!release.body.includes(marker)) {
-    const notes = release.body + `\n\n## Windows 与 Linux 下载\n\n${marker}\n\n本版本同时提供三平台安装包，共用 SHA256SUMS。macOS 安装包保持原样；Windows/Linux 包来自完成平台构建修复的源码 [${run.head_sha.slice(0, 7)}](https://github.com/${repo}/commit/${run.head_sha})，与 macOS 标签的构建提交不同。\n\n- **Windows：未签名 x64 预览版**，文件名含 -setup-unsigned.exe，需手动安装和更新，系统可能提示未知发布者；不进入签名自动更新通道。\n- **Linux：Debian 12 / Ubuntu 24.04 x86_64**，下载 .deb 并通过系统包管理器安装、更新。\n- [三平台 CI](https://github.com/${repo}/actions/runs/${runID}) 已通过 Windows 2022/2025 安装器及 Debian 12 容器验收。托管 CI 不代替所有真实设备和硬件虚拟化验收。\n- 随附 Mihomo 与 QEMU 主程序对应源码；升级前保存文件、停止环境并退出 Cage。\n\n[官网三平台下载](https://claude-cage.com/#download)\n`;
+    const notes = release.body + `\n\n## Windows 预览版\n\n${marker}\n\nWindows 安装包来自源码 [${run.head_sha.slice(0, 7)}](https://github.com/${repo}/commit/${run.head_sha})，文件摘要列于 SHA256SUMS。\n\n- **Windows：未签名 x64 预览版**，文件名含 -setup-unsigned.exe，需手动安装和更新，系统可能提示未知发布者；不进入签名自动更新通道。\n- 应用随附 Linux 云端部署包，通过 Windows 客户端连接 Linux 服务器。\n- [构建与检查记录](https://github.com/${repo}/actions/runs/${runID})；托管 CI 不代替 Windows 10 真机及硬件虚拟化验收。\n- 随附 Mihomo、QEMU 主程序、键码映射和项目补丁源码；升级前保存文件、停止环境并退出 Claude Eden。\n\n[项目发布页](https://github.com/${repo}/releases/tag/${tag})\n`;
     const notesPath = join(root, 'notes.md'); writeFileSync(notesPath, notes);
     gh(['release', 'edit', tag, '--repo', repo, '--notes-file', notesPath]);
   }
