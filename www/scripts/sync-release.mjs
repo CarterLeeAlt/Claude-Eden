@@ -242,23 +242,28 @@ async function main() {
     release = releases.find(item => {
       try { releaseAssets(item); return true; } catch { return false; }
     });
-    if (!release) throw new Error('No complete public Claude Eden release is available');
   }
-  const { version, archive, source } = releaseAssets(release);
-  const text = await checksumText(release);
-  const digest = checksumFor(text, archive);
-  const sourceDigest = checksumFor(text, source);
-  const metadata = releaseMetadata(release, text);
-  metadata.platforms = await resolvePlatforms(releases, item => item.tag_name === release.tag_name ? text : checksumText(item));
-  if (values['archive-directory']) {
-    await download(archive, digest, values['archive-directory']);
-    await download(source, sourceDigest, values['archive-directory']);
-    await writeFile(join(values['archive-directory'], 'SHA256SUMS'), text);
+  let metadata;
+  if (!values.tag && releases.length === 0 && !values['archive-directory']) {
+    metadata = { version: null, releaseURL: `${repoURL}/releases`, platforms: {} };
+  } else {
+    if (!release) throw new Error('No complete public Claude Eden release is available');
+    const { archive, source } = releaseAssets(release);
+    const text = await checksumText(release);
+    const digest = checksumFor(text, archive);
+    const sourceDigest = checksumFor(text, source);
+    metadata = releaseMetadata(release, text);
+    metadata.platforms = await resolvePlatforms(releases, item => item.tag_name === release.tag_name ? text : checksumText(item));
+    if (values['archive-directory']) {
+      await download(archive, digest, values['archive-directory']);
+      await download(source, sourceDigest, values['archive-directory']);
+      await writeFile(join(values['archive-directory'], 'SHA256SUMS'), text);
+    }
   }
   const output = resolve(values.output);
   await mkdir(dirname(output), { recursive: true });
   await writeFile(output, `${JSON.stringify(metadata, null, 2)}\n`);
-  console.log(`Website download: Claude Eden ${version}`);
+  console.log(metadata.version ? `Website download: Claude Eden ${metadata.version}` : 'Website download: no published release');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

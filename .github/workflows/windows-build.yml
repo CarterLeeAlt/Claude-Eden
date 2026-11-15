@@ -26,8 +26,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # windows-2025 produces the test package. The older image repeats
-        # the same suite, so ordinary branch pushes leave it out.
+        # windows-2025 produces the test package. Callers opt into repeating
+        # the same suite on the older image with all_windows_versions.
         os: ${{ fromJSON(inputs.all_windows_versions && '["windows-2025", "windows-2022"]' || '["windows-2025"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60

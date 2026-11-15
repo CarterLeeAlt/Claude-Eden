@@ -1,10 +1,5 @@
 name: Windows desktop and Linux guest checks
 on:
-  # The website and user guides have their own workflow (www.yml) and are in
-  # no package, so changes limited to them skip executable builds.
-  push:
-    branches: ['**', '!codex/release/**']
-    paths-ignore: ['README*.md', 'www/**', 'docs/guide/**', 'docs/releases/**']
   workflow_call:
   workflow_dispatch:
 permissions:

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -211,6 +211,59 @@ test('website CLI discovers paginated releases and pins fallbacks to the request
       const metadata = JSON.parse(readFileSync(output, 'utf8'));
       assert.deepEqual(Object.keys(metadata.platforms), ['windows']);
       assert.equal(metadata.platforms.windows.version, tag === older.tag_name ? '0.2.0' : '0.3.0');
+    }
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('website CLI writes unpublished metadata before the first public release', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'eden-unpublished-'));
+  const mock = join(directory, 'fetch-fixture.mjs');
+  writeFileSync(mock, `
+    globalThis.fetch = async (url, options) => {
+      if (options.headers.Authorization) throw new Error('Public metadata used authentication');
+      if (url !== 'https://api.github.com/repos/CarterLeeAlt/Claude-Eden/releases?per_page=100') throw new Error('Unexpected request: ' + url);
+      return new Response('[]');
+    };
+  `);
+  try {
+    for (const stale of [false, true]) {
+      const output = join(directory, stale ? 'existing.json' : 'fresh/release.json');
+      if (stale) writeFileSync(output, JSON.stringify(releaseMetadata(fixture(), sums(fixture()))));
+      const result = spawnSync(process.execPath, ['--import', pathToFileURL(mock).href, fileURLToPath(new URL('./sync-release.mjs', import.meta.url)), '--output', output], { encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(JSON.parse(readFileSync(output, 'utf8')), {
+        version: null, releaseURL: 'https://github.com/CarterLeeAlt/Claude-Eden/releases', platforms: {},
+      });
+      assert.match(result.stdout, /no published release/i);
+    }
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('website CLI does not turn release, download or transport failures into an unpublished state', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'eden-release-failure-'));
+  const mock = join(directory, 'fetch-fixture.mjs');
+  const output = join(directory, 'release.json');
+  const downloads = join(directory, 'downloads');
+  const preserved = JSON.stringify(releaseMetadata(fixture(), sums(fixture())));
+  const malformedRelease = { tag_name: 'v0.3.0', draft: false, assets: [] };
+  const cases = [
+    { args: ['--archive-directory', downloads], body: '[]', error: /No complete public/ },
+    { args: ['--tag', 'v0.3.0'], status: 404, body: '{}', error: /HTTP 404/ },
+    { status: 403, headers: { 'x-ratelimit-remaining': '0' }, body: '{}', error: /HTTP 403/ },
+    { status: 500, body: '{}', error: /HTTP 500/ },
+    { body: JSON.stringify([malformedRelease]), error: /No complete public/ },
+    { body: JSON.stringify([{ ...fixture(), draft: true }]), error: /No complete public/ },
+    { body: 'not JSON', error: /JSON/ },
+  ];
+  try {
+    for (const scenario of cases) {
+      writeFileSync(output, preserved);
+      writeFileSync(mock, `globalThis.fetch = async () => new Response(${JSON.stringify(scenario.body)}, { status: ${scenario.status || 200}, headers: ${JSON.stringify(scenario.headers || {})} });`);
+      const result = spawnSync(process.execPath, ['--import', pathToFileURL(mock).href, fileURLToPath(new URL('./sync-release.mjs', import.meta.url)), '--output', output, ...(scenario.args || [])], { encoding: 'utf8' });
+      assert.equal(result.status, 1, result.stdout);
+      assert.match(result.stderr, scenario.error);
+      assert.equal(readFileSync(output, 'utf8'), preserved, 'A failed verification must preserve the previous metadata');
+      assert.equal(existsSync(downloads), false);
     }
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

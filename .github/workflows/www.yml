@@ -1,8 +1,5 @@
 name: Website and public releases
 on:
-  push:
-    branches: [main]
-    paths: ['www/**', 'assets/**', 'README*.md', 'docs/guide/**', 'scripts/agent-*.mjs', '.github/workflows/www.yml']
   release:
     types: [published]
   workflow_dispatch:
