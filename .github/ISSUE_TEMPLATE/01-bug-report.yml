@@ -19,7 +19,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Cage 版本号
+      label: Claude Eden 版本号
       description: 填写发生问题时使用的完整版本号，包括预发行或开发版本后缀。
       placeholder: 例如 v0.1.7 或 v0.1.7-rc.1
     validations:
@@ -44,9 +44,8 @@ body:
     id: host-system
     attributes:
       label: 主机系统
-      description: 主机是运行 Cage 的电脑。Issue 会按所选系统添加标签，交给对应平台的维护者。
+      description: Windows 主机运行桌面应用，Linux 主机运行云端服务器。Issue 会按所选系统添加标签。
       options:
-        - macOS
         - Windows
         - Linux
     validations:
@@ -56,17 +55,15 @@ body:
     attributes:
       label: 主机版本与架构
       description: 填写系统名称、完整版本（Windows 请含构建号）及处理器架构；远程连接时也请注明远程主机系统。
-      placeholder: macOS 26.4 arm64 / Windows 11 24H2（26100.x）x64 / Ubuntu 24.04 x86_64
+      placeholder: Windows 10（填写实际构建号与架构）/ Linux 云端（填写发行版、版本与架构）
     validations:
       required: true
   - type: dropdown
     id: guest-system
     attributes:
       label: 客机系统
-      description: 客机是 Cage 内运行的系统。尚未安装或无法启动时，选择安装时所选的系统。
+      description: 客机是 Claude Eden 内运行的 Linux 系统。尚未安装或无法启动时，选择安装时所选的系统。
       options:
-        - macOS
-        - Windows
         - Linux
         - 不涉及或不确定
     validations:
@@ -76,16 +73,16 @@ body:
     attributes:
       label: 客机版本与架构
       description: 填写系统名称、版本及架构；尚未安装或无法启动时，注明当前阶段。
-      placeholder: Ubuntu 24.04 arm64 / Windows 11 x64 / macOS 26.4 arm64；未安装，停在……
+      placeholder: Debian 或 Ubuntu（填写实际版本与架构）；未安装，停在……
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
       label: 复现步骤
-      description: 从打开 Cage 开始按顺序说明，包含相关设置和必要前提。偶发问题请说明已知触发条件与出现频率。
+      description: 从打开 Claude Eden 开始按顺序说明，包含相关设置和必要前提。偶发问题请说明已知触发条件与出现频率。
       placeholder: |
-        1. 打开 Cage，选择……
+        1. 打开 Claude Eden，选择……
         2. 设置……
         3. 点击……
         4. 出现……（每次出现 / 偶尔出现）

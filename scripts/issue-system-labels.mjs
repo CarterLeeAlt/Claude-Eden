@@ -1,15 +1,16 @@
 import fs from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
-const systems = [
-  ['Windows', /windows|\bwin\s?1[01]\b/i],
-  ['Linux', /linux|ubuntu|debian|fedora|centos|deepin/i],
-];
+const linux = ['Linux', /linux|ubuntu|debian|fedora|centos|deepin/i];
+const systems = {
+  主机: [['Windows', /windows|\bwin\s?1[01]\b/i], linux],
+  客机: [linux],
+};
 const everySystem = /全部平台|所有平台|全平台/;
 
-function detect(text) {
-  if (everySystem.test(text)) return systems.map(([name]) => name);
-  return systems.filter(([, pattern]) => pattern.test(text)).map(([name]) => name);
+function detect(text, role) {
+  if (everySystem.test(text)) return systems[role].map(([name]) => name);
+  return systems[role].filter(([, pattern]) => pattern.test(text)).map(([name]) => name);
 }
 
 // Issue forms render each field as "### label" followed by the answer. Issues
@@ -34,7 +35,7 @@ export function systemLabelsFromBody(body) {
       text[host ? '主机' : '客机'] += `${line}\n`;
     }
   }
-  return Object.entries(text).flatMap(([role, answer]) => detect(answer).map(system => `${system} ${role}`));
+  return Object.entries(text).flatMap(([role, answer]) => detect(answer, role).map(system => `${system} ${role}`));
 }
 
 async function githubRequest(method, path, token, body) {

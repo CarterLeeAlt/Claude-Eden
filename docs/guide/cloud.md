@@ -11,7 +11,7 @@ keywords: 云端 远程部署 VPS SSH 无KVM rootless 服务器 主机 指纹 �
 
 服务器模式通过 rootless 容器运行，不需要 KVM。它仍需要满足系统、权限和资源条件，并非所有 VPS 都可以直接部署。
 
-云端使用 Linux 环境，与本机 Windows、Debian 或 Ubuntu 客机分别管理。需要原生 Windows 工具时选本机 Windows 客机；需要服务器常驻任务时选云端。两种方式使用同一工作台。见[选择客机系统](guest-systems.md)。
+云端使用 Linux 环境，与本机 Debian 或 Ubuntu 客机分别管理。需要服务器常驻任务时选云端，本机和云端使用同一工作台。见[选择客机系统](guest-systems.md)。
 
 ## 准备服务器
 

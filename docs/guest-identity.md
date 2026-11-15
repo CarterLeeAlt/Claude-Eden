@@ -10,8 +10,6 @@
 | 默认客机网卡 MAC | 随机本地单播地址 | 同左，客机配置与 DHCP 租约同步 |
 | 独立虚拟网络的网关 MAC | 独立随机本地单播地址 | 同左 |
 
-Windows 评估版全新安装的应答文件将 `ComputerName` 设为 `*`，由 Windows Setup 生成计算机名；用户导入的已有 Windows 系统不改名。Windows 原生 Hyper-V 的硬件标识仍由 Hyper-V 管理。
-
 主机名采用下述随机命名规则，不包含产品品牌、项目目录、宿主机名或路径哈希。MAC 的第一个字节只保留本地单播位约束，不使用固定三字节前缀。
 
 ## 主机名命名规则
@@ -29,7 +27,7 @@ Windows 评估版全新安装的应答文件将 `ComputerName` 设为 `*`，由 
 
 离线库包含 **1,593 条真实型号记录、1,181 个不同简称**：联想 506 条、戴尔 499 条、惠普 551 条、华擎主板 37 条。记录来自厂商公开型号/驱动部署目录，保留完整型号、厂商和来源校验信息。联想目录中的 `Type` 型号变体保留在原始型号列，生成简称时去掉这些尾部 SKU 字段，以保留更容易识别的型号和代数。
 
-简称是本项目从真实型号整理出的命名素材，不声称是厂家出厂主机名，也不代表实际 SMBIOS、主板、CPU 或客机系统。Windows 的 `DESKTOP-` 默认形态也可出现在笔记本上；这些权重用于混合样式，不代表市场份额。Linux 容器与 Lima 客机共享该生成器，Windows 原生安装仍使用 Setup 自身的命名规则。
+简称是本项目从真实型号整理出的命名素材，不声称是厂家出厂主机名，也不代表实际 SMBIOS、主板、CPU 或客机系统。`DESKTOP-` 形态也可出现在笔记本上；这些权重用于混合样式，不代表市场份额。Linux 容器与 Lima 客机共享该生成器。
 
 数据随程序嵌入，创建时不联网、不查询宿主硬件、不安装驱动。更新方式与来源见 `docs/hostname-catalog.md`、`hostname-sources.json` 和 `scripts/update-hostname-catalog.py`。后者只从本地 XML/JSON 编译数据，输出可重复构建。
 
@@ -51,4 +49,4 @@ Linux 容器基础镜像必须保持 `/etc/machine-id` 为空，且不得保留�
 
 手工验收时，在两个全新环境内分别检查主机名、默认网卡 MAC、网关邻居项；Linux 容器还应检查 `/etc/machine-id`。同一环境完整停止再启动后重复检查，确认身份稳定。不要在 Issue 或测试报告中附带认证文件、私钥或原始日志。
 
-参考：[systemd 容器接口](https://systemd.io/CONTAINER_INTERFACE/)、[Windows ComputerName](https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/microsoft-windows-shell-setup-computername)。
+参考：[systemd 容器接口](https://systemd.io/CONTAINER_INTERFACE/)。

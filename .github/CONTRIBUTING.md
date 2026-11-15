@@ -1,10 +1,10 @@
 # 贡献指南
 
-Cage 采用“贡献 Issue 审核 → 邀请成为协作者 → 提交 PR → 审查合入”的流程。仓库仅允许协作者创建 PR；修复代码、改进功能和修改文档都从明确的贡献方案开始。
+Claude Eden 采用“贡献 Issue 审核 → 邀请成为协作者 → 提交 PR → 审查合入”的流程。仓库仅允许协作者创建 PR；修复代码、改进功能和修改文档都从明确的贡献方案开始。
 
 ## 提交方案并等待审核
 
-在[新建 Issue 页面](https://github.com/Lee-xeo/Claude-Cage/issues/new/choose)选择“方案贡献（Contribution）”。说明要解决的问题、基于的版本或提交、适用系统、解决思路、验证结果和影响范围。有代码时附上 Fork 分支、具体提交、diff 或补丁；尚未验证的部分请明确注明。
+在[新建 Issue 页面](https://github.com/CarterLeeAlt/Claude-Eden/issues/new/choose)选择“方案贡献（Contribution）”。说明要解决的问题、基于的版本或提交、适用系统、解决思路、验证结果和影响范围。有代码时附上 Fork 分支、具体提交、diff 或补丁；尚未验证的部分请明确注明。
 
 只有问题描述时使用“问题反馈”；尚无具体方案的功能需求使用“功能建议”。提交前先搜索已有 Issue，已有相关讨论时在贡献 Issue 中关联它。
 
@@ -14,9 +14,9 @@ Cage 采用“贡献 Issue 审核 → 邀请成为协作者 → 提交 PR → �
 
 ## 系统标签
 
-Issue 按涉及的系统带有六个标签：`macOS 主机`、`Windows 主机`、`Linux 主机`、`macOS 客机`、`Windows 客机`、`Linux 客机`。主机是运行 Cage 的电脑，客机是 Cage 内运行的系统；一条 Issue 可以同时带多个标签。各平台的维护者按标签筛选并认领自己负责的 Issue。
+Issue 按涉及的系统带有三个标签：`Windows 主机`、`Linux 主机`、`Linux 客机`。Windows 主机运行桌面应用，Linux 主机运行云端服务器；客机是 Claude Eden 内运行的 Linux 系统。一条 Issue 可以同时带多个标签，各平台的维护者按标签筛选并认领自己负责的 Issue。
 
-新建 Issue 时，**Label issues by system** 工作流读取正文里标题含“主机”或“客机”的字段并添加对应标签。通过 GitHub CLI 或 API 创建时沿用表单的字段标题即可，例如 `### 主机系统` 下写 `macOS`，`### 客机系统` 下写 `Linux`。
+新建 Issue 时，**Label issues by system** 工作流读取正文里标题含“主机”或“客机”的字段并添加对应标签。通过 GitHub CLI 或 API 创建时沿用表单的字段标题即可，例如 `### 主机系统` 下写 `Windows`，`### 客机系统` 下写 `Linux`。
 
 工作流只添加标签，维护者手动调整的标签会保留。正文修改后需要重新识别时，在 **Actions → Label issues by system** 选择 **Run workflow** 并填写 Issue 编号；识别有误或正文没有系统信息时由维护者手动修正。
 
@@ -24,15 +24,15 @@ Issue 按涉及的系统带有六个标签：`macOS 主机`、`Windows 主机`�
 
 添加 `accepted` 标签会触发 **Invite approved contributors** 工作流，向该 Issue 的作者发送协作者邀请，并在 Issue 中说明后续步骤。已有写权限的协作者可直接提交 PR；待接受的邀请会被复用。
 
-贡献者需要通过 GitHub 通知或[仓库邀请页面](https://github.com/Lee-xeo/Claude-Cage/invitations)接受邀请。邀请过期或流程失败时，请在原 Issue 中联系维护者处理。
+贡献者需要通过 GitHub 通知或[仓库邀请页面](https://github.com/CarterLeeAlt/Claude-Eden/invitations)接受邀请。邀请过期或流程失败时，请在原 Issue 中联系维护者处理。
 
-协作者拥有整个仓库的写权限，该权限不限于这一条 Issue。`main` 受分支保护，协作者通过独立分支和 PR 交付变更，由代码所有者 `@Lee-xeo` 审核后合入；新增提交后需要重新审核。关闭 Issue 或移除 `accepted` 标签不会自动取消邀请或撤销已有权限；权限调整由仓库管理员在仓库设置中处理。
+协作者拥有整个仓库的写权限，该权限不限于这一条 Issue。`main` 受分支保护，协作者通过独立分支和 PR 交付变更，由代码所有者 `@CarterLeeAlt` 审核后合入；新增提交后需要重新审核。关闭 Issue 或移除 `accepted` 标签不会自动取消邀请或撤销已有权限；权限调整由仓库管理员在仓库设置中处理。
 
 ## 提交 PR
 
 1. 接受邀请后，将本地基线更新到仓库最新的 `main`。
 2. 为本次贡献创建独立分支，命名为“开始日期-GitHub用户名-工作内容”，例如 `261112-alice-fix-startup`。保留无关的在途改动，提交范围与审核通过的方案保持一致；扩大范围时先在原 Issue 中讨论。
-3. 完成实现并运行与改动相关的检查。涉及共享功能时核对 macOS、Windows 和 Linux；说明实际验证的平台、结果及未验证范围。
+3. 完成实现并运行与改动相关的检查。涉及共享功能时核对 Windows 10 桌面、Linux 云端、Linux 客机及 Android 客户端；说明实际验证的系统版本、能力、结果及未验证范围。产品要求依据实际依赖，验收机器的构建号与硬件配置只是测试记录。
 4. 推送分支并创建指向 `main` 的 PR，在正文中关联贡献 Issue，例如 `Closes #123`，说明用户可见的变化、验证结果和已知限制。
 5. 根据评审意见更新 PR。通过审查与所需检查后由维护者合入，随后删除已合入的分支并关闭对应 Issue。
 
@@ -40,11 +40,11 @@ Issue 按涉及的系统带有六个标签：`macOS 主机`、`Windows 主机`�
 
 ## 维护者：配置自动邀请
 
-自动邀请使用 `contribution-invites` Environment 中的 Secret `CONTRIBUTION_INVITE_TOKEN`。使用只授权 `Lee-xeo/Claude-Cage` 的 fine-grained personal access token，并授予仓库权限 **Administration: Read and write**；其余权限保持最小范围。令牌应设置有效期，并在到期前更新。
+自动邀请使用 `contribution-invites` Environment 中的 Secret `CONTRIBUTION_INVITE_TOKEN`。使用只授权 `CarterLeeAlt/Claude-Eden` 的 fine-grained personal access token，并授予仓库权限 **Administration: Read and write**；其余权限保持最小范围。令牌应设置有效期，并在到期前更新。
 
 在仓库 **Settings → Environments → contribution-invites** 中，只允许 `main` 分支部署，并将该令牌保存为 Environment Secret。邀请令牌不得放进普通仓库 Secret，否则具有写权限的协作者可以在其他分支的工作流中使用它。GitHub Actions 自带的 `GITHUB_TOKEN` 用于检查审核者权限和写入提醒，无法单独完成协作者邀请。
 
-`main` 的分支保护要求 PR、至少一次代码所有者审核及新提交后的重新审核，禁止强制推送和删除；`.github/CODEOWNERS` 将所有路径的代码所有者设为 `@Lee-xeo`。管理员保留处理自有改动的权限。这些保护与仅限 `main` 的 Environment 共同阻止普通协作者在未审核的分支中取得邀请令牌。
+`main` 的分支保护要求 PR、至少一次代码所有者审核及新提交后的重新审核，禁止强制推送和删除；`.github/CODEOWNERS` 将所有路径的代码所有者设为 `@CarterLeeAlt`。管理员保留处理自有改动的权限。这些保护与仅限 `main` 的 Environment 共同阻止普通协作者在未审核的分支中取得邀请令牌。
 
 日常审核步骤：
 

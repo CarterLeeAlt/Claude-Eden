@@ -1,9 +1,9 @@
 ---
 title: 安装与首次启动
-description: 在 Windows 安装 Claude Eden，选择 Windows 或 Linux 客机和数据盘，完成首次环境启动。
+description: 在 Windows 10 安装 Claude Eden，选择 Debian 或 Ubuntu Linux 客机和数据盘，完成首次环境启动。
 group: 开始使用
 order: 1
-keywords: 下载 安装 客机 Windows Debian Ubuntu Hyper-V WHPX 账户 密码 镜像 继续安装
+keywords: 下载 安装 客机 Windows Debian Ubuntu Linux WHPX 账户 密码 镜像 继续安装
 ---
 ## 选择安装包
 
@@ -11,12 +11,12 @@ keywords: 下载 安装 客机 Windows Debian Ubuntu Hyper-V WHPX 账户 密码 
 
 | 平台 | 要求与安装方式 |
 | --- | --- |
-| Windows | Windows 10 22H2 / 11、x64。运行 `.exe` 安装器，按所选客机准备 Hyper-V 或 Windows 虚拟机监控程序平台，并在系统要求时重启。未签名预览包会明确标注。 |
+| Windows 桌面 | Windows 10，当前安装包为 x64。运行 `.exe` 安装器；本机 Linux 客机使用 Windows 虚拟机监控程序平台（WHPX），启用后按系统要求重启。未签名预览包会明确标注。 |
 | Linux 云端 | 按[云端部署与 SSH](cloud.md)准备自己的服务器，使用容器后端，无需 KVM。 |
 
-桌面安装包面向 Windows x64，以 Windows 10 为主要验收平台。依赖详情见 [Windows 指南](../windows.md)，服务器条件见 [Linux 云端指南](../linux.md)。
+桌面使用链固定为 Windows 10 主机运行 Linux 客机，或连接 Linux 云端工作台。依赖详情见 [Windows 指南](../windows.md#windows-版本与功能范围)，服务器条件见 [Linux 云端指南](../linux.md)。
 
-客机系统在首次创建时选择：Windows 10/11 可使用 Debian 13 或 Ubuntu 22.04；Windows 11 专业版、企业版或教育版配备完整 Hyper-V 时，还可使用 Windows 客机。具体组合见[选择客机系统](guest-systems.md)。
+首次创建时选择 Debian 13 或 Ubuntu 22.04，程序下载并校验对应的 Linux 镜像。具体组合见[选择客机系统](guest-systems.md)。
 
 ## 创建 Claude Eden 账户
 
@@ -30,7 +30,7 @@ keywords: 下载 安装 客机 Windows Debian Ubuntu Hyper-V WHPX 账户 密码 
 
 ## 初始化系统与存储
 
-首次登录后，Claude Eden 显示独立初始化界面。选择具体客机系统，或在符合条件的主机上选择“自动匹配本机系统版本”。程序显示对应官方镜像并安装独立系统；主机个人文件与登录资料不会复制。以后启动沿用原系统和磁盘。
+首次登录后，Claude Eden 显示独立初始化界面。选择 Debian 13 或 Ubuntu 22.04，程序显示对应官方镜像并安装独立系统；主机个人文件与登录资料不会复制。以后启动沿用原系统和磁盘。
 
 “存储目录”已填入默认位置。需要更换时直接编辑，或点击“选择文件夹”选定本地磁盘的专用空文件夹；下一步保存，目录无效时提示修改。程序目录与环境数据目录分开；例如应用装在 C 盘，环境可放在 `D:\EdenData`。
 
@@ -45,18 +45,18 @@ Windows 环境选择支持权限管理与稀疏文件的本地 NTFS 磁盘，使
 1. 点击“下一步：配置代理”，添加 Clash/Mihomo YAML 订阅、本地配置或手动 HTTP/SOCKS5 节点。详细步骤见[网络与代理](network.md)。
 2. 选择最终出口，点击“应用代理”。Claude Eden 使用独立核心，不会自动采用本机 Clash 当前所选节点。
 3. 核对匹配的系统镜像、下载量和空间要求，点击“开始安装”。
-4. 查看下载、校验、系统安装和工具配置进度，按提示完成 Windows 授权或客机登录。“操作详情”显示错误与检查结果，完整记录可在“日志与诊断”导出；失败后可继续已有安装。
+4. 查看下载、校验、系统安装和工具配置进度。“操作详情”显示错误与检查结果，完整记录可在“日志与诊断”导出；失败后可继续已有安装。
 5. 客机可用且网络与隔离检查通过后进入工作台。以后打开 Claude Eden 继续使用原环境。只需远程服务器时，可通过“只连接 SSH 主机”跳过本机安装。
 
 安装、启动与项目共享不要求修改主机全局 Git 配置，也不要求为裸仓库保护升级 Git。
 
 ## 第一次启动需要等待什么
 
-首次安装内容取决于客机系统。Windows 自动匹配使用 Microsoft ESD，手动安装可选择官方 ISO；Linux 客机使用官方云镜像。Debian 13 基础镜像约 320–325 MiB，工具另行安装。来源、许可和存储要求见[客机系统指南](guest-systems.md#下载量与磁盘空间)。
+首次安装使用所选 Linux 发行版的官方云镜像。Debian 13 基础镜像约 320–325 MiB，工具另行安装。来源、许可和存储要求见[客机系统指南](guest-systems.md#下载量与磁盘空间)。
 
 系统镜像与版本目录通过主机网络下载，遵循主机代理设置；未配置代理时访问官方源。使用 Clash 等软件时，实际出口取决于主机代理或 TUN 的规则。已选择的主机代理连接失败、明确配置的 PAC 解析失败时会报错。客机内的进程和下载使用 Claude Eden 的独立代理，见[系统镜像的下载网络](network.md#系统镜像的下载网络)。
 
-Debian 初始虚拟磁盘容量上限为 24 GiB，Windows 需为系统及工具留出更多空间。实际占用随安装和使用增加，创建前查看所选版本要求。Claude Desktop 按需下载。随后启动复用工具、文件与登录资料。
+Debian 初始虚拟磁盘容量上限为 24 GiB。实际占用随安装和使用增加，创建前查看所选版本要求。Claude Desktop 按需下载。随后启动复用工具、文件与登录资料。
 
 准备有固定摘要的 Linux 或 Windows 工具包时，剩余下载量达到 8 MiB 会尝试最多 4 连接分段下载。小文件、无法取得长度或服务器不支持分段时使用单连接。各连接沿用下载任务的代理设置，收齐并校验整份文件后才用于安装。
 

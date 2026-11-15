@@ -1,13 +1,13 @@
 ---
 title: 选择客机系统
-description: 在 Windows 桌面选择 Windows、Debian 或 Ubuntu 22.04 客机，也可连接 Linux 云端环境。
+description: 在 Windows 10 桌面选择 Debian 13 或 Ubuntu 22.04 Linux 客机，也可连接 Linux 云端环境。
 group: 开始使用
 order: 1.5
-keywords: 客机 客户机 本机 系统选择 Windows Debian Ubuntu Linux Hyper-V WHPX ISO ESD 原生开发 PowerShell
+keywords: 客机 客户机 本机 系统选择 Windows Debian Ubuntu Linux QEMU WHPX 开发
 ---
 ## 在熟悉的系统里开发
 
-Claude Eden 在 Windows 桌面上提供独立的 Windows 或 Linux 虚拟机，将终端、浏览器、编辑器和 Claude Desktop 放在同一个工作台里。按项目选择 PowerShell、Windows 原生工具或 Linux 开发工具，共享明确打开的目录，并独立管理环境网络。
+Claude Eden 的桌面使用链固定为 Windows 10 主机运行 Linux 客机，将终端、浏览器、编辑器和 Claude Desktop 放在同一个工作台里。客机使用 Linux 开发工具，共享明确打开的目录，并独立管理环境网络。
 
 运行 Claude Eden 桌面应用的电脑称为主机，虚拟机里的系统称为客机。客机使用中性的 Workbench 标识，系统账户、应用与文件保存在独立磁盘中。
 
@@ -15,18 +15,17 @@ Claude Eden 在 Windows 桌面上提供独立的 Windows 或 Linux 虚拟机，�
 
 | 你的电脑 | 可选客机 | 适合的工作 |
 | --- | --- | --- |
-| Windows 11 x64 专业版、企业版或教育版，具备完整 Hyper-V | Windows 11、Debian 13 或 Ubuntu 22.04，均为 x86_64 | PowerShell、Windows 原生编译与调试、Windows 版 Claude Desktop，或 Linux 开发。 |
-| 其他受支持的 Windows 10 22H2 / 11 x64 主机 | Debian 13 或 Ubuntu 22.04 x86_64 | 在独立 Linux 环境中使用 Claude Code、浏览器与开发工具。需要 Windows 虚拟机监控程序平台。 |
+| Windows 10 x64 主机，实际检查确认 Windows 虚拟机监控程序平台（WHPX）可用 | Debian 13 或 Ubuntu 22.04 x86_64 | 在独立 Linux 环境中使用 Claude Code、浏览器、编辑器和 Claude Desktop。 |
 
-桌面宿主支持 Windows 10 22H2 / 11 x64，以 Windows 10 为主要验收平台。Debian 和 Ubuntu 适合命令行、服务与 Linux 工具；Windows 客机适合需要原生 Windows 程序的项目。Linux 服务器用于[云端部署](cloud.md)，与本机客机选择分别管理。
+桌面程序在 Windows 10 安装与验收；项目中的程序在 Linux 客机执行。Debian 和 Ubuntu 适合命令行、服务与 Linux 工具。Linux 服务器用于[云端部署](cloud.md)，与本机客机选择分别管理。
 
-Windows 家庭版可启用“Windows 虚拟机监控程序平台”，重启后选择 Debian 13 或 Ubuntu 22.04；该路线使用 WHPX，不依赖 WSL。需要 Windows 客机时，主机须满足 Windows 11 x64 专业版、企业版或教育版及完整 Hyper-V 条件。请先在[Windows 指南](../windows.md)核对系统要求。
+Windows 家庭版也可启用“Windows 虚拟机监控程序平台”，按系统要求重启后选择 Debian 13 或 Ubuntu 22.04。该路线使用 QEMU／WHPX，不依赖 WSL。请先在[Windows 指南](../windows.md)核对系统要求。
 
 客机系统决定项目中的程序实际在哪里运行。需要额外虚拟机的应用功能还受嵌套虚拟化等条件限制，Claude Desktop 的 Cowork 暂不支持。
 
 ## 当前开发构建的验证范围
 
-系统选择和平台接线不代表完整实机验收。当前 Claude Eden 改名构建仍需完成 Windows 10/11 桌面、Hyper-V/WHPX 首装、冷启动、项目共享、输入、网络及官方 Claude 登录全流程验证。公开安装包的能力和验证范围以本仓库实际发行说明为准。
+系统选择和平台接线不代表完整实机验收。当前 Claude Eden 改名构建仍需完成 Windows 10 桌面、Linux 客机的 WHPX 首装、冷启动、项目共享、输入、网络及官方 Claude 登录全流程验证。公开安装包的能力和验证范围以本仓库实际发行说明为准。
 
 多账号、手机和原生 Desktop 文件操作还需各自的应用级检查，分别见[多账号与额度](accounts.md)、[手机连接](mobile.md)和[Claude Desktop](desktop.md)。
 
@@ -34,62 +33,31 @@ Windows 家庭版可启用“Windows 虚拟机监控程序平台”，重启后�
 
 1. 按[安装与首次启动](installation.md)安装 Claude Eden，创建或解锁账户。
 2. 在独立初始化界面的“系统与存储”中选择客机系统和存储位置。
-3. 配置自己的代理。Windows 自动匹配路线复用或下载 Microsoft 官方 ESD；手动路线选择官方 ISO。Debian 和 Ubuntu 使用对应的官方云镜像。
-4. 程序准备客机账户和 Workbench 组件；系统要求的授权由你确认，Windows 的首次系统授权见下文。
+3. 配置自己的代理。Debian 和 Ubuntu 使用对应的官方云镜像，程序下载后校验镜像。
+4. 程序准备 Linux 客机账户和 Workbench 组件。
 5. 安装、授权和网络检查完成后，进入工作台、打开项目、新建终端，在环境内完成 Claude 授权。以后启动复用原系统、工具、文件和登录资料。中断后可继续原安装流程。
 
-一个 Claude Eden 安装包可以管理支持的客机类型。Windows 系统介质从 Microsoft 获取，按其许可使用；Claude Eden 不提供系统授权，也不会自动导入主机账户、Claude 登录、浏览器资料或 SSH 密钥。
+一个 Claude Eden 安装包可选择 Debian 或 Ubuntu 客机。客机使用独立账户与持久磁盘，主机账户、Claude 登录、浏览器资料和 SSH 密钥由用户分别管理。
 
 安装卡片会显示当前阶段。下载镜像时可查看已下载大小、总量、百分比和实时采样速度；校验镜像单独显示进度。系统恢复和安装工具期间，卡片显示正在处理的步骤；这些步骤没有可测总量时不显示百分比。中断后可点击“继续安装”，复用原安装记录和已保存的下载。
 
 ### 直接安装 Ubuntu 22.04
 
-首次创建时，从“客户机系统”选择 **Ubuntu 22.04**。Windows x64 使用 amd64 镜像。无需提供 ISO 或输入镜像摘要，Claude Eden 使用固定版本的 Canonical 官方云镜像并校验 SHA-256。
+首次创建时，从“客户机系统”选择 **Ubuntu 22.04**。Windows x64 使用 amd64 镜像。Claude Eden 下载固定版本的 Canonical 官方云镜像并校验 SHA-256。
 
 镜像约 669–697 MiB，创建前至少预留 17 GiB；虚拟磁盘按实际写入增长，后续项目和工具仍需额外空间。安装后，工作台提供终端、Chromium 浏览器和编辑器，也可以按需安装 Claude Desktop。
 
 安装中断后继续使用原镜像、安装身份和磁盘。完成后普通启动仍为 Ubuntu；来源资料缺失或不一致时提示恢复原资料，不自动改用 Debian。该选项不会就地转换已有系统。验证范围见本页上方说明。
 
-<a id="克隆本机系统"></a>
-
-### 自动匹配本机系统版本
-
-符合上述 Hyper-V 条件的主机可选择“自动匹配本机系统版本”。Claude Eden 按发行版本、版本类型和语言匹配 Microsoft 官方 ESD，优先复用已校验材料，再安装到独立客机。官方介质补丁号可以与主机不同，页面会同时显示两个构建号、下载量和空间要求。主机的应用、个人文件和登录状态不会复制到客机。
-
-确认系统提权后，程序创建磁盘、安装系统和建立客机账户。系统使用压缩文件，虚拟磁盘按实际写入增长。已有官方 ISO 可在“Windows 11”选项中选择。完整离线安装需要系统材料和开发组件均已准备好。
-
-下载中断时点击“继续安装”，程序复用原安装身份和已下载部分。找不到匹配版本时会说明缺少的材料，可选择已有官方镜像。创建过程及恢复材料缓存位于所选环境存储位置。
-
-### Windows 的首次系统授权
-
-安装 Windows 客机时，系统会询问是否允许 Claude Eden 完成虚拟机设置和安装管理助手。确认后，桌面应用仍使用普通权限；助手只管理登记给当前用户的客机。取消授权保留安装进度和磁盘，可之后继续。
-
-Windows 客机普通账户为 `developer-` 加 10 位随机标识，自动安装管理员为 `setupadmin`。系统账户和应用登录独立保存。管理助手未连接或客机配置变化时，Claude Eden 提示核对原环境；恢复助手和更新应用保留原账户、系统盘及个人目录。
-
-### 使用 Windows 本机 ISO
-
-选择 Microsoft 官方 Windows 11 x64 ISO 后，在系统授权打开的安装窗口设置客机初始本地管理员，默认名称为 `InstallAdmin`，可以修改。`setupadmin` 为安装保留名称，大小写变体也不能用。保存管理员密码，后续登录和继续安装需要使用。
-
-Claude Eden 将账户信息写入具有私有权限的安装应答盘，Windows 首次设置据此创建本地管理员。客机保持零常规 Hyper-V 网卡，组件置备后使用 Workbench 网络通道。确认首次设置完成、可通过管理员账户连接后清理应答盘。
-
-1. 在“虚拟机连接”（VMConnect）窗口选择 Windows 版本、目标磁盘，确认许可并完成区域设置。本轮 PowerShell 创建窗口会自动关闭。
-2. 使用安装前设置的本地管理员登录客机，回到 Claude Eden 点击“已进入桌面，继续安装”。
-3. 确认系统授权，在 PowerShell 安装窗口再次输入客机管理员账户，等待组件下载、安装和配置结束。程序创建专用普通账户，并重启客机完成首次登录。
-4. 回到 Claude Eden 完成网络检查，再进入工作台。
-
-继续安装使用本次创建的管理员和原系统盘。若停在 Windows 首次设置界面，保留磁盘并记录系统构建号及安装详情，核对所选官方材料和应答盘状态。
-
-安装卡片区分等待 Windows 首次设置、组件下载和组件配置。原用户注册助手失败时，操作详情会保留 `enrollment_pipe_listen_failed` 或 `enrollment_pipe_accept_failed` 及 Win32 错误码，便于定位继续安装的问题。
-
 ## 下载量与磁盘空间
 
-系统镜像下载大小与虚拟磁盘容量不同。Debian 基础镜像约 320–325 MiB，初始虚拟磁盘容量上限为 24 GiB；Windows 的安装介质与系统占用更大，以所选版本为准。为镜像、系统盘、开发工具、项目产物和更新备份留足空间。
+系统镜像下载大小与虚拟磁盘容量不同。Debian 基础镜像约 320–325 MiB，初始虚拟磁盘容量上限为 24 GiB。为镜像、系统盘、开发工具、项目产物和更新备份留足空间。
 
 环境可以放在独立数据盘。应用安装目录、`~/.eden` 配置目录和环境存储分别管理；共享项目仍在原目录。选盘和换盘见[环境存储](maintenance.md#迁移环境到另一块磁盘)。
 
 ## 打开项目与使用原生工具
 
-选择项目后，在工作台使用客机对应的终端与工具。Windows 程序在 Windows 客机编译运行，Debian 与 Ubuntu 使用 Linux 工具链。Windows 客机提供 PowerShell 7，系统自带的 Windows PowerShell 5.1 仍可供系统脚本使用。
+选择项目后，在工作台使用 Linux 终端与工具链。共享的 Windows 项目目录映射到 Linux 路径，程序在所选 Debian 或 Ubuntu 环境编译运行。
 
 浏览器、编辑器和 Claude Desktop 从 Claude Eden 工作台进入，安装和登录资料保存在客机内；系统首次登录和必要授权完成后，日常操作无需切换到另一个完整桌面。
 
@@ -99,7 +67,7 @@ Claude Eden 将账户信息写入具有私有权限的安装应答盘，Windows 
 
 Claude Eden 采用独立新装配置。更新、重装 Claude Eden 或重新启动会保留其原客机、工具、文件和登录资料。
 
-更换客机系统需要独立安装。保留原环境的完整备份，并为新系统准备空间；Windows 备份需包含虚拟机配置、系统盘及关联的虚拟 TPM 状态。步骤见[备份、重装与卸载](maintenance.md#备份重装与卸载)。
+更换 Linux 发行版需要独立安装。保留原环境的完整备份，并为新系统准备空间。步骤见[备份、重装与卸载](maintenance.md#备份重装与卸载)。
 
 ## 云端和手机如何配合
 
@@ -109,6 +77,4 @@ Claude Eden 采用独立新装配置。更新、重装 Claude Eden 或重新启�
 
 ## 环境存储与项目恢复
 
-环境存储所在磁盘未连接或迁移尚未完成时，工作台会提示“环境存储需要恢复”。连接原磁盘后，在设置的项目与环境页面点击“重试恢复”；Windows 如提示系统助手需要修复，使用“修复系统助手并恢复”，完成系统授权后继续。恢复完成前不要另建环境或删除原虚拟磁盘。
-
-Windows 原生窗口需要客机普通账户已登录且解锁；先核对账户与 Workbench 组件状态，再重试连接。项目应放在配置目录之外的专用文件夹，并从工作台明确打开。
+环境存储所在磁盘未连接或迁移尚未完成时，工作台会提示“环境存储需要恢复”。连接原磁盘后，在设置的项目与环境页面点击“重试恢复”。恢复完成前保留原环境与虚拟磁盘。项目应放在配置目录之外的专用文件夹，并从工作台明确打开。

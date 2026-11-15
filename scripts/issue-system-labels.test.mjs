@@ -10,6 +10,8 @@ test('reads the host and guest dropdowns of the issue forms', () => {
 test('reads multi-select answers and ignores sides that do not apply', () => {
   const body = '### 涉及的主机系统\n\nWindows, Linux\n\n### 涉及的客机系统\n\n不涉及或不确定\n';
   assert.deepEqual(systemLabelsFromBody(body), ['Windows 主机', 'Linux 主机']);
+  assert.deepEqual(systemLabelsFromBody('### 涉及的主机系统\n\n全部平台\n\n### 涉及的客机系统\n\n全部平台'), ['Windows 主机', 'Linux 主机', 'Linux 客机']);
+  assert.deepEqual(systemLabelsFromBody('### 客机系统\n\nWindows'), []);
 });
 
 test('reads free-text fields, including a field shared by both sides', () => {

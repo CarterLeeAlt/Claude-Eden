@@ -18,7 +18,7 @@
 
 클로드와 대화하고 협업하고 싶은 사용자로서 VPS, 브라우저 지문 프로필과 환경 검사를 설정하는 데 지쳤으며 계정 정지와 금전적 손실을 걱정합니다. **Claude Eden**을 소개합니다. **자신의 프록시를 설정하고 격리 환경, 시간대, 언어와 환경 검사를 한 곳에서 관리하는 데스크톱 작업 공간입니다.**
 
-Claude Eden은 Windows 데스크톱에서 터미널, 브라우저, 편집기와 공식 Claude Desktop을 모읍니다. 로컬 Windows·Linux 게스트를 사용하거나 SSH로 자신의 Linux 클라우드 서버에 연결하세요. 필요한 프로젝트만 공유하고 네트워크를 따로 관리하며 휴대폰에서 작업을 이어갈 수 있습니다. 게스트 기능과 호스트 요구 사항은 시스템 안내를 참조하세요. 주요 기능:
+Claude Eden은 Windows 데스크톱에서 터미널, 브라우저, 편집기와 공식 Claude Desktop을 모읍니다. 로컬 Linux 게스트를 사용하거나 SSH로 자신의 Linux 클라우드 서버에 연결하세요. 필요한 프로젝트만 공유하고 네트워크를 따로 관리하며 휴대폰에서 작업을 이어갈 수 있습니다. 게스트 기능과 호스트 요구 사항은 시스템 안내를 참조하세요. 주요 기능:
 
 - 호스트와 격리된 네트워크 설정: Claude Eden은 자체 프록시를 통해 환경 내부의 모든 네트워크 트래픽을 라우팅합니다.
 - 네트워크 프록시의 IP 위치에 대한 자동 동기화를 통해 시간대 및 언어를 포함하여 호스트에서 격리된 브라우저 지문 설정
@@ -28,7 +28,7 @@ Claude Eden은 Windows 데스크톱에서 터미널, 브라우저, 편집기와 
 ## Claude Eden으로 할 수 있는 일
 
 - **단일 창에서 작업합니다.** 터미널에서 Claude Code를 실행하고, 편집기에서 변경 사항을 검토하고, Workbench 브라우저로 서비스를 미리 보고 로그인하세요.
-- **익숙한 시스템에서 개발하세요.** Windows 또는 Linux 게스트를 선택하세요. 조건을 충족하는 Windows 호스트에서는 시스템 버전을 자동으로 맞추고 공식 이미지로 독립 환경을 만들 수 있습니다. [게스트 시스템 선택](docs/guide/guest-systems.md)
+- **독립된 Linux 환경에서 개발하세요.** Debian 또는 Ubuntu를 선택하고 Linux 도구를 사용하며 명시적으로 허용한 프로젝트만 공유하세요. [게스트 시스템 선택](docs/guide/guest-systems.md)
 - **공유하는 내용을 제어하세요.** 기본 작업공간과 명시적으로 열린 프로젝트 폴더만 공유됩니다. 호스트의 Claude 로그인 상태, 브라우저 프로필 및 SSH 키는 자동으로 가져오지 않습니다.
 - **네트워크 상태를 확인하세요.** 내장된 네트워크 프록시 관리를 통해 구독을 가져오고, 엔드포인트를 선택하고, 종료 IP를 확인할 수 있습니다. 중요한 검사가 통과될 때까지 환경은 오프라인 상태로 유지됩니다. 네트워크 프록시를 사용할 수 없는 경우 직접 연결로 대체할 수 없습니다.
 - **다음에 계속하세요.** 도구, 파일 및 로그인 상태는 가상 디스크에 유지됩니다. 창을 닫아도 백그라운드 작업이 계속 실행될 수 있습니다.
@@ -49,7 +49,7 @@ https://github.com/CarterLeeAlt/Claude-Eden의 최신 소스 코드를 받아 Wi
 
 ## 다운로드 및 설치
 
-Claude Eden의 데스크톱 호스트는 Windows 10 22H2 / 11 x64이며 주요 인수 검증 플랫폼은 Windows 10입니다. 로컬 게스트는 Debian, Ubuntu 22.04와 Windows입니다. Windows 게스트에는 Hyper-V를 지원하는 Windows 11 Pro, Enterprise 또는 Education 호스트가 필요합니다. Linux 클라우드 배포와 백엔드도 유지됩니다. [Windows](docs/windows.md) · [Linux 클라우드](docs/linux.md).
+Claude Eden의 데스크톱 호스트는 Windows 10 x64이며 로컬 게스트는 Debian 13 또는 Ubuntu 22.04입니다. Linux 클라우드 배포와 백엔드도 사용할 수 있습니다. 시스템과 가상화 기능은 각 컴퓨터의 실제 지원 능력을 기준으로 감지합니다. [Windows](docs/windows.md) · [Linux 클라우드](docs/linux.md).
 
 1. [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases)에서 실제 게시된 Windows 설치 파일을 확인하세요. 게시된 버전이 없으면 [빌드 안내](docs/windows.md)를 따르세요.
 2. Windows 설치 프로그램을 실행하고 **Claude Eden**을 시작하세요. 서버 배포는 [Linux 클라우드](docs/guide/cloud.md)를 참조하세요.
@@ -71,7 +71,7 @@ Claude Eden의 데스크톱 호스트는 Windows 10 22H2 / 11 x64이며 주요 �
 
 ### 2. 환경 시작
 
-처음 만들 때 게스트 시스템 또는 지원되는 자동 버전 선택과 저장 위치를 지정하세요. 게스트를 설치하고 환경을 시작한 뒤 필요한 권한을 승인하세요. 작업 상세에서 진행 상태와 오류를 볼 수 있습니다. 이후에는 같은 환경을 다시 사용합니다.
+처음 만들 때 Debian 또는 Ubuntu 게스트와 저장 위치를 지정하세요. 게스트를 설치하고 환경을 시작한 뒤 필요한 권한을 승인하세요. 작업 상세에서 진행 상태와 오류를 볼 수 있습니다. 이후에는 같은 환경을 다시 사용합니다.
 
 ### 3. 프로젝트를 열고 Claude를 실행하세요.
 
@@ -92,7 +92,7 @@ Claude Eden의 데스크톱 호스트는 Windows 10 22H2 / 11 x64이며 주요 �
 
 | 귀하의 작업 | 여기서 시작하세요 |
 |---|---|
-| Windows / Debian / Ubuntu 22.04 | [게스트 시스템 선택](docs/guide/guest-systems.md) |
+| Debian 13 / Ubuntu 22.04 | [게스트 시스템 선택](docs/guide/guest-systems.md) |
 | 네트워크 프록시 설치, 구성 및 첫 번째 프로젝트 열기 | [시작하기](docs/getting-started.md) |
 | 다운로드, 시작, 연결 및 로그인 문제 해결 | [FAQ 및 복구](docs/troubleshooting.md) |
 | 키보드 컨트롤, 모양, 데이터 지속성 및 종료 동작 알아보기 | [매일 사용](docs/getting-started.md#日常使用) |

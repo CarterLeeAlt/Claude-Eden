@@ -1,18 +1,27 @@
 # Windows 安装、更新与发布
 
-Claude Eden 的桌面宿主为 Windows 10 22H2（内部版本 19045）和 Windows 11 的 x64 电脑，以 Windows 10 为主要验收平台。安装后从开始菜单打开 Claude Eden，选择客机系统、导入自己的代理，再进入工作台。具备完整 Hyper-V 的 Windows 11 专业版、企业版或教育版可运行 Windows 客机，使用 PowerShell、Windows 原生工具和官方 Claude Desktop；其他受支持的 Windows 主机可使用 Debian 或 Ubuntu 22.04 客机。具体组合见[选择客机系统](guide/guest-systems.md)。
+Claude Eden 的桌面使用环境为 **Windows 10 主机 + Linux 客机**。在 Windows 安装并打开应用，选择 Debian 13 或 Ubuntu 22.04，导入自己的代理后进入工作台；也可直接连接 Linux 云端工作台。
+
+## Windows 版本与功能范围
+
+宿主是安装 Claude Eden 的电脑，客机是 Claude Eden 管理的虚拟机。各项条件分别适用于下表中的功能：
+
+| 功能 | 宿主与运行条件 |
+| --- | --- |
+| 完整版／轻客户端的安装、启动、更新和卸载 | Windows 10，使用与 CPU 架构匹配的安装包及 WebView2 运行时。当前 Windows 构建为 x64。 |
+| 连接远程 Linux 工作台 | 上述 Windows 桌面系统；本机虚拟机可以关闭。 |
+| 创建和运行 Debian／Ubuntu 客机 | 上述 Windows 桌面系统，以及 Windows 虚拟机监控程序平台（WHPX）。 |
+| Android 手机连接 | 配对运行中的 Claude Eden 主机，远程查看和操作 Linux 环境。 |
+
+完整版携带本机 Linux 虚拟机运行时，轻客户端只负责远程连接与显示。终端、浏览器、编辑器和 Claude Desktop 都在 Linux 环境内运行。客机使用方式见[选择客机系统](guide/guest-systems.md)。
 
 ## 安装前准备
 
-下表和 WHPX 配置适用于 Linux 客机。Windows 客机需要完整的 Hyper-V 平台与管理工具，以及支持第二代虚拟机、安全启动和 vTPM 的主机。首次创建通过系统提权安装专用管理助手，日常 Claude Eden 仍以普通用户运行，助手仅管理已登记客机。Windows 家庭版使用 Linux 客机路线。系统匹配入口使用 Microsoft 官方 ESD，手动安装可选官方 ISO，均按相应许可使用。
-
-“自动匹配本机系统版本”匹配 Windows 发行版本、版本类型和语言，展示主机与客机补丁构建差异；安装中断后继续原记录与系统盘。当前版本完整的新装验收以发行说明为准。完整条件和流程见[客机系统指南](guide/guest-systems.md#自动匹配本机系统版本)。
-
-使用本机 ISO 时，安装窗口会先收集客机本地管理员账户，默认名称为 `InstallAdmin`，用安装应答完成离线账户创建。自动安装临时管理员 `setupadmin` 为保留名称，不能作为 ISO 管理员。进入客机桌面后回 Claude Eden 继续安装，组件置备期间保持 PowerShell 安装窗口开启。具体步骤见[使用 Windows 本机 ISO](guide/guest-systems.md#使用-windows-本机-iso)。
+下表适用于运行本机 Linux 客机的完整版。只连接远端的轻客户端按上表准备 Windows 主机和 Linux 服务器。
 
 | 项目 | 要求 |
 |---|---|
-| 系统 | x64 Windows 10 22H2 或 Windows 11；不包含 Windows ARM64 与 32 位系统 |
+| 系统 | Windows 10；当前 x64 构建用于 Intel／AMD x64 电脑，系统能力按实际运行时与虚拟化检查结果判断 |
 | 虚拟化 | BIOS/UEFI 已启用处理器虚拟化，Windows 已启用“Windows 虚拟机监控程序平台” |
 | 存储 | 使用本地磁盘，保留安装包、Linux 镜像、虚拟磁盘和更新备份所需空间；初始虚拟磁盘上限为 24 GiB |
 | 代理 | 自己的 Clash/Mihomo YAML 来源或 HTTP/SOCKS5 节点；Claude Eden 不提供代理服务 |
@@ -23,7 +32,7 @@ Claude Eden 的桌面宿主为 Windows 10 22H2（内部版本 19045）和 Window
 DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All
 ```
 
-这个系统功能需要一次管理员授权；Claude Eden 日常运行和应用安装使用普通用户权限。企业电脑若禁止虚拟化，应由设备管理员启用。Linux 客机使用独立的 QEMU 虚拟机，Windows 客机使用 Hyper-V，两者都不依赖 WSL 或 Docker。
+这个系统功能需要一次管理员授权；Claude Eden 日常运行和应用安装使用普通用户权限。企业电脑若禁止虚拟化，应由设备管理员启用。Linux 客机使用独立的 QEMU 虚拟机，通过 WHPX 加速，不依赖 WSL 或 Docker。
 
 ## 安装并开始工作
 
@@ -36,7 +45,7 @@ DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All
 
 安装器逐文件解压到安装位置所在磁盘的暂存目录，成功后替换应用，避免在系统临时目录生成整包解压副本。Windows 临时目录仍可能保存少量安装器辅助文件；缺少 WebView2 时，Microsoft 安装程序会管理其共享运行组件的位置。
 
-“打开项目”接受 Windows 文件夹。使用 Linux 客机时，例如 `C:\Users\姓名\Projects\demo` 在 Linux 内对应 `/c/Users/姓名/Projects/demo`；使用 Windows 客机时，终端与工具采用 Windows 路径。项目文件仍保存在原来的主机文件夹中，编辑和删除直接影响原文件；项目内的 `.git` 可读写，可在 Claude Eden 中暂存、提交和切换分支。项目共享只限明确打开的目录，下载使用独立的暂存目录。
+“打开项目”接受 Windows 文件夹，例如 `C:\Users\姓名\Projects\demo` 在 Linux 内对应 `/c/Users/姓名/Projects/demo`。项目文件仍保存在原来的主机文件夹中，编辑和删除直接影响原文件；项目内的 `.git` 可读写，可在 Claude Eden 中暂存、提交和切换分支。项目共享只限明确打开的目录，下载使用独立的暂存目录。
 
 Windows 快捷键以 `Ctrl` 为主：`Ctrl+O` 打开项目、`Ctrl+T` 新建网页、`Ctrl+L` 定位地址栏、`Ctrl+W` 关闭标签，`Ctrl+Shift+Enter` 新建终端。终端使用 `Ctrl+Shift+C/V` 复制粘贴，`Ctrl+C` 中断命令。网页和编辑器采用相应客机系统的按键行为。
 
@@ -72,12 +81,6 @@ Claude Eden 支持含中文的安装目录。启动时优先读取随附 QEMU �
 - 提示权限或路径不可用：使用当前用户有权限访问的本地目录，不把 Claude Eden 安装目录、私有配置或磁盘根目录作为共享项目。更新器拒绝含符号链接或目录联接的安装路径。
 
 反馈问题时提供 Claude Eden 版本、Windows 版本与内部版本号、CPU 架构、失败步骤和错误原文。不要附带代理密码、订阅链接、会话地址或未脱敏的配置文件。
-
-## Windows 客机里的 PowerShell
-
-Hyper-V 装机流程为新建的 Windows 11 x64 客机预装 PowerShell 7.6.9 LTS。首次登录后，在客机终端运行 `pwsh --version` 即可查看版本；旧脚本仍可用 `powershell.exe` 调用系统的 5.1。
-
-Windows 开发包将创建脚本放在安装目录的 `resources\guest-os\new-windows-guest.ps1`。创建客机时，宿主从微软下载约 110 MB 的 x64 ZIP，核对 SHA-256 后写入只读安装盘。客机无需联网，所有用户共用 `%ProgramFiles%\PowerShell\7`。宿主也可通过 `-PowerShellZip` 指定已下载的同版本文件。该步骤在 Windows 首次安装时运行，已有客机不会在 Claude Eden 更新时重装。[客机创建脚本](../scripts/guest-os/new-windows-test-vm.ps1) · [微软发布校验清单](https://github.com/PowerShell/PowerShell/releases/download/v7.6.9/hashes.sha256)
 
 ## 静默安装选项
 

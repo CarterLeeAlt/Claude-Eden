@@ -18,7 +18,7 @@
 
 Isticmaalayaal raba inay la shaqeeyaan Claude ahaan, waanu ka daalnay habaynta VPS, astaamaha biraawsarka iyo hubinta deegaanka, anagoo ka walwalsan xayiraadaha akoonnada iyo khasaaraha maaliyadeed. Waxaan soo bandhigaynaa **Claude Eden** — **goob shaqo oo desktop ah: habayso proxy-gaaga oo hal meel ku maamul deegaanka go'doonsan, aagga wakhtiga, luqadda iyo hubinnada.**
 
-Claude Eden wuxuu terminalka, biraawsarka, tafatiraha iyo Claude Desktop-ka rasmiga ah ku mideeyaa desktop-ka Windows. Isticmaal marti Windows ama Linux oo maxalli ah, ama serverkaaga Linux ee daruurta ku xir SSH. Wadaag mashaariicda aad doorato, shabakadda si gaar ah u maamul, hawlahana telefoonka ka sii wad. Shuruudaha martigeliyaha iyo awoodaha martida ka eeg hagaha nidaamyada. Astaamaha ugu waaweyn:
+Claude Eden wuxuu terminalka, biraawsarka, tafatiraha iyo Claude Desktop-ka rasmiga ah ku mideeyaa desktop-ka Windows. Isticmaal marti Linux oo maxalli ah, ama serverkaaga Linux ee daruurta ku xir SSH. Wadaag mashaariicda aad doorato, shabakadda si gaar ah u maamul, hawlahana telefoonka ka sii wad. Shuruudaha martigeliyaha iyo awoodaha martida ka eeg hagaha nidaamyada. Astaamaha ugu waaweyn:
 
 - Dejinta shabakadda way ka go'an tahay martigeliyaha; Claude Eden wuxuu dhammaan taraafikada gudaha mariyaa proxy-giisa
 - Dejinta faraha browserka ee ka go'doon martigeliyaha, oo ay ku jiraan aaga wakhtiga iyo luqadda, oo leh si toos ah ula mid ah goobta wakiilka shabakada
@@ -28,7 +28,7 @@ Claude Eden wuxuu terminalka, biraawsarka, tafatiraha iyo Claude Desktop-ka rasm
 ## Maxaad ku samayn kartaa Claude Eden
 
 - **Ka shaqee hal daaqad.** Orod Claude Code gudaha terminalka, dib u eeg isbeddelada tifaftiraha, oo isticmaal biraawsarka Workbench si aad u aragto adeegyada oo aad u soo gasho.
-- **Ku horumari nidaamka aad taqaan.** Dooro Windows ama Linux marti ah. Martigeliye Windows oo ku habboon wuxuu waafajin karaa nooca nidaamka oo deegaan madax bannaan ka abuuri karaa sawirka rasmiga ah. [Doorashada nidaamka martida](docs/guide/guest-systems.md)
+- **Ku horumari deegaan Linux oo madax bannaan.** Dooro Debian ama Ubuntu, isticmaal qalabka Linux, oo wadaag keliya mashaariicda aad si cad u oggolaatay. [Doorashada nidaamka martida](docs/guide/guest-systems.md)
 - **Xakamee waxa aad wadaagto.** Kaliya goobta shaqada ee caadiga ah iyo galka mashruuca ee si cad loo furay ayaa la wadaagaa. Xaaladda soo galitaanka Claude ee martida loo yahay, boggaga browserka, iyo furayaasha SSH si toos ah looma soo dejiyo.
 - **Eeg heerka shabakadaada** Maaraynta wakiilnimada shabakada ee ku dhex jirta ayaa kuu ogolaanaysa inaad soo dejiso rukunsiyada, dooro meelaha dhamaadka, oo aad hubiso IP-ga ka baxa. Deegaanku internetka kuma xirmayo ilaa hubinnada muhiimka ahi ay si guul leh u gudbaan. Haddii wakiillada shabakadu maqan tahay, ma dhacayso xiriir toos ah.
 - **Sii wad marka xigta** Qalabka, faylalka, iyo xaaladda gelitaanku waxay ku sii jiraan saxanka casriga ah. Hawlaha asalka ahi waxay sii socon karaan markaad daaqadda xidhid.
@@ -49,7 +49,7 @@ Waxa kaliya ee aad u baahan tahay waa barta ugu dambeysa ee wakiil shabakad la i
 
 ## Soo deji oo rakib
 
-Martigeliyaha desktop-ka Claude Eden waa Windows 10 22H2 / 11 x64; Windows 10 waa madasha ugu weyn ee tijaabada aqbalaadda. Martida maxalliga ahi waa Debian, Ubuntu 22.04 iyo Windows. Martida Windows waxay u baahan tahay Windows 11 Pro, Enterprise ama Education oo leh Hyper-V. Daruurta iyo qaybta serverka Linux waa la hayaa. [Windows](docs/windows.md) · [Daruurta Linux](docs/linux.md).
+Martigeliyaha desktop-ka Claude Eden waa Windows 10 x64, martida maxalliga ahna waa Debian 13 ama Ubuntu 22.04. Daruurta iyo qaybta serverka Linux sidoo kale waa la heli karaa. Awoodaha nidaamka iyo dalwadeynta waxaa lagu ogaadaa awoodda dhabta ah ee kombiyuutar kasta. [Windows](docs/windows.md) · [Daruurta Linux](docs/linux.md).
 
 1. Ka hubi rakibaha Windows ee la daabacay [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases). Haddii aan sii-deyn jirin, raac [hagaha dhismaha](docs/windows.md).
 2. Orod rakibaha Windows oo bilow **Claude Eden**. Serverka: [daruurta Linux](docs/guide/cloud.md).
@@ -71,7 +71,7 @@ Bogga guriga, dhagsii 'Configure network and proxy', ka dibna 'Ku dar isha'. Soo
 
 ### 2. Bilow deegaanka
 
-Marka ugu horreysa dooro nidaamka martida ama waafajinta nooca martigeliyaha haddii la taageero, iyo goobta kaydinta. Rakib martida, bilow deegaanka oo bixi oggolaanshaha loo baahan yahay. Horumarka iyo khaladaadku waxay ka muuqdaan faahfaahinta hawsha. Bilowga dambe wuxuu isticmaalaa isla deegaanka.
+Marka ugu horreysa dooro Debian ama Ubuntu oo ah nidaamka martida iyo goobta kaydinta. Rakib martida, bilow deegaanka oo bixi oggolaanshaha loo baahan yahay. Horumarka iyo khaladaadku waxay ka muuqdaan faahfaahinta hawsha. Bilowga dambe wuxuu isticmaalaa isla deegaanka.
 
 ### 3. Fur mashruuc oo maamul Claude
 
@@ -92,7 +92,7 @@ Si aad u hesho tusmada buuxda, eeg [Tusmada dhokumentiyada](docs/README.md).
 
 | Hawshaada | Halkan ka bilow |
 |---|---|
-| Windows / Debian / Ubuntu 22.04 | [Doorashada nidaamka martida](docs/guide/guest-systems.md) |
+| Debian 13 / Ubuntu 22.04 | [Doorashada nidaamka martida](docs/guide/guest-systems.md) |
 | Ku rakib, habee wakiil shabakad, oo fur mashruucaaga ugu horreeya | [Bilaabidda](docs/getting-started.md) |
 | Xallinta soo dejinta, bilaabista, isku xidhka, iyo soo gelista | [FAQ iyo soo kabashada](docs/troubleshooting.md) |
 | Baro kontaroolada kiiboodhka, muuqaalka, adkaysiga xogta, iyo habdhaqanka bixista | [Isticmaalka maalinlaha ah](docs/getting-started.md#日常使用) |

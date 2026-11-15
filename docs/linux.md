@@ -12,7 +12,7 @@ Claude Eden 保留 Linux 云端部署、后端服务，以及 Windows 桌面宿�
 
 ## Windows 上的 Linux 客机
 
-Windows 10 22H2 / 11 x64 可选择 Debian 或 Ubuntu 22.04 客机，使用 QEMU 与 Windows 虚拟机监控程序平台。首次安装下载官方镜像与开发工具，之后使用持久虚拟磁盘；具体版本、校验与空间要求见[客机系统指南](guide/guest-systems.md)。
+Windows 10 x64 可选择 Debian 或 Ubuntu 22.04 客机，使用 QEMU 与 Windows 虚拟机监控程序平台。程序按实际电脑核对虚拟化和资源条件。首次安装下载官方镜像与开发工具，之后使用持久虚拟磁盘；具体版本、校验与空间要求见[客机系统指南](guide/guest-systems.md)。
 
 Linux 客机普通账户为 `developer`，客机辅助工具采用 `Workbench` / `workbench` 标识。宿主程序和配置使用 `Claude Eden` / `eden`；两者职责和目录不同。
 

@@ -18,7 +18,7 @@
 
 作为一个只是想和 Claude 对话与合作的正常用户，受够了折腾各种 VPS，指纹浏览器，环境检测，面对封号的担惊受怕和财产损失。我们提出 **Claude Eden** 项目：**一个桌面工作台，配置好自己的网络代理，集中管理隔离环境、时区语言和环境检查。**
 
-Claude Eden 在 Windows 桌面上提供本机 Linux 或 Windows 客机，也可以通过 SSH 使用自己的 Linux 云端环境。终端、浏览器、编辑器和官方 Claude Desktop 汇集在同一个工作台，项目按需共享，网络独立管理；还可以用手机接续电脑上的任务。各客机的能力和主机要求见系统指南。支持以下几个重点功能：
+Claude Eden 在 Windows 10 桌面上提供独立的 Linux 客机，也可以通过 SSH 使用自己的 Linux 云端环境。终端、浏览器、编辑器和官方 Claude Desktop 汇集在同一个工作台，项目按需共享，网络独立管理；还可以用 Android 手机接续电脑上的任务。客机能力和主机要求见系统指南。支持以下几个重点功能：
 
 - 和主机隔离的网络设置，Claude Eden 自己接管和代理内部的所有网络流量
 - 和主机隔离的指纹设置，包括时区、语言等，支持自动与代理 IP 同步
@@ -28,7 +28,7 @@ Claude Eden 在 Windows 桌面上提供本机 Linux 或 Windows 客机，也可�
 ## 你可以用它做什么
 
 - **在一个窗口里完成工作。** 用终端运行 Claude Code，用编辑器查看改动，用 Workbench 浏览器预览服务和完成登录。
-- **用熟悉的系统开发。** 选择 Windows 或 Linux 客机，使用对应平台的工具；也可在符合条件的 Windows 主机上自动匹配系统版本，下载官方镜像并创建独立环境。 [选择客机系统](docs/guide/guest-systems.md)
+- **使用独立的 Linux 开发环境。** 选择 Debian 或 Ubuntu，使用 Linux 工具链，共享明确授权的项目目录；系统、工具和登录资料保存在独立环境中。 [选择客机系统](docs/guide/guest-systems.md)
 - **控制共享范围。** 只共享默认工作区和明确打开的项目文件夹；主机的 Claude 登录、浏览器配置和 SSH 密钥不会自动导入。
 - **看清网络状态。** 内置代理管理支持导入订阅、选择节点和检查出口。关键检查未通过时，环境保持离线；代理不可用时没有直连回退。
 - **下次继续使用。** 工具、文件和登录状态保存在虚拟磁盘里，关闭窗口可以保留后台任务。
@@ -51,13 +51,13 @@ Claude Eden 在 Windows 桌面上提供本机 Linux 或 Windows 客机，也可�
 
 ## 下载与安装
 
-Claude Eden 的桌面宿主为 Windows 10 22H2 / 11 x64，以 Windows 10 为主要验收平台。本机保留 Debian、Ubuntu 22.04 和 Windows 客机；Windows 原生客机入口目前要求支持 Hyper-V 的 Windows 11 专业版、企业版或教育版主机。Linux 云端部署和后端继续保留。 [Windows](docs/windows.md) · [Linux 云端](docs/guide/cloud.md)。
+Claude Eden 的桌面宿主为 Windows 10，当前安装包为 x64。本机客机使用 Debian 13 或 Ubuntu 22.04，也可连接 Linux 云端后端。系统与虚拟化能力、资源和路径按实际电脑检测。 [Windows](docs/windows.md) · [Linux 云端](docs/guide/cloud.md)。
 
 1. 查看 [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases) 中实际发布的 Windows 安装包；没有已发布安装包时按[构建说明](docs/windows.md)从源码构建。
 2. 运行 Windows 安装程序，再启动 **Claude Eden**。服务器部署见 [Linux 云端说明](docs/guide/cloud.md)。
 3. 按应用内引导配置自己的代理，启动环境后打开项目。
 
-安装包随附工作台和代理核心，无需先安装 Go、Node.js、Docker 或 Clash。首次创建环境时选择客机系统与存储位置，再准备对应的官方系统镜像和开发工具。Windows 系统按其许可使用；Claude Eden 不提供系统授权、代理服务或 Claude 账户。
+安装包随附工作台和代理核心，无需先安装 Go、Node.js、Docker 或 Clash。首次创建环境时选择 Linux 发行版与存储位置，再下载并校验对应官方镜像、安装开发工具。代理服务和 Claude 账户由用户自行准备。
 
 源码在本仓库公开，已发布安装包的版本说明和校验文件见 [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases)。系统选择、镜像来源与数据保留方式见[客机系统指南](docs/guide/guest-systems.md)。
 
@@ -73,7 +73,7 @@ Claude Eden 的桌面宿主为 Windows 10 22H2 / 11 x64，以 Windows 10 为主�
 
 ### 2. 启动环境
 
-首次选择客机系统或适用的“自动匹配本机系统版本”，再选择存储位置。点击“安装客户机”或启动环境，按引导完成安装与授权；进度和错误可在“操作详情”查看。以后启动复用原环境。
+首次选择 Debian 或 Ubuntu Linux 客机，再选择存储位置。点击“开始安装”或启动环境，按引导完成安装与检查；进度和错误可在“操作详情”查看。以后启动复用原环境。
 
 ### 3. 打开项目，运行 Claude
 
@@ -96,7 +96,7 @@ Claude Eden 的桌面宿主为 Windows 10 22H2 / 11 x64，以 Windows 10 为主�
 |---|---|
 | 让自己的 Agent 下载、安装、配置和排查 Claude Eden | [Agent 使用指南](docs/guide/agent.md) |
 | 第一次安装、配置代理、打开项目 | [安装与首次启动](docs/guide/installation.md) |
-| 选择 Windows、Debian 或 Ubuntu 22.04 客机，使用原生开发工具 | [选择客机系统](docs/guide/guest-systems.md) |
+| 选择 Debian 13 或 Ubuntu 22.04 客机，使用 Linux 开发工具 | [选择客机系统](docs/guide/guest-systems.md) |
 | 添加多个订阅、查看额度和分配终端 | [多账号与额度](docs/guide/accounts.md) |
 | 手机扫码、工具审批、远程浏览器 | [手机连接与远程会话](docs/guide/mobile.md) |
 | 在自己的 VPS 部署和连接环境 | [云端部署与 SSH](docs/guide/cloud.md) |

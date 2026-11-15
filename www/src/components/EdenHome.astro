@@ -22,7 +22,7 @@ const guideLabel = guideLabels[locale];
 const docHref = (href: string) => href.startsWith(`${repo}/blob/main/docs/guide/`)
   ? href.replace(`${repo}/blob/main/docs/guide/`, `${base}docs/`).replace(/\.md(?=#|$)/, '/') : href;
 const platforms = [
-  { name: 'Windows', icon: 'windows', requirements: 'Windows 10 22H2 / 11 · x64', format: '.exe',
+  { name: 'Windows', icon: 'windows', requirements: 'Windows 10 · x64', format: '.exe',
     url: downloads.windows?.downloadURL, version: downloads.windows?.version,
     preview: downloads.windows?.unsigned,
     notes: downloads.windows?.releaseURL, guideURL: `${repo}/blob/main/docs/windows.md` },

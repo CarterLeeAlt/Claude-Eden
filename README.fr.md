@@ -18,7 +18,7 @@
 
 En tant qu'utilisateurs ordinaires qui souhaitent simplement parler et collaborer avec Claude, nous en avons assez de configurer des instances VPS, des profils d'empreintes digitales de navigateur et des contrôles d'environnement, tout en nous inquiétant des interdictions de compte et des pertes financières. Nous présentons **Claude Eden** — **une application de bureau : configurez votre propre proxy réseau et gérez votre environnement isolé, votre fuseau horaire, votre langue et vos contrôles d'environnement en un seul endroit.**
 
-Claude Eden réunit terminal, navigateur, éditeur et Claude Desktop officiel dans un même espace de travail. L’application Windows utilise des invités Linux ou Windows selon les capacités de l’hôte, ou un environnement cloud Linux par SSH. Partagez les projets de votre choix, gérez le réseau séparément et poursuivez vos tâches depuis votre téléphone. Ses principales fonctions :
+Claude Eden réunit terminal, navigateur, éditeur et Claude Desktop officiel dans un même espace de travail. L’application Windows utilise un invité Linux local ou un environnement cloud Linux par SSH. Partagez les projets de votre choix, gérez le réseau séparément et poursuivez vos tâches depuis votre téléphone. Ses principales fonctions :
 
 - Paramètres réseau isolés de l'hôte ; Claude Eden achemine le trafic de son environnement via son propre proxy réseau
 - Paramètres d'empreinte digitale du navigateur isolés de l'hôte, y compris le fuseau horaire et la langue, avec synchronisation automatique avec l'emplacement IP du proxy réseau
@@ -28,7 +28,7 @@ Claude Eden réunit terminal, navigateur, éditeur et Claude Desktop officiel da
 ## Ce que vous pouvez faire avec Claude Eden
 
 - **Travaillez dans une seule fenêtre.** Exécutez Claude Code dans le terminal, examinez les modifications dans l'éditeur et utilisez le navigateur Workbench pour prévisualiser les services et vous connecter.
-- **Développez dans votre système habituel.** Choisissez un invité Windows ou Linux avec ses outils ; les hôtes Windows compatibles proposent aussi une installation adaptée à leur version. [Choisir le système invité](docs/guide/guest-systems.md)
+- **Développez dans un environnement Linux indépendant.** Choisissez Debian ou Ubuntu, utilisez les outils Linux et partagez uniquement les projets que vous autorisez explicitement. [Choisir le système invité](docs/guide/guest-systems.md)
 - **Contrôlez ce que vous partagez.** Seuls l'espace de travail par défaut et les dossiers de projet explicitement ouverts sont partagés. L'état de connexion Claude de l'hôte, les profils de navigateur et les clés SSH ne sont pas importés automatiquement.
 - **Consultez l'état de votre réseau.** La gestion intégrée du proxy réseau vous permet d'importer des abonnements, de sélectionner des points de terminaison et de vérifier l'adresse IP de sortie. L'environnement reste hors ligne jusqu'à ce que les vérifications critiques soient réussies. Si le proxy réseau n'est pas disponible, il n'est pas possible de recourir à une connexion directe.
 - **Continuez la prochaine fois.** Les outils, les fichiers et l'état de connexion persistent sur le disque virtuel. Les tâches en arrière-plan peuvent continuer à s'exécuter lorsque vous fermez la fenêtre.
@@ -49,7 +49,7 @@ Tout ce dont vous avez besoin est un point de terminaison proxy réseau fiable. 
 
 ## Téléchargement et installation
 
-L’hôte de bureau est Windows 10 22H2 / 11 x64, avec Windows 10 comme plateforme principale de validation. Les invités Linux restent disponibles ; l’invité Windows natif exige actuellement Windows 11 Pro, Entreprise ou Éducation avec Hyper-V. Le déploiement cloud Linux est conservé. [Windows](docs/windows.md) · [Cloud Linux](docs/linux.md).
+L’hôte de bureau est Windows 10 x64 et les systèmes invités locaux sont Debian 13 ou Ubuntu 22.04. Le déploiement cloud et le backend Linux sont également disponibles. Les capacités du système et de virtualisation sont détectées sur chaque ordinateur. [Windows](docs/windows.md) · [Cloud Linux](docs/linux.md).
 
 1. Consultez les paquets Windows réellement disponibles dans [Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases), ou les instructions de construction si aucun paquet n’est publié.
 2. Exécutez l’installateur Windows et ouvrez **Claude Eden**. [Guide d’installation](docs/windows.md#安装并开始工作) · [Cloud Linux](docs/guide/cloud.md).
@@ -71,7 +71,7 @@ Sur la page d'accueil, cliquez sur « Configurer le réseau et le proxy », pu
 
 ### 2. Démarrez l'environnement
 
-À la première création, choisissez le système invité et le stockage. Démarrez l’environnement Claude Eden et suivez l’installation et les autorisations. La progression et les erreurs figurent dans les détails de l’opération. Les lancements suivants réutilisent le même environnement.
+À la première création, choisissez Debian ou Ubuntu comme système invité et l’emplacement de stockage. Démarrez l’environnement Claude Eden et suivez l’installation et les autorisations. La progression et les erreurs figurent dans les détails de l’opération. Les lancements suivants réutilisent le même environnement.
 
 ### 3. Ouvrez un projet et exécutez Claude
 
@@ -80,7 +80,7 @@ Cliquez sur « Ouvrir le projet » pour sélectionner un dossier sur votre ordin
 ## Comprendre ces limites avant utilisation
 
 - Les modifications et suppressions dans les projets partagés affectent directement les fichiers sur votre ordinateur. Utilisez le contrôle de version ou les sauvegardes. Le dossier `.git` du projet est accessible en lecture et en écriture ; vous pouvez préparer des modifications, créer des commits et changer de branche dans Claude Eden.
-- Tous les projets d’un profil partagent l’environnement sélectionné, ses outils, ses comptes et son système de fichiers Windows ou Linux. Les projets ne sont pas isolés les uns des autres.
+- Tous les projets d’un profil partagent l’environnement Linux sélectionné, ses outils, ses comptes et son système de fichiers. Les projets ne sont pas isolés les uns des autres.
 - Par défaut, les sorties publiques prennent en charge IPv4 TCP et DNS passe par le même proxy. UDP, IPv6, ICMP publics et les accès directs à l’hôte ou au réseau local sont limités. En activant Tailscale, les accès aux appareils suivent les règles du réseau privé.
 - Les vérifications du réseau montrent la configuration actuelle et des échantillons de preuves. Ils ne peuvent pas garantir qu’un compte évitera les restrictions de la plateforme et ne remplacent pas un audit complet de sécurité de la virtualisation.
 
@@ -92,7 +92,7 @@ Pour l'index complet, voir [Index des documents](docs/README.md).
 
 | Votre tâche | Commencez ici |
 |---|---|
-| Windows / Debian / Ubuntu 22.04 | [Choisir le système invité](docs/guide/guest-systems.md) |
+| Debian 13 / Ubuntu 22.04 | [Choisir le système invité](docs/guide/guest-systems.md) |
 | Installez, configurez un proxy réseau et ouvrez votre premier projet | [Commencer](docs/getting-started.md) |
 | Dépanner les téléchargements, le démarrage, la connectivité et la connexion | [FAQ et récupération](docs/troubleshooting.md) |
 | Apprenez les commandes du clavier, l'apparence, la persistance des données et le comportement de sortie | [Utilisation quotidienne](docs/getting-started.md#日常使用) |
