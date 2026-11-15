@@ -1,7 +1,7 @@
 ---
 import '@fontsource-variable/inter';
 import GoogleAnalytics from '../../components/GoogleAnalytics.astro';
-import '../../styles/cage.css';
+import '../../styles/eden.css';
 import '../../styles/guide.css';
 import { guidePages, guideGroups, guideURL, guideHTML } from '../../lib/guide';
 export function getStaticPaths() {
@@ -15,7 +15,7 @@ const next = guidePages[index + 1];
 const headings = page.content.getHeadings().filter(heading => heading.depth === 2);
 const html = guideHTML(await page.content.compiledContent());
 const search = guidePages.map(item => ({ title: item.title, description: item.description, url: guideURL(item.slug), text: `${item.keywords || ''} ${item.content.rawContent()}` }));
-const canonical = new URL(guideURL(page.slug), Astro.site);
+const canonical = Astro.site ? new URL(guideURL(page.slug), Astro.site) : undefined;
 ---
 <!doctype html>
 <html lang="zh-CN">
@@ -25,14 +25,14 @@ const canonical = new URL(guideURL(page.slug), Astro.site);
   <GoogleAnalytics />
   <meta name="description" content={page.description} />
   <meta name="theme-color" content="#faf8f4" />
-  <title>{page.title} · Cage 使用文档</title>
-  <link rel="canonical" href={canonical} />
-  <link rel="icon" href={`${base}cage-icon.png`} />
+  <title>{page.title} · Claude Eden 使用文档</title>
+  {canonical && <link rel="canonical" href={canonical} />}
+  <link rel="icon" href={`${base}eden-icon.png`} />
 </head>
 <body class="guide-page">
   <a class="skip-link" href="#article">跳到正文</a>
   <header class="nav wrap guide-header">
-    <a class="brand" href={base}><img src={`${base}cage-icon.png`} width="36" height="36" alt="" /><span>Claude Cage</span></a>
+    <a class="brand" href={base}><img src={`${base}eden-icon.png`} width="36" height="36" alt="" /><span>Claude Eden</span></a>
     <nav aria-label="网站导航"><a href={base}>官网首页</a><a href={guideURL('index')} aria-current="page">使用文档</a><a class="nav-download" href={`${base}#download`}>下载应用 ↓</a></nav>
   </header>
   <div class="guide-shell wrap">
@@ -53,15 +53,15 @@ const canonical = new URL(guideURL(page.slug), Astro.site);
       <section id="search-results" class="guide-results" aria-labelledby="search-title" hidden><div class="search-heading"><h2 id="search-title">搜索结果</h2><button id="close-search" type="button">返回正文</button></div><p id="search-status" role="status" aria-live="polite"></p><ul id="search-list"></ul></section>
       <article id="guide-article">
         <div class="guide-breadcrumb"><a href={guideURL('index')}>使用文档</a><span aria-hidden="true">/</span><span>{page.group}</span></div>
-        <header class="guide-title"><span class="eyebrow">CAGE · 使用手册</span><h1>{page.title}</h1><p>{page.description}</p></header>
+        <header class="guide-title"><span class="eyebrow">CLAUDE EDEN · 使用手册</span><h1>{page.title}</h1><p>{page.description}</p></header>
         {headings.length > 0 && <details class="article-outline" open><summary>本页内容 <span aria-hidden="true">⌄</span></summary><nav aria-label="本页目录">{headings.map(heading => <a href={`#${heading.slug}`}>{heading.text}</a>)}</nav></details>}
         <div class="guide-prose" set:html={html} />
         <nav class="guide-pagination" aria-label="前后章节">{previous ? <a href={guideURL(previous.slug)}><span>← 上一篇</span><strong>{previous.title}</strong></a> : <span />}{next && <a href={guideURL(next.slug)}><span>下一篇 →</span><strong>{next.title}</strong></a>}</nav>
-        <div class="guide-feedback"><p>没有解决你的问题？附上版本、系统与错误原文，帮助我们定位。</p><a href="https://github.com/Lee-xeo/Claude-Cage/issues">反馈问题 ↗</a><a href={`https://github.com/Lee-xeo/Claude-Cage/blob/main/docs/guide/${page.slug}.md`}>查看文档源码 ↗</a></div>
+        <div class="guide-feedback"><p>没有解决你的问题？附上版本、系统与错误原文，帮助我们定位。</p><a href="https://github.com/CarterLeeAlt/Claude-Eden/issues">反馈问题 ↗</a><a href={`https://github.com/CarterLeeAlt/Claude-Eden/blob/main/docs/guide/${page.slug}.md`}>查看文档源码 ↗</a></div>
       </article>
     </main>
   </div>
-  <footer class="wrap guide-footer"><a href={base}>Claude Cage</a><small>独立社区项目，与 Anthropic 无隶属关系。</small><a href={`${base}privacy/`}>统计与隐私</a><a href="#article">回到正文 ↑</a></footer>
+  <footer class="wrap guide-footer"><a href={base}>Claude Eden</a><small>独立社区项目，与 Anthropic 无隶属关系。</small><a href={`${base}privacy/`}>统计与隐私</a><a href="#article">回到正文 ↑</a></footer>
   <script id="guide-search-data" type="application/json" set:html={JSON.stringify(search).replaceAll('<', '\\u003c')} />
   <script>
     type SearchPage = { title: string; description: string; url: string; text: string };

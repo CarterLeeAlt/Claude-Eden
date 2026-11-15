@@ -106,4 +106,4 @@ export const languages = [
   },
 ] as const;
 
-export type CageLocale = typeof languages[number]['code'];
+export type EdenLocale = typeof languages[number]['code'];

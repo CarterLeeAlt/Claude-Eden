@@ -17,11 +17,15 @@ const measurementId = process.env.PUBLIC_GA_MEASUREMENT_ID?.trim();
 const htmlFiles = fs.readdirSync(dist, { recursive: true }).filter(file => file.endsWith('.html'));
 for (const file of htmlFiles) {
   const html = fs.readFileSync(path.join(dist, file), 'utf8');
-  assert.ok(!html.includes('https://lee-xeo.github.io/Claude-Cage/'), `${file}: old website URL remains`);
+  assert.ok(!/https:\/\/(?:claude-cage\.com|claude-eden\.com|lee-xeo\.github\.io)/.test(html), `${file}: obsolete or unverified website URL remains`);
   assert.ok(!/(?:src|href)="\/Claude-Cage(?:\/|")/.test(html), `${file}: old project base remains`);
   if (file !== '404.html') {
     const route = file.replaceAll(path.sep, '/').replace(/index\.html$/, '');
-    assert.ok(html.includes(`rel="canonical" href="https://claude-cage.com/${route}"`), `${file}: incorrect canonical URL`);
+    if (process.env.SITE_URL) {
+      assert.ok(html.includes(`rel="canonical" href="${new URL(route, process.env.SITE_URL.endsWith('/') ? process.env.SITE_URL : process.env.SITE_URL + '/')}"`), `${file}: incorrect canonical URL`);
+    } else {
+      assert.ok(!html.includes('rel="canonical"'), `${file}: canonical URL requires a configured deployment site`);
+    }
   }
   if (file !== path.join('privacy', 'index.html')) {
     assert.ok(html.includes('href="/privacy/"'), `${file}: analytics disclosure link is missing`);
@@ -54,22 +58,23 @@ for (const code of codes) {
     assert.ok(fs.existsSync(target), `${code}: broken local asset or link ${match[1]}`);
   }
   assert.ok(!html.includes('/Users/'), `${code}: local developer path leaked`);
-  assert.ok(html.includes(`href="${downloads.macos.downloadURL}"`), `${code}: macOS download is missing`);
+  assert.ok(!html.includes('data-platform="macOS"') && !html.includes('data-platform="Linux"'), `${code}: retired desktop platform is advertised`);
   const downloadSection = html.match(/<section\b[^>]*id="download"[^>]*>([\s\S]*?)<\/section>/)?.[1];
-  assert.ok(downloadSection?.includes(`CLAUDE CAGE · v${published.version}`), `${code}: download release label must follow published metadata`);
-  assert.ok(!downloadSection?.includes('CLAUDE CAGE · ALPHA'), `${code}: stale release channel label`);
+  const label = `CLAUDE EDEN${published.version ? ` · v${published.version}` : ''}`;
+  assert.ok(downloadSection?.includes(label), `${code}: download release label must follow published metadata`);
+  assert.ok(!downloadSection?.includes('vnull') && !downloadSection?.includes('CLAUDE CAGE'), `${code}: stale or fabricated release label`);
   assert.equal([...html.matchAll(/<a\b[^>]*\bdata-download-open(?:\s|>)/g)].length, 3, `${code}: all download entries must open the platform chooser`);
   assert.ok(html.includes('aria-labelledby="platform-title"'), `${code}: platform dialog has no accessible title`);
-  for (const platform of ['macOS', 'Windows', 'Linux', 'Android', 'iOS']) {
+  for (const platform of ['Windows', 'Android', 'iOS']) {
     assert.ok(html.includes(`data-platform="${platform}"`), `${code}: missing ${platform} choice`);
   }
   const windowsLinks = [...html.matchAll(/href="([^"]*windows-amd64-setup\.exe)"/g)].map(match => match[1]);
   assert.deepEqual(windowsLinks, downloads.windows && !downloads.windows.unsigned ? [downloads.windows.downloadURL, downloads.windows.downloadURL] : [], `${code}: Windows download must match the verified optional release metadata`);
-  for (const [suffix, url] of [['linux-amd64.deb', downloads.linux?.downloadURL], ['android-arm64.apk', downloads.android?.downloadURL], ['windows-amd64-setup-unsigned.exe', downloads.windows?.unsigned ? downloads.windows.downloadURL : undefined]]) {
+  for (const [suffix, url] of [['android-arm64.apk', downloads.android?.downloadURL], ['windows-amd64-setup-unsigned.exe', downloads.windows?.unsigned ? downloads.windows.downloadURL : undefined]]) {
     const links = [...html.matchAll(/href="([^"]+)"/g)].map(match => match[1]).filter(link => link.endsWith(suffix));
     assert.deepEqual(links, url ? [url, url] : [], `${code}: ${suffix} must match verified metadata`);
   }
-  for (const [name, key] of Object.entries({ macOS: 'macos', Windows: 'windows', Linux: 'linux', Android: 'android' })) {
+  for (const [name, key] of Object.entries({ Windows: 'windows', Android: 'android' })) {
     const entry = downloads[key];
     if (!entry) continue;
     const article = html.match(new RegExp(`<article\\b[^>]*data-platform="${name}"[^>]*>([\\s\\S]*?)<\\/article>`))?.[1];
@@ -125,17 +130,21 @@ const agentGuide = fs.readFileSync(path.join(dist, 'agent.md'), 'utf8');
 assert.equal(agentGuide, fs.readFileSync(path.join(dist, 'llms-full.txt'), 'utf8'), 'Agent text copies must share the same source');
 assert.ok(agentGuide.includes('agent capabilities') && agentGuide.includes('job_not_found'), 'Agent guide lacks discovery or recovery contract');
 assert.ok(!agentGuide.includes('title: 让 Agent'), 'Agent Markdown must omit frontmatter');
-for (const name of ['llms.txt', 'agent-bootstrap.mjs', 'cage-install.sh']) assert.ok(fs.existsSync(path.join(dist, name)), `Missing Agent entry ${name}`);
-for (const name of ['agent.md', 'llms.txt', 'agent-bootstrap.mjs', 'cage-install.sh']) {
+for (const name of ['llms.txt', 'agent-bootstrap.mjs', 'eden-install.sh']) assert.ok(fs.existsSync(path.join(dist, name)), `Missing Agent entry ${name}`);
+for (const name of ['agent.md', 'llms.txt', 'agent-bootstrap.mjs', 'eden-install.sh']) {
   const text = fs.readFileSync(path.join(dist, name), 'utf8');
-  assert.ok(text.includes('https://claude-cage.com/'), `${name}: new website URL missing`);
-  assert.ok(!text.includes('https://lee-xeo.github.io/'), `${name}: old website URL remains`);
+  assert.ok(text.includes('CarterLeeAlt/Claude-Eden'), `${name}: current repository missing`);
+  assert.ok(!/https:\/\/(?:claude-cage\.com|claude-eden\.com|lee-xeo\.github\.io)/.test(text), `${name}: obsolete or unverified website URL remains`);
 }
 assert.ok(fs.readFileSync(path.join(dist, 'docs/agent/index.html'), 'utf8').includes('JSON 结果和异步任务'), 'Rendered Agent guide missing');
 console.log('Verified Agent Markdown, discovery, download helper and rendered guide.');
 
 const screenshotManifest = JSON.parse(fs.readFileSync(path.join(root, 'www/public/docs/screenshots/manifest.json'), 'utf8'));
+const guideHTML = guideFiles.map(file => fs.readFileSync(path.join(guideDir, file), 'utf8')).join('\n');
+const usedShots = new Set([...guideHTML.matchAll(/src="\/docs\/screenshots\/([^"/]+)"/g)].map(match => match[1]));
+for (const file of usedShots) assert.ok(screenshotManifest.some(shot => shot.file === file), `${file}: screenshot has no provenance record`);
 for (const shot of screenshotManifest) {
+  if (!usedShots.has(shot.file)) continue;
   assert.ok(shot.version && shot.platform && shot.capturedAt && shot.source, `${shot.id}: screenshot provenance missing`);
   assert.ok(fs.existsSync(path.join(dist, 'docs/screenshots', shot.file)), `${shot.id}: screenshot was not shipped`);
   const article = fs.readFileSync(path.join(guideDir, shot.chapter, 'index.html'), 'utf8');
@@ -143,4 +152,4 @@ for (const shot of screenshotManifest) {
   assert.ok(article.includes(shot.version), `${shot.id}: version caption missing`);
   assert.ok(article.includes(`width="${shot.width}" height="${shot.height}"`), `${shot.id}: original dimensions missing`);
 }
-console.log(`Verified ${screenshotManifest.length} screenshots, original dimensions and version captions.`);
+console.log(`Verified ${usedShots.size} referenced screenshots, original dimensions and version captions.`);

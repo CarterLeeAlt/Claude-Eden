@@ -1,9 +1,9 @@
 {
-  "name": "claude-cage-website",
+  "name": "claude-eden-website",
   "type": "module",
   "version": "0.1.8-rc",
   "private": true,
-  "description": "Claude Cage project website and macOS, Windows and Linux downloads",
+  "description": "Claude Eden Windows desktop and Linux cloud documentation",
   "license": "MIT",
   "scripts": {
     "dev": "astro dev",

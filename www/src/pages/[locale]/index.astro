@@ -1,9 +1,9 @@
 ---
-import CageHome from '../../components/CageHome.astro';
-import { languages } from '../../i18n/cage';
+import EdenHome from '../../components/EdenHome.astro';
+import { languages } from '../../i18n/eden';
 export function getStaticPaths() {
   return languages.filter(language => language.code !== 'zh').map(language => ({ params: { locale: language.code }, props: { locale: language.code } }));
 }
 const { locale } = Astro.props;
 ---
-<CageHome locale={locale} />
+<EdenHome locale={locale} />

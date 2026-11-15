@@ -8,7 +8,7 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { pathToFileURL } from 'node:url';
 
-const repo = 'Lee-xeo/Claude-Cage';
+const repo = 'CarterLeeAlt/Claude-Eden';
 const protocol = 1;
 export class BootstrapError extends Error {
   constructor(code, message, nextAction) { super(message); this.code = code; this.next_action = nextAction; }
@@ -21,11 +21,11 @@ export function parseArgs(args) {
   for (let i = 0; i < args.length; i++) {
     const flag = args[i];
     if (flag === '--allow-unsigned') { options.allowUnsigned = true; continue; }
-    if (!['--platform', '--version', '--destination'].includes(flag) || !args[i + 1] || args[i + 1].startsWith('--')) fail('invalid_input', 'Usage: agent-bootstrap.mjs plan|download [--version TAG] [--platform darwin-arm64|win32-amd64|linux-amd64] [--destination ABSOLUTE_DIRECTORY] [--allow-unsigned]');
+    if (!['--platform', '--version', '--destination'].includes(flag) || !args[i + 1] || args[i + 1].startsWith('--')) fail('invalid_input', 'Usage: agent-bootstrap.mjs plan|download [--version TAG] [--platform win32-amd64] [--destination ABSOLUTE_DIRECTORY] [--allow-unsigned]');
     options[flag.slice(2)] = args[++i];
   }
   if (!['plan', 'download'].includes(options.action)) fail('invalid_input', 'Action must be plan or download.');
-  if (!['darwin-arm64', 'win32-amd64', 'linux-amd64'].includes(options.platform)) fail('unsupported_platform', 'No desktop package is selected for this platform. Read the platform guide.');
+  if (options.platform !== 'win32-amd64') fail('unsupported_platform', 'The desktop package supports Windows x64. For Linux cloud deployment, read deploy/cloud/README.md in the repository.');
   if (options.version && !/^v?\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(options.version)) fail('invalid_input', 'Use an explicit release tag such as v0.1.6-alpha-preview.');
   if (options.version && !options.version.startsWith('v')) options.version = `v${options.version}`;
   if (options.action === 'download' && !isAbsolute(options.destination)) fail('invalid_input', 'download requires --destination with an absolute directory path.');
@@ -39,7 +39,7 @@ export async function httpsResponse(url, fetchImpl = fetch) {
     if (parsed.protocol !== 'https:' || parsed.username || parsed.password) fail('unsafe_download', 'Only public HTTPS downloads without embedded credentials are supported.');
     let response;
     try {
-      response = await fetchImpl(parsed, { redirect: 'manual', signal: AbortSignal.timeout(120000), headers: { 'User-Agent': 'Cage-Agent-Bootstrap/1', Accept: 'application/json, application/octet-stream' } });
+      response = await fetchImpl(parsed, { redirect: 'manual', signal: AbortSignal.timeout(120000), headers: { 'User-Agent': 'Eden-Agent-Bootstrap/1', Accept: 'application/json, application/octet-stream' } });
     } catch {
       fail('download_connection_failed', 'Could not connect to the public release service. Check host connectivity and user-configured proxy settings; Node 24 can use --use-env-proxy.', 'check_host_network');
     }
@@ -67,11 +67,11 @@ export function selectAsset(release, options) {
   const tag = release.tag_name;
   if (!/^v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(tag) || release.draft || (options.version && tag !== options.version)) fail('invalid_release', 'Release tag does not match the requested published release.');
   const version = tag.slice(1);
-  const suffix = { 'darwin-arm64': 'macos-arm64.dmg', 'linux-amd64': 'linux-amd64.deb', 'win32-amd64': 'windows-amd64-setup.exe' }[options.platform];
-  let asset = release.assets?.find(a => a.name === `Cage-${version}-${suffix}`);
+  if (options.platform !== 'win32-amd64') fail('unsupported_platform', 'The desktop package supports Windows x64.');
+  let asset = release.assets?.find(a => a.name === `Eden-${version}-windows-amd64-setup.exe`);
   let unsigned = false;
   if (!asset && options.platform === 'win32-amd64') {
-    asset = release.assets?.find(a => a.name === `Cage-${version}-windows-amd64-setup-unsigned.exe`);
+    asset = release.assets?.find(a => a.name === `Eden-${version}-windows-amd64-setup-unsigned.exe`);
     if (asset && !options.allowUnsigned) fail('unsigned_package_requires_consent', 'Only an unsigned Windows preview is available. Ask the user before selecting it with --allow-unsigned.', 'user_decision');
     unsigned = !!asset;
   }
@@ -96,19 +96,15 @@ export async function makePlan(options, fetchImpl = fetch) {
   try { release = JSON.parse(await boundedText(releaseURL, fetchImpl)); } catch (error) { if (error instanceof BootstrapError) throw error; fail('invalid_release', 'Could not read public release metadata.'); }
   const selected = selectAsset(release, options);
   const sha256 = checksumFor(await boundedText(selected.sums.browser_download_url, fetchImpl), selected.asset.name);
-  const cli = { 'darwin-arm64': '/Applications/Cage.app/Contents/Resources/cage', 'linux-amd64': '/usr/bin/claude-cage', 'win32-amd64': '%LOCALAPPDATA%\\Programs\\Cage\\resources\\cage.exe' }[options.platform];
-  const installation = {
-    'darwin-arm64': { guide: 'https://claude-cage.com/docs/installation/', steps: ['Check codesign and spctl on the mounted Cage.app. Preserve macOS Gatekeeper checks.', 'For an update, save work and stop Cage through its existing UI before replacing app files.', 'Mount the verified DMG read-only with hdiutil attach -readonly -nobrowse. Copy Cage.app to /Applications using the existing installation guide; eject the mounted volume.', 'Run the installed CLI agent capabilities. If agent is unknown, this release predates Agent support; use its documented UI or an authorized newer build.'] },
-    'linux-amd64': { guide: 'https://claude-cage.com/docs/installation/', argv: ['sudo', 'apt-get', 'install', '--', '<downloaded_absolute_path>'], steps: ['Save work and stop Cage before an update. Run the package manager in the user-approved privilege context.', 'Run /usr/bin/claude-cage agent capabilities. The name cage belongs to a different Linux program.'] },
-    'win32-amd64': { guide: 'https://claude-cage.com/docs/installation/', argv: ['<downloaded_absolute_path>', '/S'], steps: ['Save work and stop Cage before an update. Inspect Get-AuthenticodeSignature on signed packages.', 'Run the installer in the user-approved context; system security prompts require the user.', 'Default per-user CLI: $env:LOCALAPPDATA\\Programs\\Cage\\resources\\cage.exe. Honor any custom install directory; then run agent capabilities.'] },
-  }[options.platform];
-  return { protocol, status: 'planned', release: selected.tag, release_url: `https://github.com/${repo}/releases/tag/${selected.tag}`, platform: options.platform, asset: selected.asset.name, url: selected.asset.browser_download_url, size: selected.asset.size, sha256, unsigned: selected.unsigned, cli, installation, data_policy: 'Preserve ~/.claude-cage, user projects and persistent VM disks. Downloads and application files are separate from profile data.' };
+  const cli = '<installation_directory>\\resources\\eden.exe';
+  const installation = { guide: `https://github.com/${repo}/blob/main/docs/windows.md`, argv: ['<downloaded_absolute_path>', '/S'], steps: ['Save work and stop Claude Eden before an update. Inspect Get-AuthenticodeSignature on signed packages.', 'Run the installer in the user-approved context; preserve system security checks.', 'Locate the selected installation directory: the fresh-install default is D:\\Eden on a local fixed D: drive, otherwise %LOCALAPPDATA%\\Programs\\Eden. Honor custom installation paths, then run resources\\eden.exe agent capabilities.'] };
+  return { protocol, status: 'planned', release: selected.tag, release_url: `https://github.com/${repo}/releases/tag/${selected.tag}`, platform: options.platform, asset: selected.asset.name, url: selected.asset.browser_download_url, size: selected.asset.size, sha256, unsigned: selected.unsigned, cli, installation, data_policy: 'Preserve ~/.eden, user projects and persistent VM disks. Downloads and application files are separate from profile data.' };
 }
 
 export async function downloadPlan(plan, destination, fetchImpl = fetch) {
   if (!isAbsolute(destination)) fail('invalid_input', 'Destination must be an absolute directory.');
   await mkdir(destination, { recursive: true });
-  const stage = await mkdtemp(join(destination, '.cage-download-'));
+  const stage = await mkdtemp(join(destination, '.eden-download-'));
   try {
     const temp = join(stage, plan.asset);
     const response = await httpsResponse(plan.url, fetchImpl);

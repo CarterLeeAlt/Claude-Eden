@@ -1,16 +1,14 @@
 <div align="center">
 
-<h1>Claude Cage</h1>
+<h1>Claude Eden</h1>
 
-**خانم Claude را در Cage نگه دارید تا بتوانیم از زمان با هم بودنمان بهتر محافظت کنیم**
+**خانم Claude را در قفس نگه دارید تا بتوانیم از زمان با هم بودنمان بهتر محافظت کنیم**
 
-<img src="assets/claude-cage-character.png" alt="Claude Cage" width="320" />
+<img src="assets/claude-eden-character.png" alt="Claude Eden" width="320" />
 
-[![Release](https://img.shields.io/github/v/release/Lee-xeo/Claude-Cage?include_prereleases)](https://github.com/Lee-xeo/Claude-Cage/releases) [![CI](https://github.com/Lee-xeo/Claude-Cage/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Lee-xeo/Claude-Cage/actions/workflows/ci.yml) [![MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/CarterLeeAlt/Claude-Eden?include_prereleases)](https://github.com/CarterLeeAlt/Claude-Eden/releases) [![CI](https://github.com/CarterLeeAlt/Claude-Eden/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/CarterLeeAlt/Claude-Eden/actions/workflows/ci.yml) [![MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-<a href="https://trendshift.io/repositories/339051#achievements"><img src="https://trendshift.io/api/badge/trendshift/repositories/339051/daily?language=Go" alt="Trendshift — Go Repository of the Day" width="250" height="55" /></a> <a href="https://trendshift.io/repositories/339051#achievements"><img src="https://trendshift.io/api/badge/trendshift/repositories/339051/weekly?language=Go" alt="Trendshift — Go Repository of the Week" width="250" height="55" /></a>
-
-**[وب سایت پروژه](https://claude-cage.com/) · [دانلود برنامه](https://claude-cage.com/fa/#download) · [شروع کردن](docs/getting-started.md) · [سوالات متداول](docs/troubleshooting.md) · [راهنمای استفاده (چینی)](https://claude-cage.com/docs/)**
+**[پروژه](https://github.com/CarterLeeAlt/Claude-Eden) · [نسخه‌ها](https://github.com/CarterLeeAlt/Claude-Eden/releases) · [شروع کردن](docs/getting-started.md) · [سوالات متداول](docs/troubleshooting.md) · [راهنمای استفاده (چینی)](docs/guide/index.md)**
 
 [简体中文](README.md) · [繁體中文](README.zh-TW.md) · [Русский](README.ru.md) · [العربية](README.ar.md) · [فارسی](README.fa.md) · [한국어](README.ko.md) · [Español](README.es.md) · [မြန်မာဘာသာ](README.my.md) · [Беларуская](README.be.md) · [پښتو](README.ps.md) · [دری](README.prs.md) · [አማርኛ](README.am.md) · [Soomaali](README.so.md) · [ትግርኛ](README.ti.md) · [Français](README.fr.md)
 
@@ -18,64 +16,52 @@
 
 ## از Anthropic خسته شده‌ایم
 
-به عنوان کاربران عادی که فقط می‌خواهیم با Claude صحبت و همکاری کنیم، از پیکربندی نمونه‌های VPS، نمایه‌های اثر انگشت مرورگر و بررسی‌های محیطی خسته شده‌ایم، در حالی که نگران ممنوعیت حساب‌ها و ضررهای مالی هستیم. ارائه می کنیم **Claude Cage** -**یک برنامه دسکتاپ آماده برای استفاده: پروکسی شبکه خود را پیکربندی کنید و بررسی های محیط ایزوله، منطقه زمانی، زبان و محیط را در یک مکان مدیریت کنید.**
+ما می‌خواهیم با Claude صحبت و همکاری کنیم، اما از تنظیم VPS، نمایه‌های مرورگر و بررسی‌های محیطی خسته شده‌ایم و نگران مسدود شدن حساب‌ها و زیان مالی هستیم. **Claude Eden** را معرفی می‌کنیم — **یک فضای کاری دسکتاپ: پراکسی خود را تنظیم کنید و محیط جدا، منطقهٔ زمانی، زبان و بررسی‌ها را در یک مکان مدیریت کنید.**
 
-Claude Cage ترمینال، مرورگر، ویرایشگر و برنامهٔ رسمی Claude Desktop را در یک فضای کاری جدا گرد هم می‌آورد. روی Mac از ماشین مجازی macOS، روی رایانهٔ Windows سازگار از Windows، یا از محیط سبک Linux استفاده کنید. پروژه‌های دلخواه را به اشتراک بگذارید، شبکه را جداگانه مدیریت کنید، با SSH به سرور خود وصل شوید و کارها را از تلفن ادامه دهید. قابلیت‌های اصلی:
+Claude Eden ترمینال، مرورگر، ویرایشگر و برنامهٔ رسمی Claude Desktop را روی دسکتاپ Windows گرد هم می‌آورد. از مهمان محلی Windows یا Linux استفاده کنید یا با SSH به سرور ابری Linux خود وصل شوید. پروژه‌های دلخواه را به اشتراک بگذارید، شبکه را جدا مدیریت کنید و کارها را از تلفن ادامه دهید. قابلیت‌های مهمان و شرایط میزبان در راهنمای سیستم‌ها آمده‌اند. قابلیت‌های اصلی:
 
-- تنظیمات شبکه جدا شده از میزبان؛ Cage تمام ترافیک شبکه را در داخل محیط خود از طریق پراکسی شبکه خود هدایت می کند
+- تنظیمات شبکه از میزبان جداست؛ Claude Eden تمام ترافیک داخلی محیط را از پراکسی خود عبور می‌دهد
 - تنظیمات اثر انگشت مرورگر جدا شده از میزبان، از جمله منطقه زمانی و زبان، با همگام‌سازی خودکار با مکان IP پروکسی شبکه
 - ادغام در سراسر گردش کار Claude: ورود به سیستم مرورگر، مجوز حساب، و فرآیند Claude کد
 - شبکه داخلی و بررسی های ایزوله دسترسی به اینترنت را زمانی که بررسی های حیاتی با شکست مواجه می شوند یا شواهد ناقص هستند متوقف می کند. چک های جامعه و شخص ثالث اطلاعات مرجع بیشتری را ارائه می دهند
 
-**نتایج بررسی محیط با Cage:**
+## کاری که می‌توانید با Claude Eden انجام دهید
 
-| بررسی شبکه و جداسازی | بررسی مرورگر توسط جامعهٔ کاربران |
-| :---: | :---: |
-| <a href="assets/network-checks.png"><img src="assets/network-checks.png" alt="بررسی شبکه و جداسازی" width="400" /></a> | <a href="assets/community-browser-check.png"><img src="assets/community-browser-check-cropped.png" alt="بررسی مرورگر توسط جامعهٔ کاربران" width="400" /></a> |
-
-[FuckClaude](https://fuck-claude.vercel.app/) · [LinXiaoTao / GitHub](https://github.com/LinXiaoTao/FuckClaude)
-
-**رابط اصلی Cage:**
-
-![Cage](www/public/workbench-2026-11.jpg)
-
-## کاری که می توانید با Cage انجام دهید
-
-- **در یک پنجره واحد کار کنید.** Claude Code را در ترمینال اجرا کنید، تغییرات ویرایشگر را بررسی کنید و از مرورگر Cage برای پیش نمایش خدمات و ورود به سیستم استفاده کنید.
-- **در سیستم آشنا توسعه دهید.** سیستم مهمان macOS، Windows یا Linux را با ابزارهای همان پلتفرم انتخاب کنید، یا سیستم میزبان را برای ساخت محیطی مستقل و پاک شبیه‌سازی کنید. [انتخاب سیستم مهمان](docs/guide/guest-systems.md)
+- **در یک پنجره کار کنید.** Claude Code را در ترمینال اجرا کنید، تغییرات را در ویرایشگر بررسی کنید و از مرورگر Workbench برای پیش‌نمایش خدمات و ورود استفاده کنید.
+- **در سیستم آشنا توسعه دهید.** مهمان Windows یا Linux را انتخاب کنید. میزبان Windows سازگار می‌تواند نسخهٔ سیستم را تطبیق دهد و از تصویر رسمی محیط مستقلی بسازد. [انتخاب سیستم مهمان](docs/guide/guest-systems.md)
 - **آنچه را که به اشتراک می گذارید کنترل کنید.** فقط فضای کاری پیش‌فرض و پوشه‌های پروژه به‌صراحت باز شده به اشتراک گذاشته می‌شوند. وضعیت ورود به سیستم Claude میزبان، نمایه‌های مرورگر و کلیدهای SSH به‌طور خودکار وارد نمی‌شوند.
 - **وضعیت شبکه خود را ببینید.** مدیریت پروکسی شبکه داخلی به شما امکان می‌دهد اشتراک‌ها را وارد کنید، نقاط پایانی را انتخاب کنید و IP خروجی را بررسی کنید. محیط آفلاین می‌ماند تا زمانی که بررسی‌های حیاتی با موفقیت انجام شوند. اگر پراکسی شبکه در دسترس نباشد، هیچ بازگشتی به اتصال مستقیم وجود ندارد.
 - **دفعه بعد ادامه بده** ابزارها، فایل‌ها و وضعیت ورود به سیستم روی دیسک مجازی باقی می‌مانند. وقتی پنجره را می‌بندید، کارهای پس‌زمینه می‌توانند همچنان اجرا شوند.
 - **چند حساب Claude Code را مدیریت کنید.** سهمیه‌ها را ببینید، به نشست‌های جدید حساب اختصاص دهید و با اجازهٔ صریح، حساب را برای ادامهٔ تاریخچه تغییر دهید. [Claude Code](docs/guide/accounts.md)
 - **از تلفن ادامه دهید.** Android یا iPhone را با کد QR یا کد جفت‌سازی به رایانه وصل کنید. همان گفت‌وگوهای Claude Code را ادامه دهید، پیام بفرستید، ابزارها را تأیید کنید و مرورگر راه دور یا پنجرهٔ Claude Desktop رایانه را به کار ببرید.
-- **Cage را در فضای ابری اجرا کنید.** از طریق SSH به Cage مستقر روی VPS سازگار با Linux x86_64 وصل شوید؛ KVM لازم نیست. داده‌ها و خروجی شبکه روی سرور قرار دارند.
-- **از شبکهٔ خصوصی وصل شوید.** در Cage وارد Tailscale شوید تا میزبان و محیط از هر دو جهت با SSH به هم وصل شوند. [Tailscale / SSH](docs/guide/tailscale.md)
+- **Claude Eden را در فضای ابری اجرا کنید.** از طریق SSH به Claude Eden مستقر روی VPS سازگار با Linux x86_64 وصل شوید؛ KVM لازم نیست. داده‌ها و خروجی شبکه روی سرور قرار دارند.
+- **از شبکهٔ خصوصی وصل شوید.** در Claude Eden وارد Tailscale شوید تا میزبان و محیط از هر دو جهت با SSH به هم وصل شوند. [Tailscale / SSH](docs/guide/tailscale.md)
 
 ## شروع سریع
 
 این درخواست را برای عامل هوش مصنوعی خود (codex، dsh، workbuddy - احتمالاً Claude Code) ارسال کنید:
 
 ```markdown
-آخرین کد منبع https://github.com/Lee-xeo/Claude-Cage را دریافت کن، بساز، بسته‌بندی و نصب کن. پراکسی Cage را طوری تنظیم کن که از گره xx در Clash محلی من و خروجی IP من یعنی xx استفاده کند. کل فرایند را زیر نظر بگیر، مشکلات را مستقیماً رفع کن و در صورت نیاز برای بهبود سازگاری در پروژه issue ثبت کن.
+آخرین کد منبع https://github.com/CarterLeeAlt/Claude-Eden را دریافت کن، برای Windows بساز و نصب کن. پراکسی Claude Eden را برای گره xx در Clash محلی و خروجی IP من یعنی xx تنظیم کن. ابتدا راهنمای ساخت را بخوان و محدودهٔ نصب و تنظیمات شبکه را بررسی کن؛ سپس اجرا و نتیجه را تأیید کن.
 ```
 
 تنها چیزی که نیاز دارید یک نقطه پایانی پروکسی شبکه قابل اعتماد است. این پروژه هیچ ارائه دهنده پروکسی را تبلیغ نمی کند. می توانید خودتان یک ارائه دهنده پیدا کنید، برای مثال با جستجوی وب سایت Black Error.
 
 ## دانلود و نصب کنید
 
-Cage از macOS، Windows و Linux پشتیبانی می‌کند: Apple Silicon با macOS 14+، Windows 10 22H2 / 11 x64 و Debian 12 / Ubuntu 22.04 / 24.04 x86_64. Intel Mac، Windows ARM64 و Linux ARM64 فعلاً پشتیبانی نمی‌شوند. [macOS](docs/getting-started.md) · [Windows](docs/windows.md) · [Linux](docs/linux.md).
+میزبان دسکتاپ Claude Eden، Windows 10 22H2 / 11 x64 است؛ Windows 10 بستر اصلی آزمون پذیرش است. مهمان‌های محلی Debian، Ubuntu 22.04 و Windows حفظ شده‌اند. مهمان Windows به میزبان Windows 11 Pro، Enterprise یا Education با Hyper-V نیاز دارد. استقرار ابری و بخش سرور Linux نیز حفظ شده‌اند. [Windows](docs/windows.md) · [ابر Linux](docs/linux.md).
 
-1. دانلود برنامه: [macOS / Windows / Linux](https://claude-cage.com/fa/#download).
-2. macOS: بسته نصب را باز کرده و بکشید **Cage** به **برنامه های کاربردی**; سپس آن را از Applications اجرا کنید. Windows: [راهنمای نصب](docs/windows.md#安装并开始工作) · Linux: [راهنمای نصب](docs/linux.md#安装并开始工作).
+1. نصب‌کنندهٔ Windows منتشرشده را در [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases) بررسی کنید. اگر نسخه‌ای منتشر نشده، [راهنمای ساخت](docs/windows.md) را دنبال کنید.
+2. نصب‌کنندهٔ Windows را اجرا و **Claude Eden** را باز کنید. برای سرور: [ابر Linux](docs/guide/cloud.md).
 3. دستورالعمل های درون برنامه را دنبال کنید تا پروکسی شبکه خود را پیکربندی کنید، محیط را راه اندازی کنید و یک پروژه را باز کنید.
 
-بستهٔ نصب شامل فضای کاری و موتور پراکسی است. نیازی به نصب قبلی Go، Node.js، Docker یا Clash نیست. هنگام ساخت محیط، سیستم مهمان و محل ذخیره را انتخاب و تصویر رسمی و ابزارها را آماده کنید. Cage مجوز سیستم‌عامل، سرویس پراکسی یا حساب Claude ارائه نمی‌کند.
+بستهٔ نصب شامل فضای کاری و موتور پراکسی است. نیازی به نصب قبلی Go، Node.js، Docker یا Clash نیست. هنگام ساخت محیط، سیستم مهمان و محل ذخیره را انتخاب و تصویر رسمی و ابزارها را آماده کنید. Claude Eden مجوز سیستم‌عامل، سرویس پراکسی یا حساب Claude ارائه نمی‌کند.
 
-کد منبع و بسته‌های نصب عمومی هستند. یادداشت نسخه‌ها و فایل‌های بررسی صحت در [Releases](https://github.com/Lee-xeo/Claude-Cage/releases) قرار دارند.
+کد منبع عمومی است. یادداشت نسخه‌های منتشرشده و فایل‌های بررسی صحت در [Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases) قرار دارند.
 
 قابلیت‌ها به ساخت مورد استفاده بستگی دارند؛ قابلیت‌ها و دامنهٔ بررسی نصب‌کنندهٔ عمومی در یادداشت انتشار آمده‌اند.
 
-macOS و نسخه‌های امضاشدهٔ Windows از پراکسی انتخابی به‌روز می‌شوند. پیش‌نمایش بدون امضای Windows و Linux با نصب‌کننده به‌صورت دستی به‌روز می‌شوند. ابتدا کارها را ذخیره و متوقف کنید؛ داده‌های شخصی حفظ می‌شوند. [به‌روزرسانی و حذف](docs/guide/maintenance.md)
+نسخه‌های امضاشدهٔ Windows از پراکسی انتخابی به‌روز می‌شوند. ساخت‌های بدون امضا با نصب‌کننده به‌صورت دستی به‌روز می‌شوند. ابتدا کارها را ذخیره و متوقف کنید؛ داده‌های شخصی حفظ می‌شوند. [به‌روزرسانی و حذف](docs/guide/maintenance.md)
 
 ## در سه مرحله شروع کنید
 
@@ -85,16 +71,16 @@ macOS و نسخه‌های امضاشدهٔ Windows از پراکسی انتخا
 
 ### 2. محیط را شروع کنید
 
-در ساخت نخست، سیستم مهمان یا تکثیر سیستم میزبان و محل ذخیره را انتخاب کنید. محیط Cage را راه‌اندازی کرده و مراحل نصب و مجوزها را دنبال کنید. پیشرفت و خطاها در جزئیات عملیات دیده می‌شوند. راه‌اندازی‌های بعدی همان محیط را به کار می‌برند.
+در ساخت نخست، سیستم مهمان یا تطبیق نسخه در صورت پشتیبانی و محل ذخیره را انتخاب کنید. مهمان را نصب و محیط را راه‌اندازی کنید و مجوزها را تکمیل کنید. پیشرفت و خطاها در جزئیات عملیات دیده می‌شوند. راه‌اندازی‌های بعدی همان محیط را به کار می‌برند.
 
 ### 3. یک پروژه را باز کنید و Claude را اجرا کنید
 
-برای انتخاب یک پوشه در رایانه، روی «باز کردن پروژه» کلیک کنید، یک ترمینال جدید باز کنید و وارد شوید `claude`; سپس حساب خود را در مرورگر Cage مجاز کنید. همچنین می توانید بدون تهیه پروژه با فضای کاری پیش فرض شروع کنید. برای مشاهده کامل مراحل، نگاه کنید [شروع کردن](docs/getting-started.md).
+با «باز کردن پروژه» پوشه‌ای انتخاب کنید، ترمینال جدید باز کنید و `claude` را اجرا کنید؛ سپس حساب خود را در مرورگر Workbench مجاز کنید. می‌توانید با فضای کاری پیش‌فرض نیز شروع کنید. مراحل کامل: [شروع کردن](docs/getting-started.md).
 
 ## قبل از استفاده این محدودیت ها را درک کنید
 
-- ویرایش‌ها و حذف‌ها در پروژه‌های مشترک مستقیماً روی فایل‌های رایانه شما تأثیر می‌گذارد. از کنترل نسخه یا نسخه پشتیبان استفاده کنید. پوشهٔ `.git` پروژه خواندنی و نوشتنی است؛ می‌توانید در Cage تغییرات را آماده و ثبت کنید و شاخه را تغییر دهید.
-- همه پروژه ها یک محیط Cage شامل ابزارها، حساب ها و سیستم فایل لینوکس را به اشتراک می گذارند. پروژه ها از یکدیگر جدا نیستند.
+- ویرایش و حذف در پروژه‌های مشترک مستقیماً روی فایل‌های رایانه اثر می‌گذارد. از کنترل نسخه یا پشتیبان استفاده کنید. `.git` خواندنی و نوشتنی است؛ در Claude Eden می‌توانید تغییرات را ثبت و شاخه را عوض کنید.
+- پروژه‌های یک تنظیمات Claude Eden مهمان، ابزارها، حساب‌ها و سیستم فایل مشترک دارند و از هم جدا نیستند. تغییر سیستم به نصب مستقل نیاز دارد؛ داده‌های محیط قبلی حفظ می‌شوند.
 - خروجی عمومی به‌طور پیش‌فرض IPv4 TCP را پشتیبانی می‌کند و DNS از همان پراکسی می‌گذرد. UDP، IPv6 و ICMP عمومی و اتصال مستقیم به میزبان یا شبکهٔ محلی محدودند. با فعال‌سازی صریح Tailscale، دسترسی به دستگاه‌ها تابع مجوزهای شبکهٔ خصوصی است.
 - بررسی های شبکه پیکربندی فعلی و شواهد نمونه برداری شده را نشان می دهد. آن‌ها نمی‌توانند تضمین کنند که یک حساب از محدودیت‌های پلتفرم جلوگیری می‌کند، و جایگزین ممیزی امنیتی کامل مجازی‌سازی نمی‌شوند.
 
@@ -106,33 +92,28 @@ macOS و نسخه‌های امضاشدهٔ Windows از پراکسی انتخا
 
 | وظیفه شماست | از اینجا شروع کنید |
 |---|---|
-| macOS / Windows / Debian / Ubuntu 22.04 | [انتخاب سیستم مهمان](https://claude-cage.com/docs/guest-systems/) |
+| Windows / Debian / Ubuntu 22.04 | [انتخاب سیستم مهمان](docs/guide/guest-systems.md) |
 | یک پروکسی شبکه را نصب کنید، پیکربندی کنید و اولین پروژه خود را باز کنید | [شروع کردن](docs/getting-started.md) |
 | عیب‌یابی دانلود، راه‌اندازی، اتصال و ورود به سیستم | [سوالات متداول و بازیابی](docs/troubleshooting.md) |
 | کنترل های صفحه کلید، ظاهر، ماندگاری داده ها و رفتار خروج را بیاموزید | [استفاده روزانه](docs/getting-started.md#日常使用) |
-| یک مشکل قابل تکرار را گزارش کنید | [GitHub Issues](https://github.com/Lee-xeo/Claude-Cage/issues) |
+| یک مشکل قابل تکرار را گزارش کنید | [GitHub Issues](https://github.com/CarterLeeAlt/Claude-Eden/issues) |
 | مشارکت در اصلاح، قابلیت یا مستندات: بررسی Issue ← دعوت همکار ← PR | [راهنمای مشارکت (چینی)](.github/CONTRIBUTING.md) |
 
-این پروژه به سرعت در حال پیشرفت است. برای به اشتراک گذاشتن بازخورد به گروه جامعه بپیوندید. از نگهبانان جامعه استقبال می شود.
-
-<p align="center">
-  <a href="assets/community-qq.png"><img src="assets/community-qq.png" alt="QQ group · 782087179" width="240" /></a>
-  <br />QQ group · 782087179
-</p>
+پروژه در حال توسعه است؛ مشکلات و پیشنهادها را در همین مخزن به اشتراک بگذارید.
 
 ## مبدا و مجوز
 
-Cage مشتق شده از [agent-vm](https://github.com/sylvinus/agent-vm).
+Claude Eden بر اساس [Claude-Cage](https://github.com/Lee-xeo/Claude-Cage) و [agent-vm](https://github.com/sylvinus/agent-vm) ساخته شده و منابع و مجوزهای اصلی را حفظ می‌کند.
 
 مجوز اصلی پروژه می باشد [MIT](LICENSE). اجزای همراه مجوز مربوطه خود را حفظ می کنند. Mihomo به عنوان یک فایل اجرایی جداگانه تحت GPL-3.0 توزیع شده است. همچنین ببینید [NOTICE](NOTICE) · [مجوزهای شخص ثالث](THIRD_PARTY_LICENSES) · [noVNC](ui/vendor/novnc/LICENSE.txt)。
 
-Cage یک پروژه اجتماعی مستقل است و به آنتروپیک وابسته نیست.
+Claude Eden یک پروژهٔ اجتماعی مستقل است و به آنتروپیک وابسته نیست.
 
 ## مراجع و قدردانی
 
 با تشکر از پروژه های زیر برای قابلیت های اساسی و مراجع طراحی:
 
-- [agent-vm](https://github.com/sylvinus/agent-vm): پایه بالادست Cage.
+- [agent-vm](https://github.com/sylvinus/agent-vm): پایهٔ بالادست پروژه.
 - [Lima](https://github.com/lima-vm/lima): مدیریت ماشین مجازی لینوکس.
 - [gvisor-tap-vsock](https://github.com/containers/gvisor-tap-vsock): شبکه ماشین مجازی.
 - [sshocker](https://github.com/lima-vm/sshocker) و [SFTP](https://github.com/pkg/sftp): به اشتراک گذاری فایل بین ماشین مجازی و میزبان.
@@ -141,13 +122,13 @@ Cage یک پروژه اجتماعی مستقل است و به آنتروپیک �
 - [code-server](https://github.com/coder/code-server): ویرایشگر کد مبتنی بر مرورگر.
 - [AIO Sandbox](https://github.com/agent-infra/sandbox): مراجع برای طراحی محیط کار و تعامل.
 - [claude-switcher](https://github.com/YOURSJEYO/claude-switcher) و [Claude-Guardian](https://github.com/DUNHKpcc/Claude-Guardian): مراجع برای بررسی شبکه و تشخیص امنیتی.
-- [claude-post-ban-cleanup](https://github.com/l2461090/claude-post-ban-cleanup): مرجع برای فهرست‌برداری دقیق، حفاظت از داده‌ها و پاک‌سازی قابل‌بازیابی حافظهٔ نهان؛ پیاده‌سازی مستقل در Cage.
+- [claude-post-ban-cleanup](https://github.com/l2461090/claude-post-ban-cleanup): مرجع برای فهرست‌برداری دقیق، حفاظت از داده‌ها و پاک‌سازی قابل‌بازیابی حافظهٔ نهان؛ پیاده‌سازی مستقل در Claude Eden.
 
 
-<a href="https://www.star-history.com/?repos=Lee-xeo%2FClaude-Cage&amp;type=date">
+<a href="https://www.star-history.com/?repos=CarterLeeAlt%2FClaude-Eden&amp;type=date">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Lee-xeo/Claude-Cage&amp;type=Date&amp;theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Lee-xeo/Claude-Cage&amp;type=Date" />
-    <img alt="Claude Cage GitHub Star History" src="https://api.star-history.com/svg?repos=Lee-xeo/Claude-Cage&amp;type=Date" width="800" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=CarterLeeAlt/Claude-Eden&amp;type=Date&amp;theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=CarterLeeAlt/Claude-Eden&amp;type=Date" />
+    <img alt="Claude Eden GitHub Star History" src="https://api.star-history.com/svg?repos=CarterLeeAlt/Claude-Eden&amp;type=Date" width="800" />
   </picture>
 </a>

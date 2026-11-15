@@ -1,5 +1,5 @@
-import { languages, type CageLocale } from './languages';
-export { languages, type CageLocale } from './languages';
+import { languages, type EdenLocale } from './languages';
+export { languages, type EdenLocale } from './languages';
 export const locales = languages.map(language => language.code);
 const readmes = import.meta.glob<string>('../../../README*.md', { query: '?raw', import: 'default', eager: true });
 
@@ -40,22 +40,22 @@ function readCopy(language: typeof languages[number]) {
   }
   const setup = stepHeadings.map((heading, i): [string,string] => [heading[1], plain(steps.body.slice(heading.index! + heading[0].length, stepHeadings[i+1]?.index ?? steps.body.length))]);
   const docs = [...contribution.body.matchAll(/^\|\s*([^|]+)\s*\|\s*\[([^\]]+)\]\(([^)]+)\)\s*\|/gm)].map(match => ({
-    title: plain(match[1]), label: match[2], href: match[3].startsWith('https://') ? match[3] : `https://github.com/Lee-xeo/Claude-Cage/blob/main/${match[3]}`,
+    title: plain(match[1]), label: match[2], href: match[3].startsWith('https://') ? match[3] : `https://github.com/CarterLeeAlt/Claude-Eden/blob/main/${match[3]}`,
   }));
-  const slogan = source.slice(0, headings[0].index).match(/^\*\*(.+?)\*\*$/m)?.[1] || 'Claude Cage';
+  const slogan = source.slice(0, headings[0].index).match(/^\*\*(.+?)\*\*$/m)?.[1] || 'Claude Eden';
   const isChinese = language.code === 'zh' || language.code === 'zh-TW';
   const limit = plain(bullets(boundaries.body).at(-1)!);
   return {
-    ...language, title: `Claude Cage — ${plain(slogan)}`, description: reasonParagraphs[1],
-    home: 'Claude Cage', start: quick.title, boundary: boundaries.title,
-    hero: isChinese ? '把 Claude 大小姐' : 'Claude Cage',
+    ...language, title: `Claude Eden — ${plain(slogan)}`, description: reasonParagraphs[1],
+    home: 'Claude Eden', start: quick.title, boundary: boundaries.title,
+    hero: isChinese ? '把 Claude 大小姐' : 'Claude Eden',
     heroAccent: language.code === 'zh' ? '关起来。' : language.code === 'zh-TW' ? '關起來。' : '',
     tagline: isChinese ? plain(slogan).split(/[，,]/).slice(1).join('，') : plain(slogan),
-    intro: reasonParagraphs[1], requirements: 'macOS · Windows · Linux · Android · iOS', artAlt: 'Claude Cage',
+    intro: reasonParagraphs[1], requirements: 'Windows · Linux Cloud · Android · iOS', artAlt: 'Claude Eden',
     why: reason.title, whyText: reasonParagraphs[0], whyNote: limit,
     keyFeatures: bullets(reason.body).map(plain),
     featureTitle: uses.title, features: bullets(uses.body).map(pair),
-    workbench: captions[1] || 'Claude Cage',
+    workbench: captions[1] || 'Claude Eden',
     evidenceTitle: captions[0] || language.checksLabel, evidenceNote: limit,
     quickTitle: quick.title, quickText: paragraphs(quick.body)[0],
     prompt: quick.body.match(/```[^\n]*\n([\s\S]*?)```/)?.[1]?.trim() || '',
@@ -70,4 +70,4 @@ function readCopy(language: typeof languages[number]) {
     independent: paragraphs(license.body).at(-1) || '',
   };
 }
-export const cageCopy = Object.fromEntries(languages.map(language => [language.code, readCopy(language)])) as Record<CageLocale, ReturnType<typeof readCopy>>;
+export const edenCopy = Object.fromEntries(languages.map(language => [language.code, readCopy(language)])) as Record<EdenLocale, ReturnType<typeof readCopy>>;

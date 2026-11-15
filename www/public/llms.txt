@@ -1,12 +1,12 @@
-# Cage
+# Claude Eden
 
-> Cage is a local and remote isolated development workbench. External agents can help users download, install, configure and diagnose it through the versioned JSON CLI.
+> Claude Eden is a Windows desktop and Linux cloud development workbench. External agents can help users download, install, configure and diagnose it through the versioned JSON CLI. Local Linux and Windows guests use neutral Workbench identifiers.
 
-- [Agent guide](https://claude-cage.com/agent.md): Read this first. Installation paths, protocol discovery, JSON input, tasks, recovery and user authorization boundaries.
-- [Full agent guide](https://claude-cage.com/llms-full.txt): Plain-text copy of the same source.
-- [User guide](https://claude-cage.com/docs/agent/): Rendered guide.
-- [Download helper](https://claude-cage.com/agent-bootstrap.mjs): Node.js 20+, public release discovery and verified package download. Returns an installation plan; does not install.
-- [Releases](https://github.com/Lee-xeo/Claude-Cage/releases): Published packages and platform-specific validation limits.
+- [Agent guide](https://github.com/CarterLeeAlt/Claude-Eden/blob/main/docs/guide/agent.md): Read this first. Installation paths, protocol discovery, JSON input, tasks, recovery and user authorization boundaries.
+- [User guide](https://github.com/CarterLeeAlt/Claude-Eden/blob/main/docs/guide/index.md): Feature-oriented documentation.
+- [Download helper](https://github.com/CarterLeeAlt/Claude-Eden/blob/main/www/public/agent-bootstrap.mjs): Node.js 20+, public release discovery and verified Windows package download. Returns an installation plan; does not install.
+- [Linux cloud deployment](https://github.com/CarterLeeAlt/Claude-Eden/blob/main/deploy/cloud/README.md): Server requirements and deployment.
+- [Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases): Actual published packages and validation limits.
 
 Discover installed capabilities before changing anything: <installed CLI> agent capabilities
 Current source documentation may describe features absent from published releases.
