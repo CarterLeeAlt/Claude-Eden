@@ -505,13 +505,6 @@ func run() int {
 	return cli.Main(args, cli.Stdio())
 }
 
-// Service assets exceed Windows' command-line limit. Give only this internal
-// invocation a script stream; interactive login and ordinary run keep stdin.
-func runGuestServiceStart(script string, stdio cli.IO, invoke func([]string, cli.IO) int) int {
-	stdio.Stdin = strings.NewReader(script)
-	return invoke([]string{"run", "bash", "-s"}, stdio)
-}
-
 func fail(err error) int {
 	diagnostics.Log("error", "command", err.Error())
 	fmt.Fprintln(os.Stderr, strings.TrimSpace(err.Error()))

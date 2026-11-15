@@ -1,42 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clipboardReconnectDelay, copyGuestText, shareClipboard } from "./shared-clipboard.mjs";
+import { clipboardReconnectDelay, shareClipboard } from "./shared-clipboard.mjs";
 
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
-test("web copy reads a fresh GUI revision only after its keys are acknowledged", async () => {
-  const events = [];
-  const value = await copyGuestText({
-    request: async request => {
-      events.push(request.phase);
-      if (request.phase === "prepare") return { revision: 4, session: "gui-a" };
-      assert.equal(request.revision, 4);
-      return { revision: 5, session: "gui-a", text: "newly copied text" };
-    },
-    sendCopy: async () => { events.push("keys-ack"); },
-    valid: () => true,
-  });
-  assert.deepEqual(events, ["prepare", "keys-ack", "read"]);
-  assert.deepEqual(value, { text: "newly copied text" });
-});
-
-test("web copy rejects an unchanged clipboard and a switched GUI", async () => {
-  for (const result of [{ revision: 4, session: "gui-a", text: "old" }, { revision: 5, session: "gui-b", text: "other session" }]) {
-    await assert.rejects(copyGuestText({
-      request: async request => request.phase === "prepare" ? { revision: 4, session: "gui-a" } : result,
-      sendCopy: async () => {}, valid: () => true,
-    }));
-  }
-});
-
-test("web copy stops before key injection after its target changes", async () => {
-  let sent = false;
-  await assert.rejects(copyGuestText({
-    request: async () => ({ revision: 4, session: "gui-a" }),
-    sendCopy: async () => { sent = true; }, valid: () => false,
-  }));
-  assert.equal(sent, false);
-});
 function fixture({ available = true } = {}) {
   const sent = [], writes = [], active = [], notices = [], released = [];
   let revision = 1, content = { text: "host initial" }, pauseRead, pauseWrite, nativeGeneration = 0, delayAcks = false;

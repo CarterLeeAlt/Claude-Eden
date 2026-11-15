@@ -43,6 +43,14 @@ try {
   state.terminals = [{ id: "archive-live", kind: "claude", workspace,
     title: sessions[0].title, cli_session_id: sessions[0].id }];
   await page.getByRole("tab", { name: sessions[0].title, exact: true }).waitFor();
+  const project = page.locator(".sidebar-project").filter({ has: actions(sessions[0].title) });
+  const expand = project.getByRole("button", { name: "展开显示", exact: true });
+  assert.equal(await expand.getAttribute("aria-expanded"), "false", "session preview must start collapsed");
+  assert.equal(await project.getByRole("button", { name: sessions.at(-1).title, exact: true }).count(), 0,
+    "the last history row must be outside the initial preview");
+  await expand.click();
+  assert.equal(await project.getByRole("button", { name: "收起显示", exact: true }).getAttribute("aria-expanded"), "true",
+    "the real project toggle must expand the session list");
   await page.getByRole("button", { name: sessions.at(-1).title, exact: true }).waitFor();
   await mkdir(output, { recursive: true });
   // A user can click the visible action text as well as its icon. Locator
@@ -86,11 +94,42 @@ try {
   }
   // The last history row is at the bottom of a scrollable sidebar.
   const last = sessions.at(-1).title;
+  const sidebar = page.locator(".sidebar-scroll");
+  const lastRow = page.locator(".sidebar-tab").filter({ has: actions(last) });
+  await lastRow.hover();
+  const sidebarBox = await sidebar.boundingBox();
+  const rowBeforeScroll = await lastRow.boundingBox();
+  const targetRowBottom = Math.min(sidebarBox.y + sidebarBox.height, page.viewportSize().height) - 8;
+  const wheelDelta = rowBeforeScroll.y + rowBeforeScroll.height - targetRowBottom;
+  await sidebar.hover();
+  await page.mouse.wheel(0, wheelDelta);
+  await page.waitForFunction(({ row, bottom }) => Math.abs(row.getBoundingClientRect().bottom - bottom) < 1,
+    { row: await lastRow.elementHandle(), bottom: targetRowBottom });
+  const settled = await lastRow.evaluate(async node => {
+    const before = node.getBoundingClientRect().bottom;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return { before, after: node.getBoundingClientRect().bottom };
+  });
+  assert.ok(Math.abs(settled.before - settled.after) < 0.5, "sidebar wheel scrolling must settle before opening the confirmation");
+  const rowAfterScroll = await lastRow.boundingBox();
+  await page.mouse.move(rowAfterScroll.x + rowAfterScroll.width / 2, rowAfterScroll.y + rowAfterScroll.height / 2);
+  await page.waitForFunction(button => {
+    const style = getComputedStyle(button.closest(".terminal-row-actions"));
+    return style.visibility === "visible" && style.opacity === "1" && style.transform === "none";
+  }, await actions(last).getByRole("button", { name: "归档", exact: true }).elementHandle());
   const bottomTrigger = await open(last);
   const bottomAnchor = await bottomTrigger.boundingBox();
   const bottomBox = await dialog.boundingBox();
+  const bottomFixture = { kind: "bottom", sidebar: sidebarBox, targetRowBottom, wheelDelta, settled, anchor: bottomAnchor, box: bottomBox,
+    scrollTopAfterOpen: await sidebar.evaluate(node => node.scrollTop) };
+  await writeFile(`${output}/${engine}-bottom-precondition.json`, JSON.stringify(bottomFixture, null, 2));
+  assert.ok(bottomAnchor.y >= sidebarBox.y && bottomAnchor.y + bottomAnchor.height <= sidebarBox.y + sidebarBox.height,
+    "bottom-case trigger must remain inside the visible sidebar");
+  assert.ok(bottomAnchor.y + bottomAnchor.height + 6 + bottomBox.height > page.viewportSize().height - 8,
+    "bottom-case fixture must leave insufficient room below the trigger");
   assert.ok(bottomBox.y >= 8 && bottomBox.y + bottomBox.height <= 842, "bottom confirmation is clipped");
   assert.ok(bottomBox.y + bottomBox.height <= bottomAnchor.y, "bottom confirmation did not move above the trigger");
+  evidence.push(bottomFixture);
   await page.screenshot({ path: `${output}/${engine}-bottom.png` });
   await page.keyboard.press("Escape");
   await open(sessions[0].title);

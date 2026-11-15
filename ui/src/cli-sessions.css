@@ -59,8 +59,6 @@
 .archive-button:hover { background: var(--selected); }
 .archive-confirm { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 9px; font-size: 14px; line-height: 1.6; }
 .archive-delete, .archive-error { color: var(--danger, var(--error, #b54137)); }
-.phone-workspace .archive-button { min-height: 44px; }
-.mobile-session-settings .archive-page-title { display: block; font-size: 20px; }
 @media (max-width: 650px) {
   .archive-toolbar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .archive-search { grid-column: 1 / -1; }

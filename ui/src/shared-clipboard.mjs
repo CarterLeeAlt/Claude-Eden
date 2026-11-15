@@ -1,15 +1,3 @@
-export async function copyGuestText({ request, sendCopy, valid }) {
-  const before = await request({ phase: "prepare" });
-  if (!valid() || typeof before.revision !== "number" || typeof before.session !== "string") throw new Error("复制窗口已变化，请重新选择文本。");
-  await sendCopy();
-  if (!valid()) throw new Error("复制窗口已变化，请重新选择文本。");
-  const result = await request({ phase: "read", revision: before.revision, session: before.session });
-  if (!valid() || result.session !== before.session || result.revision === before.revision || typeof result.text !== "string") {
-    throw new Error("未收到新的选中文本，请重新选择后复制。");
-  }
-  return { text: result.text };
-}
-
 // A guest whose clipboard service keeps failing, for example while its
 // components wait for an update, must not be hit every 1.5 seconds.
 export const clipboardReconnectDelay = failures => Math.min(1500 * 2 ** Math.max(0, failures), 30000);
