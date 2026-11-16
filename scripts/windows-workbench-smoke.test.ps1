@@ -20,6 +20,7 @@ try {
         prepareExit = 1; prepareStatus = 'stop_required'
         prepareMessage = 'shutdown failed http://localhost:1234/api/handoff?token=private-token#private-fragment'
         nativeStatus = 'failed http://localhost:1234/?token=private-token#private-fragment'
+        errors = @('backend exit http://localhost:1234/api/handoff?token=private-token#private-fragment', ('bounded error ' + ('x' * 900)))
         entryJSON = 'private-entry'; pageURL = 'http://localhost:1234/#private-launch'
         page = @{ text = 'private-page-body'; errors = @(
             @{ type = 'module-load'; source = '/missing.js?session=private-query#private-fragment' },
@@ -40,9 +41,10 @@ try {
         } 6>&1
         $text = ($captured | ForEach-Object { $_.ToString() }) -join "`n"
         Assert-SmokeContract ($observedFailure -like '*loading_workbench*') 'Failure report was not parsed before rejecting its process exit.'
-        foreach ($expected in @('loading_workbench', 'module-load', '/missing.js', 'syntax error', '"prepareExit":1', '"prepareStatus":"stop_required"', 'shutdown failed http://localhost:1234/api/handoff')) {
+        foreach ($expected in @('loading_workbench', 'module-load', '/missing.js', 'syntax error', '"prepareExit":1', '"prepareStatus":"stop_required"', 'shutdown failed http://localhost:1234/api/handoff', 'backend exit http://localhost:1234/api/handoff', 'bounded error')) {
             Assert-SmokeContract ($text.Contains($expected)) "Missing safe smoke evidence: $expected"
         }
+        Assert-SmokeContract (-not $text.Contains('x' * 769)) 'Native error diagnostics exceeded the per-message bound.'
         foreach ($private in @('private-token','private-fragment','private-query','private-entry','private-launch','private-page-body')) {
             Assert-SmokeContract (-not $text.Contains($private)) "Private smoke field leaked: $private"
         }
@@ -52,6 +54,13 @@ try {
     $rejected = $false
     try { Assert-WindowsWorkbenchReport -ExitCode 17 -Report $report } catch { $rejected = $true }
     Assert-SmokeContract $rejected 'Nonzero child exit was accepted because its report said success.'
+    foreach ($failure in @(@{errors = @('backend did not exit')}, @{page = @{errors = @(@{type = 'error'; message = 'render failed'})}})) {
+        $inconsistent = @{success = $true; nativeBridgeReady = $true} + $failure
+        $inconsistent | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $report
+        $rejected = $false
+        try { Assert-WindowsWorkbenchReport -ExitCode 0 -Report $report } catch { $rejected = $true }
+        Assert-SmokeContract $rejected 'Reported errors were accepted because the success flag was true.'
+    }
     $app = Join-Path $directory 'app'
     New-Item -ItemType Directory -Path (Join-Path $app 'resources') -Force | Out-Null
     [IO.File]::WriteAllText((Join-Path $app 'Eden.exe'), 'native fixture')
