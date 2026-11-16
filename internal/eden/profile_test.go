@@ -3,7 +3,6 @@ package eden
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -70,18 +69,16 @@ func TestRunningRecordRejectsUnreadableStartTime(t *testing.T) {
 	if processStartToken(os.Getpid()) == "" {
 		t.Skip("process start time is unavailable on this platform")
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=^$")
-	if err := cmd.Run(); err != nil {
-		t.Fatal(err)
+	// PID zero has no queryable process start time. An exited child's PID can
+	// still identify a retained process object or be reused by another process.
+	const unavailable = 0
+	if processStartToken(unavailable) != "" {
+		t.Fatal("reserved PID unexpectedly has a process start time")
 	}
-	gone := cmd.Process.Pid
-	if processStartToken(gone) != "" {
-		t.Skip("the exited child's PID was reused")
-	}
-	if ProcessStartMatches(gone, "1") {
+	if ProcessStartMatches(unavailable, "1") {
 		t.Fatal("an unreadable start time matched a recorded owner")
 	}
-	if !ProcessStartMatches(gone, "") {
+	if !ProcessStartMatches(unavailable, "") {
 		t.Fatal("a legacy record without a start time lost its PID-only check")
 	}
 }
