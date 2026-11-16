@@ -1,0 +1,8 @@
+{
+  "module": "github.com/wailsapp/wails/v3",
+  "version": "v3.1.0",
+  "repository": "https://github.com/wailsapp/wails",
+  "commit": "4b454e443f6f11ccb64679c5c3d3f3bf5e6fb440",
+  "moduleSum": "h1:ld0AXSicXiTTsIvmTq3qNn9FzCP8vIHRSJdkRLgaAo8=",
+  "goModSum": "h1:tzDY3W1jzN3ksSqfGalTt7K3PwnGfIqtl+IgIXlXz0I="
+}

@@ -22,7 +22,9 @@ if (!tracked.includes("AGENTS.md")) {
 const rejected = tracked.filter(file =>
   localFiles.has(file) || localDirectories.some(prefix => file.startsWith(prefix)) ||
   file.startsWith("third_party/") && (
-    /\.(?:md|rst|adoc)$/.test(file) || file.includes("/.github/") ||
+    /\.(?:md|rst|adoc)$/.test(file) &&
+      file !== "third_party/wails/internal/service/template/README.tmpl.md" &&
+      !file.startsWith("third_party/wails/internal/templates/") || file.includes("/.github/") ||
     /\/\.(?:gitignore|gitattributes)$/.test(file)
   ),
 );

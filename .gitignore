@@ -14,6 +14,8 @@ dist
 /internal/limaembed/assets/*
 !/internal/limaembed/assets/README
 /ui/.generated/
+/cmd/eden-desktop/*.syso
+/cmd/eden-install/*.syso
 /internal/workbench/web/*
 !/internal/workbench/web/README
 # Local acceptance artifacts may contain host paths, node addresses and sessions.
@@ -73,6 +75,12 @@ __pycache__/
 /third_party/*/.github/
 /third_party/*/.gitignore
 /third_party/*/.gitattributes
+# Wails CLI embeds these upstream assets when built from the vendored module.
+/third_party/wails/**/.gitignore
+!/third_party/wails/internal/setupwizard/frontend/dist/
+!/third_party/wails/internal/setupwizard/frontend/dist/**
+!/third_party/wails/internal/service/template/README.tmpl.md
+!/third_party/wails/internal/templates/**/*.md
 /patches/README.md
 /scripts/third-party-sync
 /release.sh

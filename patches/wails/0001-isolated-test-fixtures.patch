@@ -1,0 +1,90 @@
+diff --git a/internal/appimage/deployment_test.go b/internal/appimage/deployment_test.go
+index e552dee..eee419f 100644
+--- a/internal/appimage/deployment_test.go
++++ b/internal/appimage/deployment_test.go
+@@ -16,13 +16,21 @@ func TestRuntimeSymlinksRemainWithinSuppliedTree(t *testing.T) {
+ 		t.Skip("symlink fixture needs Unix symlinks")
+ 	}
+ 	root := t.TempDir()
++	absoluteTarget := t.TempDir()
++	imageAbsoluteTarget := filepath.Join(root, strings.TrimPrefix(filepath.ToSlash(absoluteTarget), "/"))
++	if err := os.MkdirAll(imageAbsoluteTarget, 0755); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(filepath.Join(imageAbsoluteTarget, "library"), []byte("absolute target"), 0644); err != nil {
++		t.Fatal(err)
++	}
+ 	if err := os.MkdirAll(filepath.Join(root, "usr/lib"), 0755); err != nil {
+ 		t.Fatal(err)
+ 	}
+ 	if err := os.WriteFile(filepath.Join(root, "usr/lib/library"), []byte("target"), 0644); err != nil {
+ 		t.Fatal(err)
+ 	}
+-	for name, target := range map[string]string{"lib": "/usr/lib", "relative": "usr/lib", "escape": "../../etc/passwd", "cycle": "cycle"} {
++	for name, target := range map[string]string{"lib": absoluteTarget, "relative": "usr/lib", "escape": "../../etc/passwd", "cycle": "cycle"} {
+ 		if err := os.Symlink(target, filepath.Join(root, name)); err != nil {
+ 			t.Fatal(err)
+ 		}
+@@ -31,9 +39,12 @@ func TestRuntimeSymlinksRemainWithinSuppliedTree(t *testing.T) {
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	for _, name := range []string{"/lib/library", "/relative/library"} {
++	for name, expected := range map[string]string{
++		"/lib/library":      filepath.Join(imageAbsoluteTarget, "library"),
++		"/relative/library": filepath.Join(root, "usr/lib/library"),
++	} {
+ 		got, err := d.resolve(name)
+-		if err != nil || got != filepath.Join(root, "usr/lib/library") {
++		if err != nil || got != expected {
+ 			t.Fatalf("resolve %s: %s, %v", name, got, err)
+ 		}
+ 	}
+diff --git a/internal/s/s_unix_test.go b/internal/s/s_unix_test.go
+index 9cc72d6..6ec68b2 100644
+--- a/internal/s/s_unix_test.go
++++ b/internal/s/s_unix_test.go
+@@ -10,19 +10,35 @@ import (
+ )
+ 
+ func TestMOVE_CrossDevice(t *testing.T) {
+-	srcDir, err := os.MkdirTemp("/dev/shm", "wails-move-")
+-	if err != nil {
+-		t.Skip("no /dev/shm:", err)
++	volume := os.Getenv("WAILS_TEST_STORAGE_VOLUME")
++	if volume == "" {
++		t.Skip("set WAILS_TEST_STORAGE_VOLUME to an explicitly authorized cross-device test directory")
++	}
++	if !filepath.IsAbs(volume) || filepath.Clean(volume) == string(filepath.Separator) {
++		t.Fatal("WAILS_TEST_STORAGE_VOLUME must be an absolute dedicated directory")
+ 	}
+-	t.Cleanup(func() { _ = os.RemoveAll(srcDir) })
+-	dstDir, err := os.MkdirTemp("/var/tmp", "wails-move-")
++	for ancestor := filepath.Clean(volume); ; ancestor = filepath.Dir(ancestor) {
++		info, err := os.Lstat(ancestor)
++		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
++			t.Fatalf("invalid cross-device test ancestor %q: %v", ancestor, err)
++		}
++		if filepath.Dir(ancestor) == ancestor {
++			break
++		}
++	}
++	srcDir := t.TempDir()
++	dstDir, err := os.MkdirTemp(volume, "wails-move-")
+ 	if err != nil {
+-		t.Skip("no /var/tmp:", err)
++		t.Fatal(err)
+ 	}
+-	t.Cleanup(func() { _ = os.RemoveAll(dstDir) })
++	t.Cleanup(func() {
++		if err := os.RemoveAll(dstDir); err != nil {
++			t.Error(err)
++		}
++	})
+ 	var a, b syscall.Stat_t
+ 	if syscall.Stat(srcDir, &a) != nil || syscall.Stat(dstDir, &b) != nil || a.Dev == b.Dev {
+-		t.Skip("/dev/shm and /var/tmp share a filesystem")
++		t.Fatal("the explicitly configured test directory must be on another filesystem")
+ 	}
+ 
+ 	src := filepath.Join(srcDir, "app.AppImage")
