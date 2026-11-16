@@ -20,10 +20,17 @@ func ResourceAllocationPath(configPath string) string {
 	return filepath.Join(filepath.Dir(configPath), "resource-limits.json")
 }
 
+// Automatic sizing stays modest; manual allocations retain the full host share.
+const AutomaticMemoryCapGiB = 8
+
+func AutomaticMemoryGiB(shareGiB int) int {
+	return min(shareGiB, AutomaticMemoryCapGiB)
+}
+
 func (a ResourceAllocation) Limits() (memory, cpus int, err error) {
 	memory, cpus = ResourceLimits()
 	if a.Automatic {
-		return memory, cpus, nil
+		return AutomaticMemoryGiB(memory), cpus, nil
 	}
 	if a.MemoryGiB < 2 || a.MemoryGiB > memory || a.CPUs < 1 || a.CPUs > cpus {
 		return 0, 0, fmt.Errorf("内存上限须为 2–%d GiB，CPU 须为 1–%d 个逻辑核心", memory, cpus)
