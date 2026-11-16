@@ -50,6 +50,44 @@ func RunInstallerWithDiagnostics(ctx context.Context, root, executable string, i
 			Message string `json:"message"`
 		}{success, message})
 	}
+	recoverOriginal := func(recoveryCtx context.Context, detail string) error {
+		unlock, e := installationLock()
+		if e != nil {
+			return e
+		}
+		defer unlock()
+		if e = EnsureInstallationComplete(plan.Target); e != nil {
+			return e
+		}
+		if OriginalIntact(plan.Target, backup) {
+			if e = SamePublisher(filepath.Join(plan.Target, "Eden.exe"), plan.Publisher); e != nil {
+				return e
+			}
+			result(false, "更新未完成，原应用已保留："+detail)
+			return reopenRecovered(&backup, func() error { return startApplication(plan.Target, plan.ConfigPath, "", plan.Publisher) })
+		}
+		if !installerStarted {
+			return errors.New("原应用在安装前发生变化，备份已保留，请核对安装目录后重试")
+		}
+		if e = PrepareRollback(recoveryCtx, backup, plan.ConfigPath, plan.Publisher); e != nil {
+			return e
+		}
+		if launched != nil {
+			select {
+			case <-launchedExit:
+			default:
+				if e = launched.Process.Kill(); e != nil {
+					return e
+				}
+				<-launchedExit
+			}
+		}
+		if e = restoreApplicationFiles(recoveryCtx, plan, backup); e != nil {
+			return e
+		}
+		result(false, "更新未完成，已恢复原应用："+detail)
+		return reopenRecovered(&backup, func() error { return startApplication(plan.Target, plan.ConfigPath, "", plan.Publisher) })
+	}
 	defer func() {
 		if succeeded {
 			cleanupDirectory(backup)
@@ -62,98 +100,25 @@ func RunInstallerWithDiagnostics(ctx context.Context, root, executable string, i
 			return
 		}
 		detail := err.Error()
-		recoveryIncomplete := false
-		if committed && backupOwned {
-			recoveryCtx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
-			defer cancel()
-			recoveryErr := func() error {
-				unlock, e := installationLock()
-				if e != nil {
-					return e
-				}
-				defer unlock()
-				if e = EnsureInstallationComplete(plan.Target); e != nil {
-					return e
-				}
-				if OriginalIntact(plan.Target, backup) {
-					if e = SamePublisher(filepath.Join(plan.Target, "Eden.exe"), plan.Publisher); e != nil {
-						return e
-					}
-					result(false, "更新未完成，原应用已保留："+detail)
-					return reopenRecovered(&backup, func() error { return startApplication(plan.Target, plan.ConfigPath, "", plan.Publisher) })
-				}
-				if !installerStarted {
-					return errors.New("原应用在安装前发生变化，备份已保留，请核对安装目录后重试")
-				}
-				if e = PrepareRollback(recoveryCtx, backup, plan.ConfigPath, plan.Publisher); e != nil {
-					return e
-				}
-				if launched != nil {
-					select {
-					case <-launchedExit:
-					default:
-						if e = launched.Process.Kill(); e != nil {
-							return e
-						}
-						<-launchedExit
-					}
-				}
-				restored, failed := plan.Target+".restore-"+plan.Confirmation, plan.Target+".failed-"+plan.Confirmation
-				if e = CopyTree(recoveryCtx, backup, restored); e != nil {
-					return e
-				}
-				receipt := plan.Target + ".eden-installation.json"
-				preserve := func(op, source, target string) error {
-					return installfiles.Run(recoveryCtx, installfiles.Options{Operation: op, Source: source, Target: target, Receipt: receipt, Backup: failed, LegacyTarget: true, KeepInPlace: []string{"EdenData"}})
-				}
-				if e = preserve("prepare", plan.Target, restored); e != nil {
-					return e
-				}
-				if e = preserve("detach", plan.Target, failed); e != nil {
-					return e
-				}
-				if e = preserve("move", failed, restored); e == nil {
-					e = preserve("attach", restored, plan.Target)
-				}
-				if e != nil {
-					// Return every already-moved personal object before restoring
-					// the candidate. Keep the receipt if any reversal fails.
-					if reverse := preserve("restore", restored, failed); reverse != nil {
-						return errors.Join(e, reverse)
-					}
-					if reverse := preserve("attach", failed, plan.Target); reverse != nil {
-						return errors.Join(e, reverse)
-					}
-					if reverse := preserve("complete", "", plan.Target); reverse != nil {
-						return errors.Join(e, reverse)
-					}
-					return e
-				}
-				if e = preserve("cleanup", failed, plan.Target); e != nil {
-					return e
-				}
-				if e = EnsureInstallationComplete(plan.Target); e != nil {
-					return e
-				}
-				result(false, "更新未完成，已恢复原应用："+detail)
-				return reopenRecovered(&backup, func() error { return startApplication(plan.Target, plan.ConfigPath, "", plan.Publisher) })
-			}()
-			if recoveryErr == nil {
-				return
-			}
-			recoveryIncomplete = true
-			detail += "。自动恢复未完成。" + recoveryErr.Error()
-			if _, e := os.Lstat(plan.Target + ".eden-installation.json"); e == nil {
-				detail += "。恢复目录记录在 " + plan.Target + ".eden-installation.json"
-			}
-			if backup != "" {
-				detail += "。程序备份保留在 " + backup
-			}
+		if !committed || !backupOwned {
+			result(false, "更新未完成："+detail)
+			return
+		}
+		recoveryCtx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
+		defer cancel()
+		recoveryErr := recoverOriginal(recoveryCtx, detail)
+		if recoveryErr == nil {
+			return
+		}
+		detail += "。自动恢复未完成。" + recoveryErr.Error()
+		if _, e := os.Lstat(plan.Target + ".eden-installation.json"); e == nil {
+			detail += "。恢复目录记录在 " + plan.Target + ".eden-installation.json"
+		}
+		if backup != "" {
+			detail += "。程序备份保留在 " + backup
 		}
 		result(false, "更新未完成："+detail)
-		if recoveryIncomplete {
-			showRecovery(detail)
-		}
+		showRecovery(detail)
 	}()
 	protocolCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -321,16 +286,15 @@ func RunInstallerWithDiagnostics(ctx context.Context, root, executable string, i
 	if e = os.Remove(marker); e != nil && !errors.Is(e, os.ErrNotExist) {
 		return e
 	}
-	launched = exec.Command(original)
-	hide(launched)
-	launched.Dir = plan.Target
-	launched.Env = profileEnvironment(plan.ConfigPath, plan.Confirmation)
-	if err = launched.Start(); err != nil {
-		return err
+	candidate := exec.Command(original)
+	hide(candidate)
+	candidate.Dir = plan.Target
+	candidate.Env = profileEnvironment(plan.ConfigPath, plan.Confirmation)
+	launched, launchedExit, err = startTrackedApplication(candidate)
+	if err != nil {
+		return fmt.Errorf("新版工作台进程未能创建：%w", err)
 	}
 	_ = installedLock.Close()
-	launchedExit = make(chan error, 1)
-	go func() { launchedExit <- launched.Wait() }()
 	// A slow startup is not a failed installation. Only a real ready/error
 	// acknowledgement or the exact candidate's exit ends this lifecycle wait.
 	if err = waitForLaunch(transactionCtx, marker, plan.Version, launchedExit); err != nil {
@@ -339,6 +303,45 @@ func RunInstallerWithDiagnostics(ctx context.Context, root, executable string, i
 	succeeded = true
 	result(true, "Claude Eden 已更新至 "+plan.Version)
 	return nil
+}
+
+func restoreApplicationFiles(ctx context.Context, plan InstallPlan, backup string) error {
+	restored, failed := plan.Target+".restore-"+plan.Confirmation, plan.Target+".failed-"+plan.Confirmation
+	if err := CopyTree(ctx, backup, restored); err != nil {
+		return err
+	}
+	receipt := plan.Target + ".eden-installation.json"
+	preserve := func(op, source, target string) error {
+		return installfiles.Run(ctx, installfiles.Options{Operation: op, Source: source, Target: target, Receipt: receipt, Backup: failed, LegacyTarget: true, KeepInPlace: []string{"EdenData"}})
+	}
+	if err := preserve("prepare", plan.Target, restored); err != nil {
+		return err
+	}
+	if err := preserve("detach", plan.Target, failed); err != nil {
+		return err
+	}
+	err := preserve("move", failed, restored)
+	if err == nil {
+		err = preserve("attach", restored, plan.Target)
+	}
+	if err != nil {
+		// Return every already-moved personal object before restoring the
+		// candidate. Keep the receipt if any reversal fails.
+		if reverse := preserve("restore", restored, failed); reverse != nil {
+			return errors.Join(err, reverse)
+		}
+		if reverse := preserve("attach", failed, plan.Target); reverse != nil {
+			return errors.Join(err, reverse)
+		}
+		if reverse := preserve("complete", "", plan.Target); reverse != nil {
+			return errors.Join(err, reverse)
+		}
+		return err
+	}
+	if err := preserve("cleanup", failed, plan.Target); err != nil {
+		return err
+	}
+	return EnsureInstallationComplete(plan.Target)
 }
 
 func startApplication(target, configPath, confirmation, publisher string) error {
@@ -355,11 +358,19 @@ func startApplication(target, configPath, confirmation, publisher string) error 
 	hide(cmd)
 	cmd.Dir = target
 	cmd.Env = profileEnvironment(configPath, confirmation)
-	if e := cmd.Start(); e != nil {
-		return e
+	_, _, e = startTrackedApplication(cmd)
+	return e
+}
+
+// Ownership starts only after CreateProcess succeeds. Recovery receives either
+// the exact started command and its single Wait result, or no process at all.
+func startTrackedApplication(cmd *exec.Cmd) (*exec.Cmd, chan error, error) {
+	if err := cmd.Start(); err != nil {
+		return nil, nil, err
 	}
-	go func() { _ = cmd.Wait() }()
-	return nil
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	return cmd, exited, nil
 }
 
 // A failed relaunch is an incomplete recovery. Retain the verified snapshot

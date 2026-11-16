@@ -251,6 +251,19 @@ func TestProcessLifecycleFixture(t *testing.T) {
 	switch mode {
 	case "success":
 		os.Exit(0)
+	case "recovered":
+		executable, err := os.Executable()
+		if err != nil {
+			os.Exit(93)
+		}
+		data, err := json.Marshal(map[string]string{"executable": executable, "config": os.Getenv("EDEN_CONFIG"), "confirmation": os.Getenv("EDEN_UPDATE_CONFIRMATION")})
+		if err != nil {
+			os.Exit(93)
+		}
+		if err := os.WriteFile(marker, data, 0600); err != nil {
+			os.Exit(93)
+		}
+		os.Exit(0)
 	case "failure":
 		os.Exit(7)
 	case "wait":
@@ -611,5 +624,91 @@ func TestRecoveryRelaunchFailureRetainsVerifiedBackup(t *testing.T) {
 	}
 	if _, e := os.Stat(original); !errors.Is(e, os.ErrNotExist) {
 		t.Fatal("successful relaunch did not clean owned snapshot")
+	}
+}
+
+func TestRestoreApplicationFilesKeepsDataAndRecoveryEvidence(t *testing.T) {
+	for _, mode := range []string{"success", "cancel", "stage-collision", "detach-lock"} {
+		t.Run(mode, func(t *testing.T) {
+			root := t.TempDir()
+			backup, target := filepath.Join(root, "previous"), filepath.Join(root, "installed")
+			writeProgram := func(directory, version string) {
+				files := map[string]string{
+					"Eden.exe": version + " launcher", "resources/eden.exe": version + " backend",
+					"Uninstall.exe": version + " uninstaller", installfiles.IdentityName: installfiles.Identity,
+				}
+				manifest := installfiles.Manifest{Version: 1}
+				for name, content := range files {
+					writeTest(t, filepath.Join(directory, filepath.FromSlash(name)), content)
+					hash := sha256.Sum256([]byte(content))
+					manifest.Files = append(manifest.Files, installfiles.File{Path: name, SHA256: hex.EncodeToString(hash[:])})
+				}
+				data, err := json.Marshal(manifest)
+				if err != nil {
+					t.Fatal(err)
+				}
+				writeTest(t, filepath.Join(directory, installfiles.ManifestName), string(data))
+			}
+			writeProgram(backup, "old")
+			writeProgram(target, "new")
+			project, disk := filepath.Join(target, "my-project", "work.txt"), filepath.Join(target, "EdenData", "persistent.img")
+			writeTest(t, project, "latest personal work")
+			writeTest(t, disk, "original environment disk")
+			plan := InstallPlan{Target: target, Confirmation: newConfirmation()}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if mode == "cancel" {
+				cancel()
+			}
+			collision := filepath.Join(target+".restore-"+plan.Confirmation, "unknown.txt")
+			if mode == "stage-collision" {
+				writeTest(t, collision, "unrelated pre-existing stage")
+			}
+			lockedName := disk
+			if mode == "detach-lock" {
+				lockedName = filepath.Join(target, installfiles.IdentityName)
+			}
+			locked, err := installfiles.OpenReadLocked(lockedName)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer locked.Close()
+			err = restoreApplicationFiles(ctx, plan, backup)
+			if mode == "success" && err != nil {
+				t.Fatal(err)
+			}
+			if mode != "success" && err == nil {
+				t.Fatal("expected controlled recovery failure")
+			}
+			if mode == "cancel" && !errors.Is(err, context.Canceled) {
+				t.Fatal(err)
+			}
+			if mode == "stage-collision" && readTest(t, collision) != "unrelated pre-existing stage" {
+				t.Fatal("stage collision was overwritten")
+			}
+			want := "new launcher"
+			if mode == "success" {
+				want = "old launcher"
+			}
+			if readTest(t, filepath.Join(target, "Eden.exe")) != want {
+				t.Fatal("incorrect recovered program")
+			}
+			if readTest(t, project) != "latest personal work" || readTest(t, disk) != "original environment disk" {
+				t.Fatal("recovery changed personal data")
+			}
+			if readTest(t, filepath.Join(backup, "Eden.exe")) != "old launcher" {
+				t.Fatal("file recovery discarded the original snapshot before relaunch")
+			}
+			if mode == "success" {
+				if err := EnsureInstallationComplete(target); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if mode == "detach-lock" {
+				if _, err := os.Stat(target + ".eden-installation.json"); err != nil {
+					t.Fatal("failed recovery lost its transaction receipt", err)
+				}
+			}
+		})
 	}
 }

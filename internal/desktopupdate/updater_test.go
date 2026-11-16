@@ -204,6 +204,19 @@ func TestNewRequiresConfiguration(t *testing.T) {
 	}
 }
 
+func TestPrepareDownloadedRejectsVersionBeforeNativeVerification(t *testing.T) {
+	u := testUpdater(t, &fakeBackend{}, nil)
+	for _, version := range []string{"0.1.0", "0.0.9", "development"} {
+		err := u.prepareDownloaded(context.Background(), appupdate.State{LatestVersion: version}, filepath.Join(u.config.Root, "download-test", "Eden-setup.exe"))
+		if err == nil || !strings.Contains(err.Error(), "不高于当前版本") {
+			t.Fatal(version, err)
+		}
+		if u.prepared != nil || u.Status().Phase != "idle" {
+			t.Fatal("invalid version changed preparation state")
+		}
+	}
+}
+
 func TestProfileEnvironment(t *testing.T) {
 	root := t.TempDir()
 	config := filepath.Join(root, "selected profile", "config.json")

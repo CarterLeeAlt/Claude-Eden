@@ -301,29 +301,30 @@ func destination(target, recovery, relative string, quarantine bool) string {
 func Run(ctx context.Context, o Options) (err error) {
 	phase, blocked := "initializing", ""
 	defer func() {
-		if err != nil && o.Diagnostics != "" && !exists(o.Diagnostics) {
-			// Diagnostics classify the failure without recording paths or messages.
-			type diagnosticError struct {
-				Type    string `json:"type"`
-				HResult int32  `json:"hresult"`
-			}
-			chain := []diagnosticError{}
-			for cause := err; cause != nil && len(chain) < 4; cause = errors.Unwrap(cause) {
-				var native syscall.Errno
-				var hresult int32
-				if errors.As(cause, &native) {
-					hresult = int32(0x80070000 | uint32(native))
-				}
-				chain = append(chain, diagnosticError{fmt.Sprintf("%T", cause), hresult})
-			}
-			_ = writeJSON(o.Diagnostics, struct {
-				Operation   string            `json:"operation"`
-				Phase       string            `json:"phase"`
-				Blocked     string            `json:"blocked,omitempty"`
-				PointerSize int               `json:"pointerSize"`
-				Errors      []diagnosticError `json:"errors"`
-			}{o.Operation, phase, blocked, strconv.IntSize / 8, chain}, false)
+		if err == nil || o.Diagnostics == "" || exists(o.Diagnostics) {
+			return
 		}
+		// Diagnostics classify the failure without recording paths or messages.
+		type diagnosticError struct {
+			Type    string `json:"type"`
+			HResult int32  `json:"hresult"`
+		}
+		chain := []diagnosticError{}
+		for cause := err; cause != nil && len(chain) < 4; cause = errors.Unwrap(cause) {
+			var native syscall.Errno
+			var hresult int32
+			if errors.As(cause, &native) {
+				hresult = int32(0x80070000 | uint32(native))
+			}
+			chain = append(chain, diagnosticError{fmt.Sprintf("%T", cause), hresult})
+		}
+		_ = writeJSON(o.Diagnostics, struct {
+			Operation   string            `json:"operation"`
+			Phase       string            `json:"phase"`
+			Blocked     string            `json:"blocked,omitempty"`
+			PointerSize int               `json:"pointerSize"`
+			Errors      []diagnosticError `json:"errors"`
+		}{o.Operation, phase, blocked, strconv.IntSize / 8, chain}, false)
 	}()
 	if o.Target == "" {
 		return errors.New("缺少安装目标")
@@ -633,16 +634,20 @@ func moveTopLevel(ctx context.Context, from, to string, keep []string, removeEmp
 	}
 	moved := []string{}
 	defer func() {
-		if err != nil {
-			for i := len(moved) - 1; i >= 0; i-- {
-				err = errors.Join(err, renameNoReplace(filepath.Join(to, moved[i]), filepath.Join(from, moved[i])))
-			}
-			if removeEmpty {
-				if entries, e := os.ReadDir(to); e == nil && len(entries) == 0 {
-					err = errors.Join(err, os.Remove(to))
-				}
-			}
+		if err == nil {
+			return
 		}
+		for i := len(moved) - 1; i >= 0; i-- {
+			err = errors.Join(err, renameNoReplace(filepath.Join(to, moved[i]), filepath.Join(from, moved[i])))
+		}
+		if !removeEmpty {
+			return
+		}
+		entries, readErr := os.ReadDir(to)
+		if readErr != nil || len(entries) != 0 {
+			return
+		}
+		err = errors.Join(err, os.Remove(to))
 	}()
 	entries, e := os.ReadDir(from)
 	if e != nil {
@@ -839,10 +844,11 @@ func uninstall(ctx context.Context, o Options) error {
 		if e = ctx.Err(); e != nil {
 			return e
 		}
-		if key != strings.ToLower(IdentityName) && actual[key] {
-			if e = RemoveMatchingFile(o.Target, f.Path, f.SHA256); e != nil {
-				return e
-			}
+		if key == strings.ToLower(IdentityName) || !actual[key] {
+			continue
+		}
+		if e = RemoveMatchingFile(o.Target, f.Path, f.SHA256); e != nil {
+			return e
 		}
 	}
 	if len(installed) > 0 {
@@ -873,19 +879,20 @@ func uninstall(ctx context.Context, o Options) error {
 			remaining++
 		}
 	}
-	if remaining == 0 {
-		if f, ok := owned[strings.ToLower(IdentityName)]; ok {
-			if e = RemoveMatchingFile(o.Target, f.Path, f.SHA256); e != nil {
-				return e
-			}
-		}
-		entries, e = os.ReadDir(o.Target)
-		if e != nil {
+	if remaining != 0 {
+		return nil
+	}
+	if f, ok := owned[strings.ToLower(IdentityName)]; ok {
+		if e = RemoveMatchingFile(o.Target, f.Path, f.SHA256); e != nil {
 			return e
 		}
-		if len(entries) == 0 {
-			return os.Remove(o.Target)
-		}
 	}
-	return nil
+	entries, e = os.ReadDir(o.Target)
+	if e != nil {
+		return e
+	}
+	if len(entries) != 0 {
+		return nil
+	}
+	return os.Remove(o.Target)
 }

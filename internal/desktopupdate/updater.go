@@ -175,34 +175,12 @@ func (u *Updater) run(ctx context.Context, checkOnly bool) {
 	}()
 	if err == nil && !checkOnly && last.Phase == "downloaded" {
 		archive, err = DownloadPath(last.ArchivePath, u.config.Root)
-		if err == nil && !IsNewer(last.LatestVersion, u.config.Version) {
-			err = errors.New("安装包版本无效或不高于当前版本")
+		if err == nil {
+			err = u.prepareDownloaded(ctx, last, archive)
 		}
 		if err == nil {
-			u.change("verifying", "正在验证 Windows 签名和安装包内容", false, "")
-			var publisher string
-			publisher, err = Publisher(u.config.Executable)
-			if err == nil {
-				var f *os.File
-				f, err = VerifyArchiveLocked(u.config.Root, archive, last.SHA256, last.LatestVersion, publisher)
-				if f != nil {
-					f.Close()
-				}
-			}
-			if err == nil {
-				err = ctx.Err()
-			}
-			if err == nil {
-				var ticks int64
-				ticks, err = CurrentStartTicks()
-				if err == nil {
-					u.mu.Lock()
-					u.prepared = &InstallPlan{archive, last.SHA256, last.LatestVersion, publisher, u.config.Target, os.Getpid(), ticks, newConfirmation(), u.config.ConfigPath}
-					u.mu.Unlock()
-					archive = ""
-					u.change("ready", "更新已下载并验证，可安装重启", true, "")
-				}
-			}
+			archive = ""
+			u.change("ready", "更新已下载并验证，可安装重启", true, "")
 		}
 	}
 	if err != nil {
@@ -216,6 +194,35 @@ func (u *Updater) run(ctx context.Context, checkOnly bool) {
 	if !checkOnly && last.Phase == "downloaded" {
 		u.install(ctx)
 	}
+}
+
+func (u *Updater) prepareDownloaded(ctx context.Context, downloaded appupdate.State, archive string) error {
+	if !IsNewer(downloaded.LatestVersion, u.config.Version) {
+		return errors.New("安装包版本无效或不高于当前版本")
+	}
+	u.change("verifying", "正在验证 Windows 签名和安装包内容", false, "")
+	publisher, err := Publisher(u.config.Executable)
+	if err != nil {
+		return err
+	}
+	f, err := VerifyArchiveLocked(u.config.Root, archive, downloaded.SHA256, downloaded.LatestVersion, publisher)
+	if f != nil {
+		f.Close()
+	}
+	if err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	ticks, err := CurrentStartTicks()
+	if err != nil {
+		return err
+	}
+	u.mu.Lock()
+	u.prepared = &InstallPlan{archive, downloaded.SHA256, downloaded.LatestVersion, publisher, u.config.Target, os.Getpid(), ticks, newConfirmation(), u.config.ConfigPath}
+	u.mu.Unlock()
+	return nil
 }
 
 func (u *Updater) install(parent context.Context) {
