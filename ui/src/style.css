@@ -589,6 +589,10 @@ button.large {
   min-height: 0;
   width: 100%;
 }
+.terminal-host .xterm {
+  /* Keep CJK punctuation widths consistent in cells and repeated-character measurements. */
+  text-spacing-trim: space-all;
+}
 .terminal-host.terminal-preparing { visibility: hidden; }
 .terminal-startup {
   position: absolute;
