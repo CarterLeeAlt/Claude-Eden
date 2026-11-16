@@ -1,0 +1,23 @@
+Bundled application fonts
+
+Inter Variable 4.001 (Inter release 4.1):
+https://github.com/rsms/inter/tree/v4.1
+License: Inter-LICENSE.txt (SIL Open Font License 1.1).
+
+Noto Sans SC 2.04 (241114210130):
+https://github.com/google/fonts/tree/main/ofl/notosanssc
+Noto Sans Mono CJK SC 2.004, regular and bold:
+https://github.com/notofonts/noto-cjk/tree/main/Sans/Mono
+License: Noto-LICENSE.txt (SIL Open Font License 1.1).
+Original copyright and version records are retained in the font files.
+
+JetBrains Mono 2.304, regular, bold, italic and bold italic:
+https://github.com/JetBrains/JetBrainsMono/tree/v2.304
+License: JetBrainsMono-LICENSE.txt (SIL Open Font License 1.1).
+
+Eden UI is a derived private font for horizontal Windows controls and NSIS.
+Inter supplies its supported characters; Noto Sans SC supplies the remaining
+characters. The derived family is named Eden UI and remains licensed under
+SIL Open Font License 1.1. Both source copyright notices are embedded in it.
+Rebuild regular and bold faces with scripts/build-native-fonts.py using
+FontTools 4.68.0. Original fonts are the inputs; no system font is used at runtime.

@@ -5,9 +5,6 @@ import {
   ChevronDown,
   Download,
   LoaderCircle,
-  Monitor,
-  Moon,
-  Sun,
   Upload,
   RotateCcw,
   CircleCheck,
@@ -16,12 +13,9 @@ import {
 } from "lucide-react";
 import { api, native, nativeAvailable } from "./api";
 import { useAppearance } from "./appearance";
-import { isLinux } from "./platform.mjs";
 import {
   colorGroups,
   colorTokens,
-  terminalColorGroups,
-  terminalTheme,
   customThemeLimit,
   themeFileLimit,
   parseThemeDocument,
@@ -34,29 +28,8 @@ import {
   presetGroups,
   themeCatalog,
   applyThemePreset,
-  systemUIFont,
-  systemCodeFont,
   themeVariables,
 } from "./appearance-state.mjs";
-
-const codeFontSuggestions = ["SF Mono", "Menlo", "Monaco", "JetBrains Mono"];
-const linuxCodeFontSuggestions = [
-  "Sarasa Mono SC", "Noto Sans Mono CJK SC", "Noto Sans Mono",
-  "JetBrains Mono", "Ubuntu Mono", "DejaVu Sans Mono",
-];
-
-async function installedLinuxCodeFonts() {
-  // A local-only source fails for a missing face, even when CSS can render a fallback.
-  const results = await Promise.all(linuxCodeFontSuggestions.map(async (name) => {
-    try {
-      await new FontFace(name, `local("${name}")`).load();
-      return name;
-    } catch {
-      return null;
-    }
-  }));
-  return results.filter(Boolean);
-}
 
 function SettingRow({ label, description, children }) {
   return (
@@ -101,7 +74,7 @@ function ColorField({ label, value, onChange, onReset }) {
   };
   return (
     <div className="theme-color-field">
-      <span>{label.replace(/^(浅色|深色)主题(终端)?/, "")}</span>
+      <span>{label.replace(/^界面配色/, "")}</span>
       <div className="theme-color-value">
         <input
           type="color"
@@ -146,13 +119,11 @@ function ColorField({ label, value, onChange, onReset }) {
     </div>
   );
 }
-function ThemeCard({ variant, value, active, onChange, codeFonts }) {
+function ThemeCard({ value, onChange }) {
   const [advanced, setAdvanced] = useState(false);
-  const label = variant === "light" ? "浅色主题" : "深色主题";
-  const options = presets[variant];
+  const label = "界面配色";
   const patch = (delta) => onChange({ ...value, preset: "custom", ...delta });
-  const vars = themeVariables(value, variant);
-  const terminal = terminalTheme(value, variant);
+  const vars = themeVariables(value);
   const setColor = (field, key, color) => {
     const next = { ...value[field] };
     if (color === undefined) delete next[key];
@@ -160,24 +131,18 @@ function ThemeCard({ variant, value, active, onChange, codeFonts }) {
     patch({ [field]: next });
   };
   return (
-    <section
-      className={`appearance-theme-card ${active ? "current" : ""}`}
-      aria-label={label}
-    >
+    <section className="appearance-theme-card" aria-label={label}>
       <div className="theme-card-heading">
         <strong>{label}</strong>
-        {active && <small>当前使用</small>}
         <InlineSelect
           aria-label={label + "预设"}
           value={value.preset}
-          onValueChange={(next) =>
-            onChange(applyThemePreset(value, variant, next))
-          }
+          onValueChange={(next) => onChange(applyThemePreset(value, next))}
         >
           {presetGroups.map((group) => (
             <optgroup key={group} label={group}>
               {themeCatalog
-                .filter((item) => item.group === group && options[item.id])
+                .filter((item) => item.group === group)
                 .map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
@@ -185,7 +150,7 @@ function ThemeCard({ variant, value, active, onChange, codeFonts }) {
                 ))}
             </optgroup>
           ))}
-          {!options[value.preset] && (
+          {!presets[value.preset] && (
             <option value={value.preset} disabled>
               {presetNames[value.preset] || "自定义"}
             </option>
@@ -282,43 +247,10 @@ function ThemeCard({ variant, value, active, onChange, codeFonts }) {
               ))}
             </details>
           ))}
-          {terminalColorGroups.map((group) => (
-            <details className="theme-color-group" key={group.label}>
-              <summary>{group.label}</summary>
-              {group.entries.map(([key, name]) => (
-                <ColorField
-                  key={key}
-                  label={label + "终端" + name}
-                  value={terminal[key]}
-                  onChange={(color) => setColor("terminal", key, color)}
-                  onReset={
-                    value.terminal?.[key]
-                      ? () => setColor("terminal", key)
-                      : undefined
-                  }
-                />
-              ))}
-            </details>
-          ))}
-          <div
-            className="theme-terminal-preview"
-            style={{
-              background: terminal.background,
-              color: terminal.foreground,
-            }}
-            aria-label={label + "终端预览"}
-          >
-            <span style={{ color: terminal.green }}>~/workspace</span> ${" "}
-            <span style={{ color: terminal.blue }}>echo</span> hello
-            <i style={{ background: terminal.cursor }} />
-          </div>
           <button
             className="theme-reset-colors"
-            disabled={
-              !Object.keys(value.colors || {}).length &&
-              !Object.keys(value.terminal || {}).length
-            }
-            onClick={() => patch({ colors: {}, terminal: {} })}
+            disabled={!Object.keys(value.colors || {}).length}
+            onClick={() => patch({ colors: {} })}
           >
             <RotateCcw size={13} />
             恢复全部自动颜色
@@ -333,35 +265,6 @@ function ThemeCard({ variant, value, active, onChange, codeFonts }) {
               value={value.contrast}
               onChange={(e) => patch({ contrast: Number(e.target.value) })}
             />
-          </label>
-          <label>
-            界面字体
-            <InlineSelect editable
-              aria-label={label + "界面字体"}
-              value={value.fonts.ui}
-              placeholder="系统默认"
-              onValueChange={(next) =>
-                patch({ fonts: { ...value.fonts, ui: next } })
-              }
-            >
-              <option value="system-ui" />
-              <option value="PingFang SC" />
-              <option value="Helvetica Neue" />
-              <option value="Arial" />
-            </InlineSelect>
-          </label>
-          <label>
-            代码字体
-            <InlineSelect editable
-              aria-label={label + "代码字体"}
-              value={value.fonts.code}
-              placeholder="系统等宽字体"
-              onValueChange={(next) =>
-                patch({ fonts: { ...value.fonts, code: next } })
-              }
-            >
-              {codeFonts.map((name) => <option key={name} value={name} />)}
-            </InlineSelect>
           </label>
           <label className="appearance-switch">
             <span>半透明侧栏</span>
@@ -409,7 +312,6 @@ function ThemeLibrary({ appearance, update, saving, onError }) {
     void update((previous) => ({
       ...previous,
       lightTheme: structuredClone(item.lightTheme),
-      darkTheme: structuredClone(item.darkTheme),
     }));
   };
   const save = (replace) =>
@@ -422,7 +324,6 @@ function ThemeLibrary({ appearance, update, saving, onError }) {
         id: replace ? current.id : crypto.randomUUID(),
         name: title,
         lightTheme: document.lightTheme,
-        darkTheme: document.darkTheme,
       };
       if (
         await update((previous) => ({
@@ -447,13 +348,11 @@ function ThemeLibrary({ appearance, update, saving, onError }) {
       id: crypto.randomUUID(),
       name: document.name,
       lightTheme: document.lightTheme,
-      darkTheme: document.darkTheme,
     };
     if (
       await update((previous) => ({
         ...previous,
         lightTheme: item.lightTheme,
-        darkTheme: item.darkTheme,
         customThemes: [...previous.customThemes, item],
       }))
     ) {
@@ -504,7 +403,7 @@ function ThemeLibrary({ appearance, update, saving, onError }) {
       <div className="theme-library-heading">
         <div>
           <h4>我的主题</h4>
-          <p>保存浅色、深色两套配色与字体，随时切换或分享。</p>
+          <p>保存界面配色与侧栏透明度，随时切换或分享。</p>
         </div>
         <div className="theme-file-actions">
           <button disabled={busy || saving} onClick={importFile}>
@@ -618,12 +517,7 @@ function ThemeLibrary({ appearance, update, saving, onError }) {
   );
 }
 export function AppearanceSettings() {
-  const { appearance, theme, variant, loading, saving, error, update, retry } =
-    useAppearance();
-  const [codeFonts, setCodeFonts] = useState(isLinux ? [] : codeFontSuggestions);
-  useEffect(() => {
-    if (isLinux) void installedLinuxCodeFonts().then(setCodeFonts);
-  }, []);
+  const { appearance, loading, saving, error, update, retry } = useAppearance();
   const [syncing, setSyncing] = useState(false),
     [syncError, setSyncError] = useState(""),
     [synced, setSynced] = useState(false),
@@ -655,27 +549,6 @@ export function AppearanceSettings() {
         <p>更改自动保存并即时生效，无需重启项目。</p>
       </div>
       <fieldset disabled={loading || syncing} className="appearance-fields">
-        <SettingRow
-          label="主题"
-          description="跟随系统，或固定使用浅色、深色外观。"
-        >
-          <div className="appearance-mode" role="group" aria-label="主题模式">
-            {[
-              ["light", "浅色", Sun],
-              ["dark", "深色", Moon],
-              ["system", "跟随系统", Monitor],
-            ].map(([mode, label, Icon]) => (
-              <button
-                key={mode}
-                aria-pressed={appearance.mode === mode}
-                onClick={() => patch({ mode })}
-              >
-                <Icon size={15} />
-                {label}
-              </button>
-            ))}
-          </div>
-        </SettingRow>
         <ThemeLibrary
           key={String(loading)}
           appearance={appearance}
@@ -688,22 +561,14 @@ export function AppearanceSettings() {
             {themeError}
           </div>
         )}
-        <div className="theme-card-grid">
-          {["light", "dark"].map((key) => (
-            <ThemeCard
-              key={key}
-              variant={key}
-              codeFonts={codeFonts}
-              value={appearance[key + "Theme"]}
-              active={variant === key}
-              onChange={(value) => patch({ [key + "Theme"]: value })}
-            />
-          ))}
-        </div>
+        <ThemeCard
+          value={appearance.lightTheme}
+          onChange={(value) => patch({ lightTheme: value })}
+        />
         <h4>字体</h4>
         <SettingRow
           label="界面字号"
-          description="调整导航、标签和设置中的文字大小。"
+          description="中文 Noto Sans SC；英文与数字 Inter。字体随应用内置。"
         >
           <FontSizeInput
             label="界面字号"
@@ -714,7 +579,7 @@ export function AppearanceSettings() {
         </SettingRow>
         <SettingRow
           label="代码字号"
-          description="调整内置终端与代码预览的文字大小。"
+          description="中文 Noto Sans Mono CJK SC；英文与数字 JetBrains Mono。"
         >
           <FontSizeInput
             label="代码字号"
@@ -723,18 +588,14 @@ export function AppearanceSettings() {
             onChange={(value) => patch({ codeFontSize: value })}
           />
         </SettingRow>
-        <div
-          className="appearance-sample"
-          style={{ fontFamily: theme.fonts.ui || systemUIFont }}
-        >
+        <div className="appearance-sample">
           <span>在熟悉的工作区，专注下一步。</span>
           <code
             style={{
-              fontFamily: theme.fonts.code || systemCodeFont,
               fontSize: appearance.codeFontSize,
             }}
           >
-            const workspace = "Eden";
+            const workspace = "Claude Eden";
           </code>
         </div>
         <h4>显示与交互</h4>
@@ -777,7 +638,7 @@ export function AppearanceSettings() {
         <div className="appearance-import">
           <div>
             <strong>沿用 Codex 的外观</strong>
-            <p>导入本机 Codex 当前的主题、配色与字体偏好。</p>
+            <p>导入本机 Codex 的亮色配色、字号与交互偏好。</p>
           </div>
           <button onClick={sync}>
             {syncing ? (

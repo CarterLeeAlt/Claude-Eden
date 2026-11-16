@@ -56,41 +56,12 @@ button.primary:hover:not(:disabled) {
 .appearance-control {
   flex: none;
 }
-.appearance-mode {
-  display: flex;
-  padding: 3px;
-  background: var(--chrome);
-  border-radius: 9px;
-  gap: 2px;
-}
-.appearance-mode button {
-  padding: 7px 10px;
-  border: 0;
-  font-size: 0.857rem;
-  min-height: 30px;
-  background: transparent;
-  color: var(--muted);
-}
-.appearance-mode button[aria-pressed="true"] {
-  background: var(--paper);
-  color: var(--strong);
-  box-shadow: 0 1px 4px #00000012;
-}
-.theme-card-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px;
-  margin: 24px 0 32px;
-  align-items: start;
-}
 .appearance-theme-card {
+  margin: 24px 0 32px;
   border: 1px solid var(--line);
   border-radius: 12px;
   overflow: hidden;
   background: var(--paper);
-}
-.appearance-theme-card.current {
-  border-color: var(--focus);
 }
 .theme-card-heading {
   display: flex;
@@ -102,11 +73,6 @@ button.primary:hover:not(:disabled) {
 .theme-card-heading strong {
   font-size: 0.929rem;
   font-weight: 500;
-}
-.theme-card-heading small {
-  margin-left: auto;
-  font-size: 0.714rem;
-  color: var(--muted);
 }
 .theme-card-heading .inline-select {
   width: 100%;
@@ -320,23 +286,14 @@ button.primary:hover:not(:disabled) {
     flex-wrap: wrap;
     gap: 14px;
   }
-  .theme-card-grid {
-    gap: 12px;
-  }
   .appearance-import {
     flex-wrap: wrap;
     gap: 12px;
   }
 }
 @media (max-width: 720px) {
-  .theme-card-grid {
-    grid-template-columns: 1fr;
-  }
   .appearance-row {
     gap: 12px;
-  }
-  .appearance-mode button {
-    padding: 7px;
   }
 }
 /* Theme editing stays compact until a group is expanded. */
@@ -462,21 +419,6 @@ button.primary:hover:not(:disabled) {
 }
 .theme-color-group summary:hover {
   color: var(--link);
-}
-.theme-terminal-preview {
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  font: 0.786rem var(--code-font-family);
-  overflow-wrap: anywhere;
-  margin-top: 8px;
-}
-.theme-terminal-preview i {
-  display: inline-block;
-  width: 6px;
-  height: 12px;
-  vertical-align: middle;
-  margin-left: 4px;
 }
 .theme-reset-colors {
   width: 100%;

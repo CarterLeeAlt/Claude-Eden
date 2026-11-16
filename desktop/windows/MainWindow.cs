@@ -43,10 +43,10 @@ internal sealed class MainWindow : Form
         var trayMenu = new TrayMenu();
         trayMenu.Items.Add("打开 Claude Eden", null, (_, _) => RestoreWindow());
         trayMenu.Items.Add("检查应用更新…", null, (_, _) => updater!.Handle("check"));
-        trayMenu.Items.Add("关于 Claude Eden", null, (_, _) => MessageBox.Show(this, $"Claude Eden {AppUpdater.Version}\n本机隔离编码工作区", "关于 Claude Eden"));
+        trayMenu.Items.Add("关于 Claude Eden", null, (_, _) => AppDialog.ShowMessage(this, $"Claude Eden {AppUpdater.Version}\n本机隔离编码工作区", "关于 Claude Eden"));
         trayMenu.Items.Add(new ToolStripSeparator());
         trayMenu.Items.Add("退出 Claude Eden…", null, (_, _) => RequestQuit());
-        trayMenu.Opening += (_, _) => (chrome ?? new WindowChrome(BackColor, ForeColor, false)).ApplyMenu(trayMenu);
+        trayMenu.Opening += (_, _) => (chrome ?? new WindowChrome(BackColor, ForeColor)).ApplyMenu(trayMenu);
         tray = new NotifyIcon { Icon = Icon, Text = "Claude Eden", Visible = true, ContextMenuStrip = trayMenu };
         tray.DoubleClick += (_, _) => RestoreWindow();
         updater = new AppUpdater(PublishUpdate, () => { allowQuit = true; Close(); }, () => _ = Bootstrap());
@@ -103,7 +103,7 @@ internal sealed class MainWindow : Form
         Action(action); return true;
     }
 
-    private WindowChrome? chrome;
+    private WindowChrome? chrome = new(Color.FromArgb(247, 247, 247), Color.FromArgb(26, 28, 31));
 
     private void ApplyWindowChrome()
     {
@@ -125,9 +125,9 @@ internal sealed class MainWindow : Form
         ApplyWindowChrome();
     }
 
-    private bool ConfirmStop() => MessageBox.Show(this,
+    private bool ConfirmStop() => AppDialog.ShowMessage(this,
         "请先保存编辑器中的文件并结束正在运行的工作。继续后 Claude Eden 会停止环境、安装已验证的更新并重新启动。",
-        "保存并停止环境后安装重启", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) == DialogResult.OK;
+        "保存并停止环境后安装重启", confirmation: true) == DialogResult.OK;
 
     public void RestoreWindow() { Show(); if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal; Activate(); PublishVisibility(); }
     private void RequestQuit()
@@ -171,6 +171,12 @@ internal sealed class MainWindow : Form
             await web.EnsureCoreWebView2Async(environment);
             smokePhase = "webview_initialized";
             var core = web.CoreWebView2;
+            core.Profile.PreferredColorScheme = CoreWebView2PreferredColorScheme.Light;
+            core.Settings.AreDefaultScriptDialogsEnabled = false;
+            core.ScriptDialogOpening += (_, args) => {
+                bool confirmation = args.Kind is CoreWebView2ScriptDialogKind.Confirm or CoreWebView2ScriptDialogKind.Beforeunload;
+                if (AppDialog.ShowMessage(this, args.Message, confirmation: confirmation) == DialogResult.OK) args.Accept();
+            };
             core.Settings.AreDevToolsEnabled = false; core.Settings.AreDefaultContextMenusEnabled = false;
             core.Settings.IsStatusBarEnabled = false; core.Settings.IsZoomControlEnabled = false;
             core.Settings.AreBrowserAcceleratorKeysEnabled = false;
@@ -401,7 +407,7 @@ internal sealed class MainWindow : Form
                     var themeText = request.Text("text");
                     if (System.Text.Encoding.UTF8.GetByteCount(themeText) > 256 * 1024) throw new InvalidDataException("主题文件不能超过 256 KB");
                     var themeDocument = JsonDocument.Parse(themeText).RootElement;
-                    if (themeDocument.Text("format") != "eden-theme" || themeDocument.GetProperty("version").GetInt32() != 1) throw new InvalidDataException("主题文件格式无效");
+                    if (themeDocument.Text("format") != "eden-theme" || themeDocument.GetProperty("version").GetInt32() != 2) throw new InvalidDataException("主题文件格式无效");
                     using (var picker = new SaveFileDialog { Filter = "Claude Eden 主题 (*.json)|*.json", Title = "导出主题", FileName = Path.GetFileName(request.Text("filename")), DefaultExt = "json", AddExtension = true })
                     {
                         if (picker.ShowDialog(this) != DialogResult.OK) { result = false; break; }
@@ -492,16 +498,15 @@ internal sealed class MainWindow : Form
                     if (request.Text("text") is { Length: > 0 } text) Clipboard.SetText(text); else Clipboard.Clear();
                     result = true; break;
                 case "appearance":
-                    var mode = request.Text("mode"); var background = request.Text("background");
-                    if (mode is not ("system" or "light" or "dark") || !System.Text.RegularExpressions.Regex.IsMatch(background, "^#[0-9a-fA-F]{6}$"))
+                    var background = request.Text("background");
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(background, "^#[0-9a-fA-F]{6}$"))
                         throw new InvalidDataException("外观参数无效");
                     var foreground = request.Text("foreground");
                     BackColor = ColorTranslator.FromHtml(background); web.DefaultBackgroundColor = BackColor;
                     var ink = System.Text.RegularExpressions.Regex.IsMatch(foreground, "^#[0-9a-fA-F]{6}$")
                         ? ColorTranslator.FromHtml(foreground) : WindowChrome.ContrastingText(BackColor);
-                    chrome = new WindowChrome(BackColor, ink, request.Text("variant") == "dark");
+                    chrome = new WindowChrome(BackColor, ink);
                     ApplyWindowChrome();
-                    web.CoreWebView2.Profile.PreferredColorScheme = mode == "dark" ? CoreWebView2PreferredColorScheme.Dark : mode == "light" ? CoreWebView2PreferredColorScheme.Light : CoreWebView2PreferredColorScheme.Auto;
                     result = true; break;
                 case "accountDevice":
                     if (request.Text("operation") != "status") throw new InvalidDataException("此平台暂不支持快捷登录");

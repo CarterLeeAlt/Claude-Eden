@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace Eden.Windows;
 
-internal sealed class WindowChrome(Color background, Color foreground, bool dark)
+internal sealed class WindowChrome(Color background, Color foreground)
 {
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
@@ -12,9 +12,8 @@ internal sealed class WindowChrome(Color background, Color foreground, bool dark
 
     internal void Apply(IntPtr window, MenuStrip? menus)
     {
-        bool accessible = SystemInformation.HighContrast;
-        int darkFrame = dark && !accessible ? 1 : 0;
-        DwmSetWindowAttribute(window, 20, ref darkFrame, sizeof(int)); // DWMWA_USE_IMMERSIVE_DARK_MODE
+        int lightFrame = 0;
+        DwmSetWindowAttribute(window, 20, ref lightFrame, sizeof(int)); // DWMWA_USE_IMMERSIVE_DARK_MODE
         if (menus != null) ApplyMenu(menus);
     }
 

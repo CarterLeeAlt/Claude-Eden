@@ -99,7 +99,7 @@
   border-radius: 8px;
   background: var(--chrome);
   color: var(--muted);
-  font: 500 0.8rem/1.45 var(--ui-font-family, sans-serif);
+  font: 500 0.8rem/1.45 var(--ui-font-family);
 }
 .claude-list-heading small, .claude-quota-age, .claude-profile-meta {
   color: var(--muted);
@@ -210,7 +210,7 @@
 }
 .claude-quota-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; }
 .claude-quota-history { grid-column: 2 / -1; min-width: 0; color: var(--muted); font-size: 0.76rem; overflow-wrap: anywhere; }
-.claude-quota-period { color: var(--ink); font: 600 0.86rem/1.45 ui-monospace, monospace; }
+.claude-quota-period { color: var(--ink); font: 600 0.86rem/1.45 var(--ui-font-family); font-variant-numeric: tabular-nums; }
 .claude-quota-row progress, .claude-quota-unknown {
   display: block;
   width: 100%;

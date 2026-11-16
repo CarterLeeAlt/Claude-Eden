@@ -1,6 +1,7 @@
-export const systemUIFont =
-  '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif';
-export const systemCodeFont = '"SF Mono", Menlo, Consolas, monospace';
+export const uiFontFamily =
+  '"Inter", "Noto Sans SC", "Noto Sans Mono CJK SC", sans-serif';
+export const codeFontFamily =
+  '"JetBrains Mono", "Noto Sans Mono CJK SC", monospace';
 import { presets } from "./appearance-presets.mjs";
 export {
   presets,
@@ -12,18 +13,10 @@ export {
 } from "./appearance-presets.mjs";
 export const defaultAppearance = {
   customThemes: [],
-  mode: "system",
   lightTheme: {
-    ...presets.light.codex,
+    ...presets.codex,
     preset: "codex",
     opaqueWindows: false,
-    fonts: { ui: "", code: "" },
-  },
-  darkTheme: {
-    ...presets.dark.codex,
-    preset: "codex",
-    opaqueWindows: false,
-    fonts: { ui: "", code: "" },
   },
   uiFontSize: 14,
   codeFontSize: 13,
@@ -33,7 +26,9 @@ export const defaultAppearance = {
 };
 export function normalizeAppearance(value = {}) {
   value = value && typeof value === "object" ? value : {};
-  return {
+  if (Object.keys(value).some((key) => !Object.hasOwn(defaultAppearance, key)))
+    throw new Error("外观设置包含不支持的项目");
+  const appearance = {
     ...defaultAppearance,
     ...value,
     customThemes: Array.isArray(value.customThemes) ? value.customThemes : [],
@@ -41,23 +36,16 @@ export function normalizeAppearance(value = {}) {
       ...defaultAppearance.lightTheme,
       ...value.lightTheme,
       colors: { ...value.lightTheme?.colors },
-      terminal: { ...value.lightTheme?.terminal },
-      fonts: {
-        ...defaultAppearance.lightTheme.fonts,
-        ...value.lightTheme?.fonts,
-      },
-    },
-    darkTheme: {
-      ...defaultAppearance.darkTheme,
-      ...value.darkTheme,
-      colors: { ...value.darkTheme?.colors },
-      terminal: { ...value.darkTheme?.terminal },
-      fonts: {
-        ...defaultAppearance.darkTheme.fonts,
-        ...value.darkTheme?.fonts,
-      },
     },
   };
+  validateTheme(appearance.lightTheme);
+  for (const saved of appearance.customThemes) {
+    if (!object(saved) || Object.keys(saved).some((key) => !["id", "name", "lightTheme"].includes(key)))
+      throw new Error("已保存主题包含不支持的设置");
+    validateThemeName(saved.name);
+    validateTheme(saved.lightTheme);
+  }
+  return appearance;
 }
 export function mix(a, b, weight) {
   const rgb = (hex) =>
@@ -81,7 +69,7 @@ function luminance(hex) {
     .map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
   return r * 0.2126 + g * 0.7152 + b * 0.0722;
 }
-export function themeVariables(theme, variant) {
+export function themeVariables(theme) {
   const { surface, ink, accent, contrast } = theme;
   const chrome = mix(surface, ink, 0.025 + contrast * 0.00055);
   const line = mix(surface, ink, 0.09 + contrast * 0.0013);
@@ -90,7 +78,7 @@ export function themeVariables(theme, variant) {
     "--chrome": chrome,
     "--chrome-dark": mix(surface, ink, 0.1),
     "--ink": ink,
-    "--strong": mix(ink, variant === "light" ? "#000000" : "#ffffff", 0.15),
+    "--strong": mix(ink, "#000000", 0.15),
     "--muted": mix(ink, surface, 0.15),
     "--accent": accent,
     "--focus": accent,
@@ -102,12 +90,12 @@ export function themeVariables(theme, variant) {
     "--button": ink,
     "--button-ink": surface,
     "--link": accent,
-    "--success": variant === "dark" ? "#70bf56" : "#357c3c",
-    "--danger": variant === "dark" ? "#f26d78" : "#bb3535",
-    "--warning": variant === "dark" ? "#e6b450" : "#af7a22",
+    "--success": "#357c3c",
+    "--danger": "#bb3535",
+    "--warning": "#af7a22",
     "--inactive": "#a3a3a3",
-    "--ui-font-family": theme.fonts.ui || systemUIFont,
-    "--code-font-family": theme.fonts.code || systemCodeFont,
+    "--ui-font-family": uiFontFamily,
+    "--code-font-family": codeFontFamily,
     "--accent-ink": luminance(accent) > 0.4 ? "#111111" : "#ffffff",
   };
   for (const [key, value] of Object.entries(theme.colors || {})) {
@@ -122,34 +110,6 @@ export function themeVariables(theme, variant) {
   variables["--surface"] = variables["--paper"];
   return variables;
 }
-export function terminalTheme(theme, variant) {
-  const vars = themeVariables(theme, variant);
-  return {
-    background: theme.surface,
-    foreground: theme.ink,
-    cursor: theme.ink,
-    cursorAccent: theme.surface,
-    selectionBackground: vars["--selection"],
-    black: variant === "dark" ? "#202020" : "#242424",
-    red: variant === "dark" ? "#f26d78" : "#c43d3d",
-    green: variant === "dark" ? "#aad94c" : "#4b7b23",
-    yellow: theme.accent,
-    blue: variant === "dark" ? "#59c2ff" : "#206bb1",
-    magenta: variant === "dark" ? "#d2a6ff" : "#a03e9c",
-    cyan: variant === "dark" ? "#95e6cb" : "#187b74",
-    white: variant === "dark" ? "#bfbdb6" : "#dadada",
-    brightBlack: "#737373",
-    brightRed: "#fa7784",
-    brightGreen: "#a4d86a",
-    brightYellow: "#ffd173",
-    brightBlue: "#73d0ff",
-    brightMagenta: "#d4bfff",
-    brightCyan: "#95e6cb",
-    brightWhite: "#ffffff",
-    ...theme.terminal,
-  };
-}
-
 // Optional overrides keep unedited colors linked to the three base colors.
 export const colorGroups = [
   {
@@ -198,46 +158,13 @@ export const colorTokens = Object.fromEntries(
     ]),
   ),
 );
-export const terminalColorGroups = [
-  {
-    label: "终端",
-    entries: [
-      ["background", "背景"],
-      ["foreground", "文字"],
-      ["cursor", "光标"],
-      ["cursorAccent", "光标内文字"],
-      ["selectionBackground", "选区背景"],
-    ],
-  },
-  {
-    label: "终端 ANSI 配色",
-    entries: [
-      ["black", "黑色"],
-      ["red", "红色"],
-      ["green", "绿色"],
-      ["yellow", "黄色"],
-      ["blue", "蓝色"],
-      ["magenta", "品红"],
-      ["cyan", "青色"],
-      ["white", "白色"],
-      ["brightBlack", "亮黑"],
-      ["brightRed", "亮红"],
-      ["brightGreen", "亮绿"],
-      ["brightYellow", "亮黄"],
-      ["brightBlue", "亮蓝"],
-      ["brightMagenta", "亮品红"],
-      ["brightCyan", "亮青"],
-      ["brightWhite", "亮白"],
-    ],
-  },
-];
 export const themeFileLimit = 256 * 1024;
 export const customThemeLimit = 50;
 const hexColor = /^#[0-9a-fA-F]{6}$/;
 const object = (value) =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 export function validateTheme(theme) {
-  if (!object(theme)) throw new Error("主题缺少浅色或深色配置");
+  if (!object(theme)) throw new Error("主题缺少亮色配置");
   const allowed = [
     "preset",
     "accent",
@@ -245,9 +172,7 @@ export function validateTheme(theme) {
     "ink",
     "contrast",
     "opaqueWindows",
-    "fonts",
     "colors",
-    "terminal",
   ];
   if (Object.keys(theme).some((key) => !allowed.includes(key)))
     throw new Error("主题包含不支持的设置");
@@ -267,35 +192,16 @@ export function validateTheme(theme) {
   )
     throw new Error("主题配置无效");
   if (
-    !object(theme.fonts) ||
-    Object.keys(theme.fonts).some((key) => !["ui", "code"].includes(key)) ||
-    [theme.fonts.ui, theme.fonts.code].some(
-      (font) =>
-        typeof font !== "string" ||
-        font.length > 200 ||
-        /[;{}<>\r\n]/.test(font),
-    )
-  )
-    throw new Error("字体名称无效");
-  for (const [field, keys] of [
-    ["colors", Object.keys(colorTokens)],
-    [
-      "terminal",
-      terminalColorGroups.flatMap((group) => group.entries.map(([key]) => key)),
-    ],
-  ]) {
-    if (theme[field] === undefined) continue;
-    if (
-      !object(theme[field]) ||
-      Object.entries(theme[field]).some(
+    theme.colors !== undefined &&
+    (!object(theme.colors) ||
+      Object.entries(theme.colors).some(
         ([key, value]) =>
-          !keys.includes(key) ||
+          !Object.hasOwn(colorTokens, key) ||
           typeof value !== "string" ||
           !hexColor.test(value),
-      )
-    )
-      throw new Error("元素颜色无效或包含不支持的颜色项目");
-  }
+      ))
+  )
+    throw new Error("元素颜色无效或包含不支持的颜色项目");
   return structuredClone(theme);
 }
 export function validateThemeName(name) {
@@ -306,10 +212,9 @@ export function validateThemeName(name) {
 export function themeDocument(name, appearance) {
   return {
     format: "eden-theme",
-    version: 1,
+    version: 2,
     name: validateThemeName(name),
     lightTheme: validateTheme(appearance.lightTheme),
-    darkTheme: validateTheme(appearance.darkTheme),
   };
 }
 export function parseThemeDocument(text) {
@@ -321,12 +226,13 @@ export function parseThemeDocument(text) {
   } catch {
     throw new Error("无法读取主题，请选择有效的 JSON 文件");
   }
-  if (!object(data) || data.format !== "eden-theme" || data.version !== 1)
-    throw new Error("不支持的主题格式或版本，请使用 Eden 导出的主题文件");
+  if (!object(data) || data.format !== "eden-theme" || data.version !== 2)
+    throw new Error(
+      "不支持的主题格式或版本，请使用 Claude Eden 导出的主题文件",
+    );
   if (
     Object.keys(data).some(
-      (key) =>
-        !["format", "version", "name", "lightTheme", "darkTheme"].includes(key),
+      (key) => !["format", "version", "name", "lightTheme"].includes(key),
     )
   )
     throw new Error("主题文件包含不支持的设置");
@@ -342,14 +248,8 @@ export function sameTheme(left, right) {
       valid.ink,
       valid.contrast,
       valid.opaqueWindows,
-      valid.fonts.ui,
-      valid.fonts.code,
       Object.entries(valid.colors || {}).sort(),
-      Object.entries(valid.terminal || {}).sort(),
     ]);
   };
-  return (
-    canonical(left.lightTheme) === canonical(right.lightTheme) &&
-    canonical(left.darkTheme) === canonical(right.darkTheme)
-  );
+  return canonical(left.lightTheme) === canonical(right.lightTheme);
 }

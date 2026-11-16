@@ -8,7 +8,7 @@ import {
   sameTheme,
 } from "../src/appearance-state.mjs";
 const output = fileURLToPath(
-  new URL("../../.tmp/guest-neutralization/ui-eden/screenshots/themes/", import.meta.url),
+  new URL("../../.tmp/Font_Preview/verification/themes/", import.meta.url),
 );
 await fs.mkdir(output, { recursive: true });
 let imported = "",
@@ -45,7 +45,8 @@ const edit = async (label, value) => {
   await input.press("Enter");
   await saved();
 };
-const light = () => page.getByRole("region", { name: "浅色主题", exact: true });
+const palette = () =>
+  page.getByRole("region", { name: "界面配色", exact: true });
 const color = (key) =>
   page.evaluate(
     (key) => getComputedStyle(document.documentElement).getPropertyValue(key),
@@ -61,32 +62,28 @@ try {
   await page.emulateMedia({ colorScheme: "light" });
   await open();
   await shot("themes-light");
-  await edit("浅色主题背景", "#fdf6e3");
-  await light().getByRole("button", { name: "自定义", exact: true }).click();
-  await light().getByText("界面与层级", { exact: true }).click();
-  await edit("浅色主题面板背景", "#e8dec3");
+  await edit("界面配色背景", "#fdf6e3");
+  await palette().getByRole("button", { name: "自定义", exact: true }).click();
+  await palette().getByText("界面与层级", { exact: true }).click();
+  await edit("界面配色面板背景", "#e8dec3");
   assert.equal(await color("--chrome"), "#e8dec3");
-  await light().getByText("按钮与交互", { exact: true }).click();
-  await edit("浅色主题主按钮背景", "#426b52");
-  await edit("浅色主题主按钮文字", "#ffffff");
+  await palette().getByText("按钮与交互", { exact: true }).click();
+  await edit("界面配色主按钮背景", "#426b52");
+  await edit("界面配色主按钮文字", "#ffffff");
   assert.equal(await color("--button"), "#426b52");
-  await light().getByText("终端", { exact: true }).click();
-  await edit("浅色主题终端背景", "#101820");
-  await light().getByText("终端 ANSI 配色", { exact: true }).click();
-  await edit("浅色主题终端红色", "#f08080");
   await shot("themes-colors");
   const originalChrome = state.appearance.lightTheme.colors.chrome;
-  await page.getByLabel("浅色主题面板背景", { exact: true }).fill("#oops");
-  await page.getByLabel("浅色主题面板背景", { exact: true }).press("Tab");
+  await page.getByLabel("界面配色面板背景", { exact: true }).fill("#oops");
+  await page.getByLabel("界面配色面板背景", { exact: true }).press("Tab");
   assert.equal(state.appearance.lightTheme.colors.chrome, originalChrome);
-  await page.getByLabel("浅色主题面板背景", { exact: true }).press("Escape");
-  checks.push("基础色和元素色即时生效、终端和 ANSI 独立覆盖、无效 HEX 不提交");
+  await page.getByLabel("界面配色面板背景", { exact: true }).press("Escape");
+  checks.push("基础色和元素色即时生效、无效 HEX 不提交");
   await page.getByLabel("主题名称", { exact: true }).fill("森林日光");
   await page.getByRole("button", { name: "另存为主题", exact: true }).click();
   await page.getByRole("status").filter({ hasText: "主题已保存" }).waitFor();
   assert.equal(state.appearance.customThemes.length, 1);
   const savedTheme = structuredClone(state.appearance.customThemes[0]);
-  await edit("浅色主题背景", "#eeeeee");
+  await edit("界面配色背景", "#eeeeee");
   await page
     .getByRole("button", { name: "恢复已保存配色", exact: true })
     .click();
@@ -113,7 +110,7 @@ try {
   imported = "";
   await page.getByRole("button", { name: "导入主题", exact: true }).click();
   assert.equal(JSON.stringify(state.appearance), original);
-  imported = '{"format":"eden-theme","version":2}';
+  imported = '{"format":"eden-theme","version":1}';
   await page.getByRole("button", { name: "导入主题", exact: true }).click();
   await page
     .getByRole("alert")
@@ -132,7 +129,7 @@ try {
     "命名保存、切换还原、原生导出内容、同名导入不覆盖、取消和无效文件保留设置",
   );
   const second = state.appearance.customThemes[1];
-  await edit("浅色主题背景", "#f5efdd");
+  await edit("界面配色背景", "#f5efdd");
   await page.getByLabel("主题名称", { exact: true }).fill("森林日光 II");
   await page.getByRole("button", { name: "更新此主题", exact: true }).click();
   await page.getByRole("status").filter({ hasText: "主题已保存" }).waitFor();
@@ -140,8 +137,8 @@ try {
   assert.equal(state.appearance.customThemes[1].name, "森林日光 II");
   assert.equal(state.appearance.customThemes[0].name, "森林日光");
   state.failAppearance = true;
-  await page.getByLabel("浅色主题背景", { exact: true }).fill("#fafafa");
-  await page.getByLabel("浅色主题背景", { exact: true }).press("Enter");
+  await page.getByLabel("界面配色背景", { exact: true }).fill("#fafafa");
+  await page.getByLabel("界面配色背景", { exact: true }).press("Enter");
   await page
     .getByRole("alert")
     .filter({ hasText: "外观设置未能保存" })
@@ -155,14 +152,16 @@ try {
   await open();
   assert.equal(state.appearance.customThemes.length, 2);
   assert.equal(
-    await page.getByLabel("浅色主题背景", { exact: true }).inputValue(),
+    await page.getByLabel("界面配色背景", { exact: true }).inputValue(),
     "#fafafa",
   );
-  await chooseInline(page
-    .getByLabel("已保存的主题", { exact: true }), second.id);
+  await chooseInline(
+    page.getByLabel("已保存的主题", { exact: true }),
+    second.id,
+  );
   await saved();
   assert.equal(
-    await page.getByLabel("浅色主题背景", { exact: true }).inputValue(),
+    await page.getByLabel("界面配色背景", { exact: true }).inputValue(),
     "#f5efdd",
   );
   // Codex sync must preserve the user's library.
@@ -171,8 +170,10 @@ try {
     .click();
   await saved();
   assert.equal(state.appearance.customThemes.length, 2);
-  await chooseInline(page
-    .getByLabel("已保存的主题", { exact: true }), second.id);
+  await chooseInline(
+    page.getByLabel("已保存的主题", { exact: true }),
+    second.id,
+  );
   await saved();
   page.once("dialog", (dialog) => dialog.dismiss());
   await page.getByRole("button", { name: "删除", exact: true }).click();
@@ -202,10 +203,7 @@ try {
     .filter({ hasText: "主题已导入并应用" })
     .waitFor();
   assert.equal(state.appearance.customThemes.length, 2);
-  await page.getByRole("button", { name: "深色", exact: true }).click();
-  await saved();
   await page.locator(".settings-content").evaluate((el) => el.scrollTo(0, 0));
-  await shot("themes-dark");
   await page.setViewportSize({ width: 820, height: 558 });
   await shot("themes-minimum");
   assert.equal(
@@ -214,18 +212,16 @@ try {
     ),
     false,
   );
-  await light().getByRole("button", { name: "自定义", exact: true }).click();
-  await light().getByText("界面与层级", { exact: true }).click();
-  const row = page.getByLabel("浅色主题面板背景", { exact: true });
+  await palette().getByRole("button", { name: "自定义", exact: true }).click();
+  await palette().getByText("界面与层级", { exact: true }).click();
+  const row = page.getByLabel("界面配色面板背景", { exact: true });
   await row.scrollIntoViewIfNeeded();
   await shot("themes-minimum-colors");
   const bounds = await row.boundingBox();
   assert.ok(bounds.x + bounds.width <= 820);
-  await page.getByRole("button", { name: "浅色", exact: true }).click();
-  await saved();
   await page.getByRole("button", { name: "返回工作台", exact: true }).click();
   await page
-    .getByRole("button", { name: "启动 Eden 环境", exact: true })
+    .getByRole("button", { name: "启动 Claude Eden 环境", exact: true })
     .click();
   await page
     .getByRole("button", { name: /^在 .* 新建终端$/ })
@@ -235,24 +231,22 @@ try {
   await page.getByRole("tab", { name: "终端 1", exact: true }).waitFor();
   await page.waitForFunction(() =>
     [...document.querySelectorAll(".xterm-scrollable-element")].some(
-      (el) => getComputedStyle(el).backgroundColor === "rgb(16, 24, 32)",
+      (el) => getComputedStyle(el).backgroundColor === "rgb(0, 0, 0)",
     ),
   );
   await shot("themes-terminal");
   const connections = state.terminalConnections;
   await open();
-  await light().getByRole("button", { name: "自定义", exact: true }).click();
-  await light().getByText("终端", { exact: true }).click();
-  await edit("浅色主题终端背景", "#202830");
+  await edit("界面配色背景", "#ffffff");
   await page.getByRole("button", { name: "返回工作台", exact: true }).click();
   await page.waitForFunction(() =>
     [...document.querySelectorAll(".xterm-scrollable-element")].some(
-      (el) => getComputedStyle(el).backgroundColor === "rgb(32, 40, 48)",
+      (el) => getComputedStyle(el).backgroundColor === "rgb(0, 0, 0)",
     ),
   );
   assert.equal(state.terminalConnections, connections);
   checks.push(
-    "浏览器文件上传与下载往返、浅深色与 820px 无溢出、已有终端实时改色且不重连",
+    "浏览器文件上传与下载往返、820px 无溢出、界面改色保留终端颜色与连接",
   );
   assert.deepEqual(errors, []);
   assert.ok(

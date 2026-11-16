@@ -1,8 +1,10 @@
 package workbench
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,10 +15,6 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-type AppearanceFonts struct {
-	UI   string `json:"ui" toml:"ui"`
-	Code string `json:"code" toml:"code"`
-}
 type AppearanceTheme struct {
 	Preset        string            `json:"preset"`
 	Accent        string            `json:"accent" toml:"accent"`
@@ -24,21 +22,16 @@ type AppearanceTheme struct {
 	Ink           string            `json:"ink" toml:"ink"`
 	Contrast      int               `json:"contrast" toml:"contrast"`
 	OpaqueWindows bool              `json:"opaqueWindows" toml:"opaqueWindows"`
-	Fonts         AppearanceFonts   `json:"fonts" toml:"fonts"`
 	Colors        map[string]string `json:"colors,omitempty"`
-	Terminal      map[string]string `json:"terminal,omitempty"`
 }
 type SavedAppearanceTheme struct {
 	ID    string          `json:"id"`
 	Name  string          `json:"name"`
 	Light AppearanceTheme `json:"lightTheme"`
-	Dark  AppearanceTheme `json:"darkTheme"`
 }
 type Appearance struct {
 	CustomThemes   []SavedAppearanceTheme `json:"customThemes,omitempty"`
-	Mode           string                 `json:"mode"`
 	Light          AppearanceTheme        `json:"lightTheme"`
-	Dark           AppearanceTheme        `json:"darkTheme"`
 	UIFontSize     int                    `json:"uiFontSize"`
 	CodeFontSize   int                    `json:"codeFontSize"`
 	PointerCursors bool                   `json:"pointerCursors"`
@@ -47,13 +40,10 @@ type Appearance struct {
 }
 
 func defaultAppearance() Appearance {
-	return Appearance{Mode: "system", Light: AppearanceTheme{Preset: "codex", Accent: "#339cff", Surface: "#ffffff", Ink: "#1a1c1f", Contrast: 45}, Dark: AppearanceTheme{Preset: "codex", Accent: "#339cff", Surface: "#181818", Ink: "#ffffff", Contrast: 60}, UIFontSize: 14, CodeFontSize: 13, FontSmoothing: true, ReducedMotion: "system"}
+	return Appearance{Light: AppearanceTheme{Preset: "codex", Accent: "#339cff", Surface: "#ffffff", Ink: "#1a1c1f", Contrast: 45}, UIFontSize: 14, CodeFontSize: 13, FontSmoothing: true, ReducedMotion: "system"}
 }
 
 func (a Appearance) validate() error {
-	if a.Mode != "system" && a.Mode != "light" && a.Mode != "dark" {
-		return errors.New("请选择跟随系统、浅色或深色外观")
-	}
 	if a.UIFontSize < 12 || a.UIFontSize > 24 || a.CodeFontSize < 10 || a.CodeFontSize > 24 {
 		return errors.New("界面字号范围为 12–24，代码字号范围为 10–24")
 	}
@@ -61,9 +51,6 @@ func (a Appearance) validate() error {
 		return errors.New("减少动态效果选项无效")
 	}
 	if err := validateAppearanceTheme(a.Light); err != nil {
-		return err
-	}
-	if err := validateAppearanceTheme(a.Dark); err != nil {
 		return err
 	}
 	if len(a.CustomThemes) > 50 {
@@ -81,15 +68,11 @@ func (a Appearance) validate() error {
 		if err := validateAppearanceTheme(saved.Light); err != nil {
 			return err
 		}
-		if err := validateAppearanceTheme(saved.Dark); err != nil {
-			return err
-		}
 	}
 	return nil
 }
 
 var appearanceColorKeys = strings.Fields("sidebar sidebarInk toolbar toolbarInk chrome chromeDark strong muted line input button buttonInk accentInk link focus hover selected selection success warning danger inactive")
-var terminalColorKeys = strings.Fields("background foreground cursor cursorAccent selectionBackground black red green yellow blue magenta cyan white brightBlack brightRed brightGreen brightYellow brightBlue brightMagenta brightCyan brightWhite")
 var appearanceColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
 func validateAppearanceTheme(theme AppearanceTheme) error {
@@ -102,27 +85,16 @@ func validateAppearanceTheme(theme AppearanceTheme) error {
 	if utf8.RuneCountInString(theme.Preset) > 80 {
 		return errors.New("主题名称过长")
 	}
-	for _, font := range []string{theme.Fonts.UI, theme.Fonts.Code} {
-		if utf8.RuneCountInString(font) > 200 || strings.ContainsAny(font, ";{}<>\r\n") {
-			return errors.New("字体名称无效")
-		}
-	}
-	for field, colors := range map[string]map[string]string{"colors": theme.Colors, "terminal": theme.Terminal} {
-		allowed := appearanceColorKeys
-		if field == "terminal" {
-			allowed = terminalColorKeys
-		}
-		for key, value := range colors {
-			found := false
-			for _, candidate := range allowed {
-				if key == candidate {
-					found = true
-					break
-				}
+	for key, value := range theme.Colors {
+		found := false
+		for _, candidate := range appearanceColorKeys {
+			if key == candidate {
+				found = true
+				break
 			}
-			if !found || !appearanceColor.MatchString(value) {
-				return errors.New("元素颜色无效或包含不支持的颜色项目")
-			}
+		}
+		if !found || !appearanceColor.MatchString(value) {
+			return errors.New("元素颜色无效或包含不支持的颜色项目")
 		}
 	}
 	return nil
@@ -132,10 +104,15 @@ func (s *Server) getAppearance(w http.ResponseWriter, r *http.Request) {
 	a := defaultAppearance()
 	b, err := os.ReadFile(filepath.Join(s.profile, "appearance.json"))
 	if err == nil {
-		err = json.Unmarshal(b, &a)
+		decoder := json.NewDecoder(bytes.NewReader(b))
+		decoder.DisallowUnknownFields()
+		err = decoder.Decode(&a)
+		if err == nil && decoder.Decode(new(any)) != io.EOF {
+			err = errors.New("外观设置包含多余内容")
+		}
 	}
 	if err != nil && !os.IsNotExist(err) {
-		requestError(w, errors.New("无法读取已保存的外观设置"))
+		requestError(w, errors.New("无法读取已保存的外观设置，请在外观页面重新保存当前配置"))
 		return
 	}
 	if err = a.validate(); err != nil {
@@ -164,14 +141,10 @@ func (s *Server) saveAppearance(w http.ResponseWriter, r *http.Request) {
 
 func readCodexAppearance(configPath string) (Appearance, error) {
 	a := defaultAppearance()
-	a.CodeFontSize = 12
 	var config struct {
 		Desktop struct {
-			Mode           string           `toml:"appearanceTheme"`
 			Light          *AppearanceTheme `toml:"appearanceLightChromeTheme"`
-			Dark           *AppearanceTheme `toml:"appearanceDarkChromeTheme"`
 			LightPreset    string           `toml:"appearanceLightCodeThemeId"`
-			DarkPreset     string           `toml:"appearanceDarkCodeThemeId"`
 			UIFontSize     int              `toml:"sansFontSize"`
 			CodeFontSize   int              `toml:"codeFontSize"`
 			PointerCursors bool             `toml:"usePointerCursors"`
@@ -186,22 +159,12 @@ func readCodexAppearance(configPath string) (Appearance, error) {
 		return a, errors.New("无法解析本机 Codex 配置")
 	}
 	d := config.Desktop
-	if d.Mode != "" {
-		a.Mode = d.Mode
-	}
 	if d.Light != nil {
 		a.Light = *d.Light
-	}
-	if d.Dark != nil {
-		a.Dark = *d.Dark
 	}
 	a.Light.Preset = d.LightPreset
 	if a.Light.Preset == "" {
 		a.Light.Preset = "codex"
-	}
-	a.Dark.Preset = d.DarkPreset
-	if a.Dark.Preset == "" {
-		a.Dark.Preset = "codex"
 	}
 	if d.UIFontSize != 0 {
 		a.UIFontSize = d.UIFontSize

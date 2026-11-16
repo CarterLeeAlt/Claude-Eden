@@ -46,21 +46,32 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "Claude Eden contributors"
   !uninstfinalize '"${SIGN_PWSH}" -NoProfile -File "${SIGN_SCRIPT}" -Path "%1"' = 0
 !endif
 
-!define MUI_ABORTWARNING
+!define MUI_CUSTOMFUNCTION_ABORT ConfirmInstallerAbort
+!define MUI_CUSTOMFUNCTION_GUIINIT RefreshFontControls
+!define MUI_CUSTOMFUNCTION_UNGUIINIT un.RefreshFontControls
 !define MUI_FINISHPAGE_RUN "$INSTDIR\Eden.exe"
 !define MUI_FINISHPAGE_RUN_NOTCHECKED
 !define MUI_FINISHPAGE_TEXT "Claude Eden is installed.$\r$\n$\r$\nIf virtualization is unavailable, enable Windows Hypervisor Platform in Windows Features and restart Windows. Your projects and Claude Eden data are preserved during upgrades and uninstall."
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW RefreshFontControls
 !insertmacro MUI_PAGE_WELCOME
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW RefreshFontControls
 !insertmacro MUI_PAGE_LICENSE "${APP_DIR}/LICENSE.txt"
 !define MUI_DIRECTORYPAGE_TEXT_TOP "$(EdenDirectoryHelp)"
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW RefreshFontControls
 !insertmacro MUI_PAGE_DIRECTORY
 Page custom ShortcutOptionsPage ShortcutOptionsLeave
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW RefreshFontControls
 !insertmacro MUI_PAGE_INSTFILES
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW RefreshFontControls
 !insertmacro MUI_PAGE_FINISH
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.RefreshFontControls
 !insertmacro MUI_UNPAGE_CONFIRM
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.RefreshFontControls
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "SimpChinese"
+; Resource layout reserves 11-point space; controls use 14 px at 96 DPI.
+SetFont "Eden UI" 11
 
 LangString EdenDirectoryHelp ${LANG_ENGLISH} "Choose where to install the Claude Eden application. On first launch, you can choose a separate drive for the Linux image, download cache, and virtual disks before starting the environment."
 LangString EdenDirectoryHelp ${LANG_SIMPCHINESE} "请选择 Claude Eden 程序的安装目录。首次打开 Claude Eden 后，可以在启动环境前单独选择存放 Linux 镜像、下载缓存和虚拟磁盘的磁盘。"
@@ -72,6 +83,8 @@ LangString EdenDesktopShortcut ${LANG_ENGLISH} "Add a desktop shortcut"
 LangString EdenDesktopShortcut ${LANG_SIMPCHINESE} "添加桌面快捷方式"
 LangString EdenStartMenuShortcuts ${LANG_ENGLISH} "Add to the Start menu"
 LangString EdenStartMenuShortcuts ${LANG_SIMPCHINESE} "添加到开始菜单"
+LangString EdenAbortQuestion ${LANG_ENGLISH} "Are you sure you want to quit the Claude Eden installer?"
+LangString EdenAbortQuestion ${LANG_SIMPCHINESE} "确定要退出 Claude Eden 安装程序吗？"
 
 Var UpdateMode
 Var StageDir
@@ -88,6 +101,162 @@ Var InstallPhase
 Var InstallOutcome
 Var HelperExit
 Var DiagnosticArguments
+Var UIFont
+Var UIFontBold
+Var UIFontInfo
+Var UIFontDialogText
+Var UIFontDialogFlags
+Var UIFontDialogResult
+Var UIFontDialogWindow
+Var UIFontDialogCallback
+Var UIFontDialogHook
+
+!macro LoadPrivateFonts
+  InitPluginsDir
+  File /oname=$PLUGINSDIR\EdenUI-Regular.ttf "${__FILEDIR__}\..\..\assets\fonts\EdenUI-Regular.ttf"
+  File /oname=$PLUGINSDIR\EdenUI-Bold.ttf "${__FILEDIR__}\..\..\assets\fonts\EdenUI-Bold.ttf"
+  System::Call 'gdi32::AddFontResourceExW(w "$PLUGINSDIR\EdenUI-Regular.ttf", i 0x10, p 0) i.r0'
+  ${If} $0 == 0
+    SetErrorLevel 2
+    Abort "Unable to load the bundled interface font. Please run the installer again."
+  ${EndIf}
+  System::Call 'gdi32::AddFontResourceExW(w "$PLUGINSDIR\EdenUI-Bold.ttf", i 0x10, p 0) i.r0'
+  ${If} $0 == 0
+    SetErrorLevel 2
+    Abort "Unable to load the bundled bold font. Please run the installer again."
+  ${EndIf}
+!macroend
+
+!macro FontControlFunctions PREFIX
+Function ${PREFIX}InitializeFontControls
+  System::Call 'user32::GetDC(p $HWNDPARENT) p.r1'
+  System::Call 'gdi32::GetDeviceCaps(p r1, i 90) i.r0'
+  System::Call 'user32::ReleaseDC(p $HWNDPARENT, p r1)'
+  IntOp $0 $0 * -14
+  IntOp $0 $0 / 96
+  System::Call 'gdi32::CreateFontW(i r0, i 0, i 0, i 0, i 400, i 0, i 0, i 0, i 1, i 0, i 0, i 5, i 0, w "Eden UI") p.s'
+  Pop $UIFont
+  System::Call 'gdi32::CreateFontW(i r0, i 0, i 0, i 0, i 700, i 0, i 0, i 0, i 1, i 0, i 0, i 5, i 0, w "Eden UI") p.s'
+  Pop $UIFontBold
+  System::Alloc 92
+  Pop $UIFontInfo
+  Call ${PREFIX}RefreshFontControls
+FunctionEnd
+
+Function ${PREFIX}RefreshFontControls
+  Push $HWNDPARENT
+  Call ${PREFIX}ApplyControlFont
+FunctionEnd
+
+Function ${PREFIX}ApplyControlFont
+  Exch $0
+  Push $1
+  Push $2
+  Push $3
+  SendMessage $0 ${WM_GETFONT} 0 0 $2
+  StrCpy $3 400
+  ${If} $2 != 0
+    System::Call 'gdi32::GetObjectW(p r2, i 92, p $UIFontInfo)'
+    IntOp $2 $UIFontInfo + 16
+    System::Call '*$2(i.r3)'
+  ${EndIf}
+  ${If} $3 >= 600
+    SendMessage $0 ${WM_SETFONT} $UIFontBold 1
+  ${Else}
+    SendMessage $0 ${WM_SETFONT} $UIFont 1
+  ${EndIf}
+  System::Call 'user32::GetWindow(p r0, i 5) p.r1'
+  ${DoWhile} $1 != 0
+    Push $1
+    Call ${PREFIX}ApplyControlFont
+    System::Call 'user32::GetWindow(p r1, i 2) p.r1'
+  ${Loop}
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+FunctionEnd
+!macroend
+!insertmacro FontControlFunctions ""
+!insertmacro FontControlFunctions "un."
+
+; A thread-local hook applies private fonts before the native dialog first paints.
+Function ShowFontMessage
+  System::Store "s"
+  System::Get '(i .r0, p .r1, p .r2) p r3 r4'
+  Pop $UIFontDialogCallback
+  System::Call 'kernel32::GetCurrentThreadId() i.r5'
+  System::Call 'user32::SetWindowsHookExW(i 5, k $UIFontDialogCallback, p 0, i r5) p.s'
+  Pop $UIFontDialogHook
+  StrCpy $4 ""
+  System::Call 'user32::MessageBoxW(p $HWNDPARENT, w "$UIFontDialogText", w "Claude Eden", i $UIFontDialogFlags) i.s'
+  font_message_callback:
+    StrCpy $5 $4 8
+    ${If} $5 == "callback"
+      ${If} $0 == 5
+        System::Call 'user32::UnhookWindowsHookEx(p $UIFontDialogHook)'
+        StrCpy $UIFontDialogHook 0
+        StrCpy $UIFontDialogWindow $1
+        Call ApplyFontMessage
+      ${EndIf}
+      System::Call 'user32::CallNextHookEx(p 0, i r0, p r1, p r2) p.r3'
+      StrCpy $4 ""
+      System::Call $UIFontDialogCallback
+      Goto font_message_callback
+    ${EndIf}
+  Pop $UIFontDialogResult
+  ${If} $UIFontDialogHook != 0
+    System::Call 'user32::UnhookWindowsHookEx(p $UIFontDialogHook)'
+  ${EndIf}
+  System::Free $UIFontDialogCallback
+  System::Store "l"
+FunctionEnd
+
+Function ApplyFontMessage
+  System::Store "s"
+  StrCpy $0 $UIFontDialogWindow
+  Push $0
+  Call ApplyControlFont
+  GetDlgItem $5 $0 65535
+  GetDlgItem $6 $0 6
+  ${If} $6 == 0
+    GetDlgItem $6 $0 1
+  ${EndIf}
+  System::Alloc 16
+  Pop $8
+  ${If} $5 != 0
+  ${AndIf} $6 != 0
+    ; Use the available text area above the buttons for the bundled face's metrics.
+    System::Call 'user32::GetWindowRect(p r6, p r8)'
+    System::Call 'user32::MapWindowPoints(p 0, p r0, p r8, i 2)'
+    System::Call '*$8(i, i.r7)'
+    System::Call 'user32::GetWindowRect(p r5, p r8)'
+    System::Call 'user32::MapWindowPoints(p 0, p r0, p r8, i 2)'
+    System::Call '*$8(i.r1, i.r2, i.r3, i.r4)'
+    IntOp $3 $3 - $1
+    IntOp $4 $7 - $2
+    IntOp $4 $4 - 16
+    System::Call 'user32::SetWindowPos(p r5, p 0, i 0, i 0, i r3, i r4, i 6)'
+  ${EndIf}
+  System::Free $8
+  System::Store "l"
+FunctionEnd
+Function ConfirmInstallerAbort
+  StrCpy $UIFontDialogText "$(EdenAbortQuestion)"
+  StrCpy $UIFontDialogFlags 0x34
+  Call ShowFontMessage
+  ${If} $UIFontDialogResult != 6
+    Abort
+  ${EndIf}
+FunctionEnd
+
+!macro ReleasePrivateFonts
+  System::Call 'gdi32::DeleteObject(p $UIFont)'
+  System::Call 'gdi32::DeleteObject(p $UIFontBold)'
+  System::Free $UIFontInfo
+  System::Call 'gdi32::RemoveFontResourceExW(w "$PLUGINSDIR\EdenUI-Regular.ttf", i 0x10, p 0)'
+  System::Call 'gdi32::RemoveFontResourceExW(w "$PLUGINSDIR\EdenUI-Bold.ttf", i 0x10, p 0)'
+!macroend
 
 Function WriteInstallDiagnostic
   ${If} $DiagnosticFile != ""
@@ -182,12 +351,14 @@ FunctionEnd
 !macroend
 
 Function .onGUIEnd
+  !insertmacro ReleasePrivateFonts
   ${If} $InstallationMutex != ""
     System::Call 'kernel32::CloseHandle(p $InstallationMutex)'
   ${EndIf}
 FunctionEnd
 
 Function un.onGUIEnd
+  !insertmacro ReleasePrivateFonts
   ${If} $InstallationMutex != ""
     System::Call 'kernel32::CloseHandle(p $InstallationMutex)'
   ${EndIf}
@@ -255,6 +426,7 @@ Function ShortcutOptionsPage
   Pop $StartMenuShortcutsControl
   ${NSD_SetState} $StartMenuShortcutsControl $StartMenuShortcuts
   ${NSD_OnBack} ShortcutOptionsLeave
+  Call RefreshFontControls
   nsDialogs::Show
 FunctionEnd
 
@@ -319,6 +491,8 @@ FunctionEnd
 !macroend
 
 Function .onInit
+  !insertmacro LoadPrivateFonts
+  Call InitializeFontControls
   StrCpy $InstallOutcome "running"
   StrCpy $HelperExit ""
   ${GetParameters} $0
@@ -331,12 +505,16 @@ Function .onInit
   SetShellVarContext current
   SetRegView 64
   ${IfNot} ${IsNativeAMD64}
-    MessageBox MB_ICONSTOP "This Claude Eden package requires an Intel/AMD 64-bit version of Windows. Windows on ARM and 32-bit Windows are not supported."
+    StrCpy $UIFontDialogText "This Claude Eden package requires an Intel/AMD 64-bit version of Windows. Windows on ARM and 32-bit Windows are not supported."
+    StrCpy $UIFontDialogFlags 0x10
+    Call ShowFontMessage
     SetErrorLevel 1633
     Quit
   ${EndIf}
   ${IfNot} ${AtLeastWin10}
-    MessageBox MB_ICONSTOP "This Claude Eden package requires Windows 10 x64."
+    StrCpy $UIFontDialogText "This Claude Eden package requires Windows 10 x64."
+    StrCpy $UIFontDialogFlags 0x10
+    Call ShowFontMessage
     SetErrorLevel 1633
     Quit
   ${EndIf}
@@ -347,7 +525,9 @@ Function .onInit
   ${If} $1 == 0
   ${OrIf} $2 == 0
   ${OrIf} $3 == 0
-    MessageBox MB_ICONSTOP "Windows is missing the ConPTY terminal APIs. Update to a Windows 10 version that provides them (Microsoft introduced ConPTY in version 1809)."
+    StrCpy $UIFontDialogText "Windows is missing the ConPTY terminal APIs. Update to a Windows 10 version that provides them (Microsoft introduced ConPTY in version 1809)."
+    StrCpy $UIFontDialogFlags 0x10
+    Call ShowFontMessage
     SetErrorLevel 1633
     Quit
   ${EndIf}
@@ -624,6 +804,8 @@ Section "Claude Eden" Main
 SectionEnd
 
 Function un.onInit
+  !insertmacro LoadPrivateFonts
+  Call un.InitializeFontControls
   StrCpy $InstallOutcome "running"
   StrCpy $HelperExit ""
   StrCpy $DiagnosticArguments ""

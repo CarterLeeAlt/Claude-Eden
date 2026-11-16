@@ -15,9 +15,11 @@
 # Checked byte for byte by scripts/licenses --check.
 /THIRD_PARTY_LICENSES text eol=lf
 
-# Images are binary, and the recorded outputs and fuzz corpora of the tests
+# Images and fonts are binary, and the recorded outputs and fuzz corpora of the tests
 # are never converted.
 *.png binary
+*.ttf binary
+*.otf binary
 *.gz binary
 /internal/*/testdata/** -text
 /tests/sftp/testdata/** -text
@@ -27,3 +29,4 @@
 /third_party/** -text -whitespace
 /patches/** -text -whitespace
 /ui/vendor/** -text -whitespace
+/assets/fonts/*-LICENSE.txt -text -whitespace

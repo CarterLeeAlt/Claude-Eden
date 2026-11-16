@@ -9,7 +9,7 @@ internal sealed class TrayMenu : ContextMenuStrip
         ShowImageMargin = false;
         ShowCheckMargin = false;
         DropShadowEnabled = true;
-        Font = new Font(SystemFonts.MenuFont!.FontFamily, 9.5f, FontStyle.Regular, GraphicsUnit.Point);
+        Font = Control.DefaultFont;
     }
 
     protected override void OnOpening(CancelEventArgs e)

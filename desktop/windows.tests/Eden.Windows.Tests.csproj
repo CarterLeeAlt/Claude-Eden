@@ -23,8 +23,15 @@
   </ItemGroup>
   <ItemGroup Condition="'$(WindowsNativeInputTests)' == 'true'">
     <Compile Include="../windows/NativeInput.cs" Link="NativeInput.cs" />
+    <Compile Include="../windows/AppFonts.cs" Link="AppFonts.cs" />
+    <Compile Include="../windows/AppDialog.cs" Link="AppDialog.cs" />
+    <Compile Include="../windows/TrayMenu.cs" Link="TrayMenu.cs" />
+    <Compile Include="../windows/WindowChrome.cs" Link="WindowChrome.cs" />
+    <EmbeddedResource Include="../../assets/fonts/EdenUI-*.ttf" LogicalName="Eden.Fonts.%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup Condition="'$(WindowsNativeInputTests)' != 'true'">
     <Compile Remove="NativeInputTests.cs" />
+    <Compile Remove="NativeAppearanceTests.cs" />
+    <Compile Remove="InstallerAppearanceTests.cs" />
   </ItemGroup>
 </Project>

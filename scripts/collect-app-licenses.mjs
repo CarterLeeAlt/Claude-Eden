@@ -12,6 +12,10 @@ for (const file of ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES"]) {
   cpSync(join(root, file), join(target, file));
 }
 cpSync(join(root, "internal/exitpolicy/data"), join(target, "exit-country-data"), { recursive: true });
+mkdirSync(join(target, "fonts"), { recursive: true });
+for (const file of ["Inter-LICENSE.txt", "Noto-LICENSE.txt", "JetBrainsMono-LICENSE.txt", "NOTICE.txt"]) {
+  cpSync(join(root, "assets/fonts", file), join(target, "fonts", file));
+}
 mkdirSync(join(target, "guestidentity"), { recursive: true });
 for (const file of ["LICENSE", "hostname-sources.json"]) {
   cpSync(join(root, "shared/guestidentity", file), join(target, "guestidentity", file));

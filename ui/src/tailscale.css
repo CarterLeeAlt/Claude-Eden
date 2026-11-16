@@ -42,7 +42,7 @@
 .tailscale-disclosure[aria-expanded="true"] > svg, .tailscale-peer-row button[aria-expanded="true"] > svg { transform: rotate(180deg); }
 .tailscale-detail { display: flex; flex-direction: column; gap: 10px; }
 .tailscale-detail > button { align-self: flex-start; }
-.tailscale-detail textarea { width: 100%; resize: vertical; min-height: 72px; font-family: var(--font-mono, monospace); font-size: 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--chrome); color: inherit; padding: 9px 10px; }
+.tailscale-detail textarea { width: 100%; resize: vertical; min-height: 72px; font-family: var(--code-font-family); font-size: 0.857rem; border: 1px solid var(--border); border-radius: 7px; background: var(--chrome); color: inherit; padding: 9px 10px; }
 .tailscale-command, .tailscale-key { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .tailscale-command { border: 1px solid var(--border); border-radius: 7px; padding: 7px 10px; }
 .tailscale-command code { flex: 1; min-width: 0; overflow-wrap: anywhere; }

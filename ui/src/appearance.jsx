@@ -25,9 +25,6 @@ export function AppearanceProvider({ children }) {
       return defaultAppearance;
     }
   });
-  const [systemDark, setSystemDark] = useState(
-    matchMedia("(prefers-color-scheme: dark)").matches,
-  );
   const [systemReduced, setSystemReduced] = useState(
     matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
@@ -37,13 +34,7 @@ export function AppearanceProvider({ children }) {
   const revision = useRef(0),
     queue = useRef(Promise.resolve()),
     current = useRef(appearance);
-  const variant =
-    appearance.mode === "system"
-      ? systemDark
-        ? "dark"
-        : "light"
-      : appearance.mode;
-  const theme = appearance[variant + "Theme"];
+  const theme = appearance.lightTheme;
   current.current = appearance;
   useEffect(() => {
     let live = true;
@@ -64,22 +55,18 @@ export function AppearanceProvider({ children }) {
     if (location.hash)
       window.addEventListener("eden-session-ready", load, { once: true });
     else load();
-    const dark = matchMedia("(prefers-color-scheme: dark)"),
-      reduced = matchMedia("(prefers-reduced-motion: reduce)");
-    const onDark = () => setSystemDark(dark.matches),
-      onReduced = () => setSystemReduced(reduced.matches);
-    dark.addEventListener("change", onDark);
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+    const onReduced = () => setSystemReduced(reduced.matches);
     reduced.addEventListener("change", onReduced);
     return () => {
       live = false;
       window.removeEventListener("eden-session-ready", load);
-      dark.removeEventListener("change", onDark);
       reduced.removeEventListener("change", onReduced);
     };
   }, []);
   useEffect(() => {
     const root = document.documentElement;
-    const variables = themeVariables(theme, variant);
+    const variables = themeVariables(theme);
     for (const [key, value] of Object.entries(variables))
       root.style.setProperty(key, value);
     root.style.setProperty("--ui-font-size", appearance.uiFontSize + "px");
@@ -88,25 +75,23 @@ export function AppearanceProvider({ children }) {
       "--control-cursor",
       appearance.pointerCursors ? "pointer" : "default",
     );
-    root.dataset.theme = variant;
     root.dataset.translucent = String(!theme.opaqueWindows);
     root.dataset.fontSmoothing = String(appearance.fontSmoothing);
     root.dataset.reducedMotion = String(
       appearance.reducedMotion === "on" ||
         (appearance.reducedMotion === "system" && systemReduced),
     );
-    root.style.colorScheme = variant;
     if (nativeAvailable())
       native("appearance", {
-        mode: appearance.mode,
-        variant,
         background: variables["--sidebar"],
         foreground: variables["--sidebar-ink"],
         translucent: !theme.opaqueWindows,
       }).catch(() =>
-        setError("外观已应用到工作台，原生窗口未能同步，请重新打开 Eden。"),
+        setError(
+          "外观已应用到工作台，原生窗口未能同步，请重新打开 Claude Eden。",
+        ),
       );
-  }, [appearance, variant, systemReduced]);
+  }, [appearance, systemReduced]);
   const update = (next) => {
     next = normalizeAppearance(
       typeof next === "function" ? next(current.current) : next,
@@ -139,8 +124,6 @@ export function AppearanceProvider({ children }) {
     <AppearanceContext.Provider
       value={{
         appearance,
-        theme,
-        variant,
         loading,
         saving,
         error,

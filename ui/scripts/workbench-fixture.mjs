@@ -36,13 +36,8 @@ export async function createWorkbench({
       codeFontSize: 13,
       lightTheme: {
         ...structuredClone(defaultAppearance.lightTheme),
-        ...presets.light.solarized,
+        ...presets.solarized,
         preset: "solarized",
-      },
-      darkTheme: {
-        ...structuredClone(defaultAppearance.darkTheme),
-        ...presets.dark.ayu,
-        preset: "ayu",
       },
     },
     failAppearance: false,

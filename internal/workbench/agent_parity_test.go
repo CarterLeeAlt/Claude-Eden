@@ -146,11 +146,9 @@ func TestAgentParityAccountProfilePasswordAndLock(t *testing.T) {
 func TestAgentParityAppearanceNestedValuesAndFavorites(t *testing.T) {
 	s := agentTestController(t)
 	appearance := defaultAppearance()
-	appearance.Mode = "dark"
 	appearance.UIFontSize = 18
-	appearance.Dark.Colors = map[string]string{"sidebar": "#123456", "focus": "#abcdef"}
-	appearance.Dark.Terminal = map[string]string{"background": "#101010", "brightRed": "#ee1111"}
-	appearance.CustomThemes = []SavedAppearanceTheme{{ID: "parity", Name: "Saved by UI", Light: appearance.Light, Dark: appearance.Dark}}
+	appearance.Light.Colors = map[string]string{"sidebar": "#123456", "focus": "#abcdef"}
+	appearance.CustomThemes = []SavedAppearanceTheme{{ID: "parity", Name: "Saved by UI", Light: appearance.Light}}
 	parityUI(t, s, "POST", "/api/appearance", appearance, 200)
 	read := parityDecode[Appearance](t, parityAgent(t, s, "GET", "/api/appearance", nil, 200))
 	if !reflect.DeepEqual(appearance, read) {
@@ -158,7 +156,6 @@ func TestAgentParityAppearanceNestedValuesAndFavorites(t *testing.T) {
 	}
 	read.CustomThemes[0].Name = "Renamed by Agent"
 	read.CodeFontSize = 17
-	read.Dark.Fonts.Code = "JetBrains Mono"
 	data, err := AgentCall(context.Background(), s.configPath, "appearance.set", parityJSON(t, read))
 	if err != nil {
 		t.Fatal(err)

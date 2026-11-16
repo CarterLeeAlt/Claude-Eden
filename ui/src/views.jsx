@@ -7,7 +7,7 @@ import React, {
   forwardRef,
 } from "react";
 import { useAppearance } from "./appearance";
-import { terminalTheme, systemCodeFont } from "./appearance-state.mjs";
+import { codeFontFamily } from "./appearance-state.mjs";
 import { Terminal } from "../.generated/xterm.mjs";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { claudeLoginLink, isClaudeLoginLink } from "./terminal-login-link.mjs";
@@ -296,7 +296,7 @@ export const RemoteView = forwardRef(function RemoteView(
 });
 
 export function TerminalView({ session, visible, focused = true, onStatus, onControls, onAccountChanged, onLoginTab }) {
-  const { appearance, theme, variant } = useAppearance();
+  const { appearance } = useAppearance();
   const box = useRef(),
     instance = useRef(),
     fit = useRef(),
@@ -331,14 +331,12 @@ export function TerminalView({ session, visible, focused = true, onStatus, onCon
         // Keep xterm's user confirmation for other explicit HTTP(S) links.
         if (window.confirm(`打开此终端链接？\n${uri}`)) window.open(uri, "_blank", "noopener,noreferrer");
       } },
-      fontFamily: theme.fonts.code || systemCodeFont,
+      fontFamily: codeFontFamily,
       fontSize: appearance.codeFontSize,
       lineHeight: 1.3,
       cursorBlink: true,
       macOptionClickForcesSelection: true,
-      minimumContrastRatio: 4.5,
       scrollback: 6000,
-      theme: terminalTheme(theme, variant),
     });
     const fitter = new FitAddon();
     terminal.loadAddon(fitter);
@@ -601,11 +599,9 @@ export function TerminalView({ session, visible, focused = true, onStatus, onCon
   }, [visible, focused, preparing]);
   useEffect(() => {
     if (!instance.current) return;
-    instance.current.options.theme = terminalTheme(theme, variant);
-    instance.current.options.fontFamily = theme.fonts.code || systemCodeFont;
     instance.current.options.fontSize = appearance.codeFontSize;
     if (visibleRef.current) fit.current?.fit();
-  }, [theme, variant, appearance.codeFontSize]);
+  }, [appearance.codeFontSize]);
   return (
     <div className={`terminal-view ${visible ? "" : "concealed"}`}>
       {session.workspace_notice && <p className="connection-banner" role="status">{session.workspace_notice}</p>}

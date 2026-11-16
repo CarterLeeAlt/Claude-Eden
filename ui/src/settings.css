@@ -147,7 +147,7 @@
   font-weight: 600;
   color: var(--strong);
 }
-.settings-page .settings-content input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+.settings-page .settings-content input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not(:where(.theme-color-field input, .font-size-control input)),
 .settings-page .settings-content .inline-select-trigger {
   height: var(--s-control);
   padding: 0 12px;
@@ -480,7 +480,6 @@
   font-size: var(--s-xs);
   color: var(--muted);
 }
-.settings-page .appearance-mode button,
 .settings-page .appearance-import button,
 .settings-page .theme-library button,
 .settings-page .theme-color-group summary {
@@ -493,7 +492,6 @@
   font-weight: 600;
   color: var(--strong);
 }
-.settings-page .theme-card-heading small,
 .settings-page .theme-customize,
 .settings-page .theme-color-field > span,
 .settings-page .theme-library-manage span,
@@ -507,6 +505,10 @@
   height: 36px;
   padding: 0 8px;
   font-size: var(--s-sm);
+}
+.settings-page .settings-content .theme-color-field input[type="text"] {
+  width: calc(7ch + 18px);
+  flex: none;
 }
 .settings-page .theme-card-heading .inline-select,
 .settings-page .appearance-control .inline-select,

@@ -1,5 +1,18 @@
 using Eden.Windows;
 
+#if WINDOWS
+if (args is ["installer-appearance-tests", var installerExecutable, var installerOutput])
+{
+    InstallerAppearanceTests.Run(installerExecutable, installerOutput);
+    return;
+}
+if (args is ["native-appearance-tests", var appearanceOutput])
+{
+    NativeAppearanceTests.Run(appearanceOutput);
+    return;
+}
+#endif
+
 if (args is ["desktop", "--startup-fixture", var startupMode, var startupMarker])
 {
     File.WriteAllText(startupMarker, Environment.ProcessId.ToString());

@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { chooseInline, createWorkbench } from "./workbench-fixture.mjs";
 const output = fileURLToPath(
-  new URL("../../docs/test-reports/2026-10-31-appearance/", import.meta.url),
+  new URL("../../.tmp/Font_Preview/verification/appearance/", import.meta.url),
 );
 await fs.mkdir(output, { recursive: true });
 const { browser, page, state, errors } = await createWorkbench();
@@ -36,7 +36,8 @@ try {
     .filter({ hasText: "已同步 Codex 外观" })
     .waitFor();
   assert.equal(state.appearance.lightTheme.preset, "solarized");
-  assert.equal(state.appearance.darkTheme.preset, "ayu");
+  assert.equal(Object.hasOwn(state.appearance, "mode"), false);
+  assert.equal(Object.hasOwn(state.appearance, "darkTheme"), false);
   assert.equal(
     await page.getByLabel("界面字号", { exact: true }).inputValue(),
     "16",
@@ -46,37 +47,31 @@ try {
     "13",
   );
   await shot("appearance-light");
-  await page.getByRole("button", { name: "深色", exact: true }).click();
-  await saved();
+  assert.equal(await page.getByRole("group", { name: "主题模式" }).count(), 0);
+  await page.emulateMedia({ colorScheme: "dark" });
   assert.equal(
-    await page.evaluate(() => document.documentElement.dataset.theme),
-    "dark",
+    await page.evaluate(
+      () => getComputedStyle(document.documentElement).colorScheme,
+    ),
+    "light",
   );
   assert.equal(
     await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue("--paper"),
     ),
-    "#10141c",
+    "#fdf6e3",
   );
-  await shot("appearance-dark");
-  await page.getByRole("button", { name: "跟随系统", exact: true }).click();
-  await saved();
   await page.emulateMedia({ colorScheme: "light" });
-  await page.waitForFunction(
-    () => document.documentElement.dataset.theme === "light",
-  );
-  await page.emulateMedia({ colorScheme: "dark" });
-  await page.waitForFunction(
-    () => document.documentElement.dataset.theme === "dark",
-  );
-  checks.push("导入本机设置、明暗主题独立保存、跟随系统实时切换、16/13 字号");
+  checks.push("导入亮色配色、系统明暗变化保持亮色、16/13 字号");
   await page
-    .getByRole("region", { name: "深色主题", exact: true })
+    .getByRole("region", { name: "界面配色", exact: true })
     .getByRole("button", { name: "自定义", exact: true })
     .click();
-  await page.getByLabel("深色主题代码字体", { exact: true }).fill("Menlo");
-  await saved();
-  await page.getByLabel("深色主题半透明侧栏", { exact: true }).uncheck();
+  assert.equal(
+    await page.getByText("终端 ANSI 配色", { exact: true }).count(),
+    0,
+  );
+  await page.getByLabel("界面配色半透明侧栏", { exact: true }).uncheck();
   await saved();
   assert.equal(
     await page.evaluate(() => document.documentElement.dataset.translucent),
@@ -86,7 +81,7 @@ try {
   await saved();
   assert.equal(
     await page
-      .getByRole("button", { name: "深色", exact: true })
+      .getByRole("button", { name: "从本机 Codex 同步", exact: true })
       .evaluate((el) => getComputedStyle(el).cursor),
     "pointer",
   );
@@ -110,9 +105,9 @@ try {
   state.failAppearance = false;
   await page.getByRole("button", { name: "重试保存", exact: true }).click();
   await saved();
-  await page.getByRole("button", { name: "浅色", exact: true }).click();
-  await page.getByRole("button", { name: "深色", exact: true }).click();
-  await page.getByRole("button", { name: "跟随系统", exact: true }).click();
+  await page.getByLabel("界面字号", { exact: true }).fill("17");
+  await page.getByLabel("界面字号", { exact: true }).fill("18");
+  await page.getByLabel("界面字号", { exact: true }).fill("16");
   await saved();
   await page.reload();
   await showAppearance();
@@ -120,15 +115,15 @@ try {
     await page.getByLabel("代码字号", { exact: true }).inputValue(),
     "15",
   );
-  assert.equal(
-    await page
-      .getByRole("button", { name: "跟随系统", exact: true })
-      .getAttribute("aria-pressed"),
-    "true",
+  assert.equal(state.appearance.uiFontSize, 16);
+  assert.match(
+    await page.evaluate(
+      () => getComputedStyle(document.documentElement).fontFamily,
+    ),
+    /Inter.*Noto Sans SC/,
   );
-  assert.equal(state.appearance.darkTheme.fonts.code, "Menlo");
   checks.push(
-    "自定义字体/半透明/指针/动态效果、失败保留输入与重试、快速切换最后写入胜出、刷新读回",
+    "内置字体/半透明/指针/动态效果、失败保留输入与重试、快速调整最后写入胜出、刷新读回",
   );
   await page.setViewportSize({ width: 820, height: 558 });
   await shot("appearance-minimum");
@@ -139,7 +134,9 @@ try {
     false,
   );
   await page.getByRole("button", { name: "返回工作台", exact: true }).click();
-  await page.getByRole("button", { name: "启动 Eden 环境", exact: true }).click();
+  await page
+    .getByRole("button", { name: "启动 Claude Eden 环境", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "新建终端", exact: true })
     .first()
@@ -148,7 +145,7 @@ try {
   await page.getByRole("tab", { name: "终端 1", exact: true }).waitFor();
   const count = state.terminalConnections;
   await showAppearance();
-  await page.getByRole("button", { name: "浅色", exact: true }).click();
+  await chooseInline(page.getByLabel("界面配色预设", { exact: true }), "nord");
   await saved();
   await page.getByRole("button", { name: "返回工作台", exact: true }).click();
   assert.equal(state.terminalConnections, count);
@@ -166,7 +163,7 @@ try {
   );
   await page.setViewportSize({ width: 1280, height: 850 });
   await page.screenshot({
-    path: output + "terminal-solarized.png",
+    path: output + "terminal-independent.png",
     animations: "disabled",
   });
   checks.push(
