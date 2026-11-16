@@ -63,7 +63,8 @@ internal static class Backend
     public static async Task<(int Exit, JsonElement Data)> JsonAt(string executable, string[] arguments, CancellationToken cancellation = default, TimeSpan? deadline = null, int outputLimit = 65536)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        timeout.CancelAfter(deadline ?? TimeSpan.FromMinutes(3));
+        // Startup follows readiness and explicit cancellation, including cold disks.
+        timeout.CancelAfter(deadline ?? (arguments is ["desktop", ..] ? Timeout.InfiniteTimeSpan : TimeSpan.FromMinutes(3)));
         using var process = new Process { StartInfo = StartInfo(executable, arguments) };
         if (!process.Start()) throw new IOException("无法启动 Claude Eden 后台");
         using var abort = timeout.Token.Register(() => { try { if (!process.HasExited) process.Kill(); } catch (InvalidOperationException) { } });

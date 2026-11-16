@@ -311,7 +311,7 @@ internal sealed class MainWindow : Form
             Text = controllerNeedsUpdate ? "Claude Eden（更新待完成）" : "Claude Eden";
             web.CoreWebView2.Navigate(entry.AbsoluteUri);
         }
-        catch (OperationCanceledException) { if (!lifetime.IsCancellationRequested) Error("启动工作台失败：等待本机后台响应超时。请点击“重试连接”；仍失败时请保留此提示并反馈给维护者。"); }
+        catch (OperationCanceledException) { if (!lifetime.IsCancellationRequested) Error("工作台连接已取消，可点击“重试连接”继续。"); }
         catch (Exception error) {
             _ = Backend.Report("Workbench startup failed: " + error);
             Error(error.Message.Any(c => c is >= '\u4E00' and <= '\u9FFF') ? error.Message : "启动工作台失败：本机后台未返回可识别的原因（错误类型 " + error.GetType().Name + "）。请点击“重试连接”；仍失败时请保留此提示并反馈给维护者。");

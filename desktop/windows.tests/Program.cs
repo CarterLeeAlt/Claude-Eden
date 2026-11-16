@@ -1,5 +1,20 @@
 using Eden.Windows;
 
+if (args is ["desktop", "--startup-fixture", var startupMode, var startupMarker])
+{
+    File.WriteAllText(startupMarker, Environment.ProcessId.ToString());
+    if (startupMode == "slow") await Task.Delay(TimeSpan.FromSeconds(185));
+    else if (startupMode is "cancel" or "deadline") await Task.Delay(Timeout.InfiniteTimeSpan);
+    Console.WriteLine("{\"status\":\"ready\"}");
+    Environment.Exit(startupMode == "failure" ? 7 : 0);
+    return;
+}
+if (args is ["backend-startup-tests"])
+{
+    await BackendStartupTests.Run();
+    return;
+}
+
 if (args is ["smoke-wait", var smokeRelease])
 {
     using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
