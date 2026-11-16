@@ -1,0 +1,965 @@
+diff --git a/cmd/limactl/shell.go b/cmd/limactl/shell.go
+index 705b585..236bea5 100644
+--- a/cmd/limactl/shell.go
++++ b/cmd/limactl/shell.go
+@@ -187,7 +187,7 @@ func shellAction(cmd *cobra.Command, args []string) error {
+ 			AdditionalArgs: []string{},
+ 		}
+ 
+-		if err := ssh.ExitMaster(inst.Hostname, inst.SSHLocalPort, sshConfig); err != nil {
++		if err := ssh.ExitMaster(cmd.Context(), inst.Hostname, inst.SSHLocalPort, sshConfig); err != nil {
+ 			// `ssh -O exit` fails when the control socket file exists but the
+ 			// master process is already dead (unclean hostagent exit: kill -9,
+ 			// OOM, host crash). That stale state is exactly what --reconnect is
+diff --git a/pkg/cidata/cidata.TEMPLATE.d/boot.sh b/pkg/cidata/cidata.TEMPLATE.d/boot.sh
+index b348df7..7c1511a 100644
+--- a/pkg/cidata/cidata.TEMPLATE.d/boot.sh
++++ b/pkg/cidata/cidata.TEMPLATE.d/boot.sh
+@@ -19,7 +19,7 @@ RUN="/run"
+ if [ "${UNAME}" != "Linux" ]; then
+ 	RUN="/var/run"
+ fi
+-rm -f "${RUN}/lima-boot-done"
++rm -f "${RUN}/lima-boot-done" "${RUN}/lima-boot-failed"
+ 
+ # A boot script that reboots the guest creates this file first, so that the rest
+ # of this script knows the guest is on its way down.
+@@ -29,6 +29,7 @@ rm -f "${LIMA_REBOOT_REQUIRED}"
+ 
+ # shellcheck disable=SC2163
+ while read -r line; do [ -n "$line" ] && export "$line"; done <"${LIMA_CIDATA_MNT}"/lima.env
++trap 'status=$?; if [ "$status" -ne 0 ]; then echo "${LIMA_CIDATA_IID}" >"${RUN}/lima-boot-failed"; fi' EXIT
+ # shellcheck disable=SC2163
+ while read -r line; do [ -n "$line" ] && export "$line"; done <"${LIMA_CIDATA_MNT}"/param.env
+ 
+@@ -249,7 +250,9 @@ fi
+ # A pending reboot suppresses the signal, because the reboot is asynchronous
+ # and the host agent would otherwise call the guest ready while sshd is
+ # already going down.
+-if [ -e "${LIMA_REBOOT_REQUIRED}" ]; then
++if [ "${CODE}" -ne 0 ]; then
++	WARNING "Boot scripts failed; not signaling readiness"
++elif [ -e "${LIMA_REBOOT_REQUIRED}" ]; then
+ 	INFO "Not signaling boot completion because a boot script requested a reboot"
+ else
+ 	echo "${LIMA_CIDATA_IID}" >"${RUN}/lima-boot-done"
+diff --git a/pkg/hostagent/hostagent.go b/pkg/hostagent/hostagent.go
+index b53dceb..d6f0f9a 100644
+--- a/pkg/hostagent/hostagent.go
++++ b/pkg/hostagent/hostagent.go
+@@ -65,8 +65,9 @@ type HostAgent struct {
+ 	portForwarder     *portForwarder // legacy SSH port forwarder
+ 	grpcPortForwarder *portfwd.Forwarder
+ 
+-	onClose   []func() error // LIFO
+-	onCloseMu sync.Mutex
++	onClose         []func() error // LIFO
++	onCloseMu       sync.Mutex
++	closeGuestAgent func() error
+ 
+ 	driver   driver.Driver
+ 	signalCh chan os.Signal
+@@ -400,7 +401,7 @@ func generatePassword(length int) (string, error) {
+ 	return password.Generate(length, length/4, 0, false, false)
+ }
+ 
+-func (a *HostAgent) Run(ctx context.Context) error {
++func (a *HostAgent) Run(ctx context.Context) (runErr error) {
+ 	defer func() {
+ 		exitingEv := events.Event{
+ 			Status: events.Status{
+@@ -443,13 +444,25 @@ func (a *HostAgent) Run(ctx context.Context) error {
+ 	if err != nil {
+ 		return err
+ 	}
++	stopResources := func() {}
++	defer func() {
++		// Startup and watchers have joined before this point. Keep SSH and
++		// shared files available until the guest finishes shutting down.
++		stopResources()
++		var controlErr error
++		if a.closeGuestAgent != nil {
++			controlErr = a.closeGuestAgent()
++		}
++		stopErr := a.driver.Stop(context.WithoutCancel(ctx))
++		closeErr := a.close()
++		server.Stop(a.instDir, false)
++		runErr = errors.Join(runErr, controlErr, stopErr, closeErr)
++	}()
+ 
+ 	if err := a.driver.AdditionalSetupForSSH(ctx); err != nil {
+ 		return err
+ 	}
+-	stopResources := a.startResourceManager(ctx)
+-	defer stopResources()
+-	a.cleanUp(func() error { stopResources(); return nil })
++	stopResources = a.startResourceManager(ctx)
+ 
+ 	// WSL instance SSH address isn't known until after VM start
+ 	if a.driver.Info(ctx).Features.DynamicSSHAddress {
+@@ -505,13 +518,14 @@ func (a *HostAgent) Run(ctx context.Context) error {
+ 	}
+ 
+ 	if a.driver.Info(ctx).Features.CanRunGUI {
++		guiCtx, cancelGUI := context.WithCancel(ctx)
++		routinesDone := make(chan error, 1)
+ 		go func() {
+-			err = a.startRoutinesAndWait(ctx, errCh)
+-			if err != nil {
+-				logrus.Error(err)
+-			}
++			routinesDone <- a.startRoutinesAndWait(guiCtx, errCh)
+ 		}()
+-		return a.driver.RunGUI(ctx)
++		guiErr := a.driver.RunGUI(guiCtx)
++		cancelGUI()
++		return errors.Join(guiErr, <-routinesDone)
+ 	}
+ 	return a.startRoutinesAndWait(ctx, errCh)
+ }
+@@ -523,31 +537,45 @@ func (a *HostAgent) startRoutinesAndWait(ctx context.Context, errCh <-chan error
+ 	stBooting := stBase
+ 	a.emitEvent(ctx, events.Event{Status: stBooting})
+ 	ctxHA, cancelHA := context.WithCancel(ctx)
++	var routines sync.WaitGroup
++	startupDone := make(chan struct{})
++	var startupErr error
+ 	go func() {
+-		stRunning := stBase
+-		if haErr := a.startHostAgentRoutines(ctxHA); haErr != nil {
+-			stRunning.Degraded = true
+-			stRunning.Errors = append(stRunning.Errors, haErr.Error())
+-		}
+-		stRunning.Running = true
+-		a.emitEvent(ctx, events.Event{Status: stRunning})
++		defer close(startupDone)
++		startupErr = a.startHostAgentRoutines(ctxHA, &routines)
++	}()
++	defer func() {
++		cancelHA()
++		<-startupDone
++		routines.Wait()
+ 	}()
+-	// wait for either the driver to stop or a signal to shut down
+-	select {
+-	case driverErr := <-errCh:
+-		logrus.Infof("Driver stopped due to error: %#q", driverErr)
+-	case sig := <-a.signalCh:
+-		logrus.Infof("Received %s, shutting down the host agent", osutil.SignalName(sig))
+-	}
+-	// close the host agent routines before cancelling the context
+-	if closeErr := a.close(); closeErr != nil {
+-		logrus.WithError(closeErr).Warn("an error during shutting down the host agent")
+-	}
+-	cancelHA()
+-	stopErr := a.driver.Stop(ctx)
+-	// Stop the external driver gRPC server now that the instance is shutting down.
+-	server.Stop(a.instDir, false)
+-	return stopErr
++	ready := startupDone
++	for {
++		select {
++		case <-ctx.Done():
++			return ctx.Err()
++		case driverErr := <-errCh:
++			logrus.Infof("Driver stopped: %v", driverErr)
++			return driverErr
++		case sig := <-a.signalCh:
++			logrus.Infof("Received %s, shutting down the host agent", osutil.SignalName(sig))
++			return nil
++		case <-ready:
++			ready = nil
++			if ctxHA.Err() != nil {
++				return ctxHA.Err()
++			}
++			st := stBase
++			if startupErr != nil {
++				st.Exiting, st.Degraded = true, true
++				st.Errors = []string{startupErr.Error()}
++				a.emitEvent(ctx, events.Event{Status: st})
++				return startupErr
++			}
++			st.Running = true
++			a.emitEvent(ctx, events.Event{Status: st})
++		}
++	}
+ }
+ 
+ func (a *HostAgent) Screenshot(ctx context.Context, format string) ([]byte, error) {
+@@ -577,7 +605,7 @@ func (a *HostAgent) sshAddressPort() (sshAddress string, sshPort int) {
+ 	return sshAddress, sshPort
+ }
+ 
+-func (a *HostAgent) startHostAgentRoutines(ctx context.Context) error {
++func (a *HostAgent) startHostAgentRoutines(ctx context.Context, routines *sync.WaitGroup) error {
+ 	if *a.instConfig.Plain {
+ 		msg := "Running in plain mode. Mounts, dynamic port forwarding, containerd, etc. will be ignored. Guest agent will not be running."
+ 		for _, port := range a.instConfig.PortForwards {
+@@ -595,7 +623,9 @@ func (a *HostAgent) startHostAgentRoutines(ctx context.Context) error {
+ 			return nil
+ 		}
+ 		logrus.Debugf("shutting down the SSH master")
+-		if exitMasterErr := ssh.ExitMaster(a.instSSHAddress, a.sshLocalPort, a.sshConfig); exitMasterErr != nil {
++		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
++		defer cancel()
++		if exitMasterErr := ssh.ExitMaster(cleanupCtx, a.instSSHAddress, a.sshLocalPort, a.sshConfig); exitMasterErr != nil {
+ 			logrus.WithError(exitMasterErr).Warn("failed to exit SSH master")
+ 		}
+ 		return nil
+@@ -607,8 +637,8 @@ func (a *HostAgent) startHostAgentRoutines(ctx context.Context) error {
+ 		essentialRequirements = a.essentialWinRequirements()
+ 	}
+ 
+-	if err := a.waitForRequirements("essential", essentialRequirements); err != nil {
+-		errs = append(errs, err)
++	if err := a.waitForRequirements(ctx, "essential", essentialRequirements); err != nil {
++		return err
+ 	}
+ 
+ 	// Windows guest needs a marker file which shows all installation is done.
+@@ -627,7 +657,7 @@ func (a *HostAgent) startHostAgentRoutines(ctx context.Context) error {
+ set -eux -o pipefail
+ ln -sf "${SSH_AUTH_SOCK}" /run/host-services/ssh-auth.sock`
+ 			faDesc := "linking ssh auth socket to static location /run/host-services/ssh-auth.sock"
+-			stdout, stderr, err := ssh.ExecuteScript(a.instSSHAddress, a.sshLocalPort, a.sshConfig, faScript, faDesc)
++			stdout, stderr, err := ssh.ExecuteScript(ctx, a.instSSHAddress, a.sshLocalPort, a.sshConfig, faScript, faDesc)
+ 			logrus.Debugf("stdout=%#q, stderr=%#q, err=%v", stdout, stderr, err)
+ 			if err != nil {
+ 				errs = append(errs, fmt.Errorf("stdout=%#q, stderr=%#q: %w", stdout, stderr, err))
+@@ -669,26 +699,20 @@ ln -sf "${SSH_AUTH_SOCK}" /run/host-services/ssh-auth.sock`
+ 	}
+ 
+ 	staticPortForwards := a.separateStaticPortForwards()
++	if ctx.Err() != nil {
++		return ctx.Err()
++	}
++	if err := errors.Join(errs...); err != nil {
++		return err
++	}
+ 	a.addStaticPortForwardsFromList(ctx, staticPortForwards)
+ 
+ 	hasGuestAgentDaemon := !*a.instConfig.Plain && *a.instConfig.OS == limatype.LINUX
+ 	if hasGuestAgentDaemon {
+-		go a.watchGuestAgentEvents(ctx)
+-		go a.startTimeSync(ctx)
++		routines.Go(func() { a.watchGuestAgentEvents(ctx, routines) })
++		routines.Go(func() { a.startTimeSync(ctx) })
+ 		if a.showProgress {
+-			cloudInitDone := make(chan struct{})
+-			go func() {
+-				timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+-				defer cancel()
+-
+-				a.watchCloudInitProgress(timeoutCtx)
+-				close(cloudInitDone)
+-			}()
+-
+-			go func() {
+-				<-cloudInitDone
+-				logrus.Debug("Cloud-init monitoring completed, VM is fully ready")
+-			}()
++			routines.Go(func() { a.watchCloudInitProgress(ctx) })
+ 		}
+ 	}
+ 
+@@ -697,26 +721,49 @@ ln -sf "${SSH_AUTH_SOCK}" /run/host-services/ssh-auth.sock`
+ 		optionalRequirements = a.optionalWinRequirements()
+ 	}
+ 
+-	if err := a.waitForRequirements("optional", optionalRequirements); err != nil {
+-		errs = append(errs, err)
+-	}
+-	if hasGuestAgentDaemon {
+-		logrus.Info("Waiting for the guest agent to be running")
+-		select {
+-		case <-a.guestAgentAliveCh:
+-			// NOP
+-		case <-time.After(time.Minute):
+-			errs = append(errs, errors.New("guest agent does not seem to be running; port forwards will not work"))
+-		}
++	if err := a.waitForRequirements(ctx, "optional", optionalRequirements); err != nil {
++		return err
+ 	}
+-
+ 	finalRequirements := a.finalRequirements()
+ 	if *a.instConfig.OS == limatype.WINDOWS {
+ 		finalRequirements = a.finalWinRequirements()
+ 	}
+ 
+-	if err := a.waitForRequirements("final", finalRequirements); err != nil {
+-		errs = append(errs, err)
++	if err := a.waitForRequirements(ctx, "final", finalRequirements); err != nil {
++		return err
++	}
++	if hasGuestAgentDaemon {
++		logrus.Info("Waiting for the guest agent to be running")
++		ticker := time.NewTicker(3 * time.Second)
++		defer ticker.Stop()
++	waitAgent:
++		for {
++			select {
++			case <-a.guestAgentAliveCh:
++				break waitAgent
++			case <-ctx.Done():
++				return ctx.Err()
++			case <-ticker.C:
++				err := a.waitForRequirement(ctx, requirement{
++					description: "guest agent service remains available",
++					script: `#!/bin/sh
++if command -v systemctl >/dev/null 2>&1; then
++  load=$(systemctl show lima-guestagent.service -p LoadState --value) || exit 125
++  state=$(systemctl show lima-guestagent.service -p ActiveState --value) || exit 125
++  sub=$(systemctl show lima-guestagent.service -p SubState --value) || exit 125
++  case "$load:$state:$sub" in
++    not-found:*|*:failed:*|*:inactive:*|*:deactivating:*|*:auto-restart)
++      echo "lima-guestagent.service is unavailable: $load/$state/$sub" >&2; exit 125;;
++  esac
++fi
++`,
++				})
++				var exitErr *exec.ExitError
++				if err != nil && (!errors.As(err, &exitErr) || exitErr.ExitCode() != 255) {
++					return err
++				}
++			}
++		}
+ 	}
+ 	// Copy all config files _after_ the requirements are done
+ 	for _, rule := range a.instConfig.CopyToHost {
+@@ -741,7 +788,8 @@ ln -sf "${SSH_AUTH_SOCK}" /run/host-services/ssh-auth.sock`
+ }
+ 
+ // cleanUp registers a cleanup function to be called when the host agent is stopped.
+-// The cleanup functions are called before the context is cancelled, in the reverse order of their registration.
++// Cleanup runs after startup/watchers have joined and the driver has stopped,
++// in reverse registration order. Network cleanup uses its own bounded context.
+ func (a *HostAgent) cleanUp(fn func() error) {
+ 	a.onCloseMu.Lock()
+ 	defer a.onCloseMu.Unlock()
+@@ -761,7 +809,7 @@ func (a *HostAgent) close() error {
+ 	return errors.Join(errs...)
+ }
+ 
+-func (a *HostAgent) watchGuestAgentEvents(ctx context.Context) {
++func (a *HostAgent) watchGuestAgentEvents(ctx context.Context, routines *sync.WaitGroup) {
+ 	// TODO: use vSock (when QEMU for macOS gets support for vSock)
+ 
+ 	// Setup all socket forwards and defer their teardown
+@@ -779,9 +827,22 @@ func (a *HostAgent) watchGuestAgentEvents(ctx context.Context) {
+ 	localUnix := filepath.Join(a.instDir, filenames.GuestAgentSock)
+ 	remoteUnix := "/run/lima-guestagent.sock"
+ 
+-	a.cleanUp(func() error {
++	a.closeGuestAgent = func() error {
+ 		logrus.Debugf("Stop forwarding unix sockets")
++		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
++		defer cancel()
+ 		var errs []error
++		if err := a.grpcPortForwarder.Close(); err != nil {
++			errs = append(errs, err)
++		}
++		a.clientMu.Lock()
++		if a.client != nil {
++			if err := a.client.Close(); err != nil {
++				errs = append(errs, err)
++			}
++			a.client = nil
++		}
++		a.clientMu.Unlock()
+ 		sshAddress, sshPort := a.sshAddressPort()
+ 		for _, rule := range a.instConfig.PortForwards {
+ 			if rule.GuestSocket != "" {
+@@ -797,9 +858,9 @@ func (a *HostAgent) watchGuestAgentEvents(ctx context.Context) {
+ 			}
+ 		}
+ 		return errors.Join(errs...)
+-	})
++	}
+ 
+-	go func() {
++	routines.Go(func() {
+ 		if a.instConfig.MountInotify == nil || !*a.instConfig.MountInotify {
+ 			return
+ 		}
+@@ -822,19 +883,6 @@ func (a *HostAgent) watchGuestAgentEvents(ctx context.Context) {
+ 			case <-time.After(10 * time.Second):
+ 			}
+ 		}
+-	}()
+-
+-	// ensure close before ctx is cancelled
+-	a.cleanUp(a.grpcPortForwarder.Close)
+-	a.cleanUp(func() error {
+-		a.clientMu.Lock()
+-		defer a.clientMu.Unlock()
+-		if a.client == nil {
+-			return nil
+-		}
+-		err := a.client.Close()
+-		a.client = nil
+-		return err
+ 	})
+ 
+ 	for {
+@@ -1156,13 +1204,14 @@ var forwardSSH = func(ctx context.Context, sshConfig *ssh.SSHConfig, sshAddress
+ }
+ 
+ func (a *HostAgent) watchCloudInitProgress(ctx context.Context) {
+-	exitReason := "Cloud-init monitoring completed successfully"
++	exitReason := "Cloud-init monitoring stopped before completion"
++	cloudInitFinished := false
+ 	var cmd *exec.Cmd
+ 
+ 	defer func() {
+ 		a.emitCloudInitProgressEvent(context.Background(), &events.CloudInitProgress{
+ 			Active:    false,
+-			Completed: true,
++			Completed: cloudInitFinished,
+ 			LogLine:   exitReason,
+ 		})
+ 		logrus.Debug("Cloud-init progress monitoring completed")
+@@ -1205,10 +1254,11 @@ func (a *HostAgent) watchCloudInitProgress(ctx context.Context) {
+ 		exitReason = "Failed to start cloud-init monitoring command"
+ 		return
+ 	}
++	stopRead := context.AfterFunc(ctx, func() { _ = stdout.Close() })
++	defer stopRead()
+ 
+ 	scanner := bufio.NewScanner(stdout)
+ 	cloudInitMainServiceStarted := false
+-	cloudInitFinished := false
+ 
+ 	for scanner.Scan() {
+ 		line := scanner.Text()
+@@ -1238,6 +1288,7 @@ func (a *HostAgent) watchCloudInitProgress(ctx context.Context) {
+ 		})
+ 
+ 		if cloudInitFinished {
++			exitReason = "Cloud-init monitoring completed successfully"
+ 			logrus.Debug("Breaking from cloud-init monitoring loop - completion detected")
+ 			if cmd.Process != nil {
+ 				logrus.Debug("Killing cloud-init monitoring process after completion")
+@@ -1250,9 +1301,8 @@ func (a *HostAgent) watchCloudInitProgress(ctx context.Context) {
+ 	}
+ 
+ 	if err := cmd.Wait(); err != nil {
+-		if ctx.Err() == context.DeadlineExceeded {
+-			logrus.Warn("Cloud-init monitoring timed out after 10 minutes")
+-			exitReason = "Cloud-init monitoring timed out after 10 minutes"
++		if ctx.Err() != nil {
++			exitReason = "Cloud-init monitoring cancelled"
+ 			return
+ 		}
+ 		logrus.WithError(err).Debug("SSH command finished (expected when cloud-init completes)")
+diff --git a/pkg/hostagent/mount.go b/pkg/hostagent/mount.go
+index cb1946d..77617e5 100644
+--- a/pkg/hostagent/mount.go
++++ b/pkg/hostagent/mount.go
+@@ -53,6 +53,9 @@ func (a *HostAgent) setupMounts(ctx context.Context) ([]*mount, error) {
+ 		errs []error
+ 	)
+ 	for _, f := range a.instConfig.Mounts {
++		if ctx.Err() != nil {
++			return res, errors.Join(append(errs, ctx.Err())...)
++		}
+ 		m, err := a.setupMount(ctx, f)
+ 		if err != nil {
+ 			errs = append(errs, err)
+@@ -110,15 +113,18 @@ func (a *HostAgent) setupMount(ctx context.Context, m limatype.Mount) (*mount, e
+ 		// so it is necessary to remove them to avoid overrides above `Persist=false`.
+ 		rsf.SSHConfig.AdditionalArgs = sshutil.DisableControlMasterOptsFromSSHArgs(rsf.SSHConfig.AdditionalArgs)
+ 	}
+-	if err := rsf.Prepare(); err != nil {
++	if err := rsf.Prepare(ctx); err != nil {
+ 		return nil, fmt.Errorf("failed to prepare reverse sshfs for %#q on %#q: %w", resolvedLocation, *m.MountPoint, err)
+ 	}
+-	if err := rsf.Start(); err != nil {
++	if err := rsf.Start(ctx); err != nil {
++		if ctx.Err() != nil {
++			return nil, ctx.Err()
++		}
+ 		logrus.WithError(err).Warnf("failed to mount reverse sshfs for %#q on %#q, retrying with `-o nonempty`", resolvedLocation, *m.MountPoint)
+ 		// NOTE: nonempty is not supported for libfuse3: https://github.com/canonical/multipass/issues/1381
+ 		// Added to the options, not in their place: they include cache=no.
+ 		rsf.SSHFSAdditionalArgs = append(rsf.SSHFSAdditionalArgs, "-o", "nonempty")
+-		if err := rsf.Start(); err != nil {
++		if err := rsf.Start(ctx); err != nil {
+ 			return nil, fmt.Errorf("failed to mount reverse sshfs for %#q on %#q: %w", resolvedLocation, *m.MountPoint, err)
+ 		}
+ 	}
+diff --git a/pkg/hostagent/requirements.go b/pkg/hostagent/requirements.go
+index 6137f95..845faf9 100644
+--- a/pkg/hostagent/requirements.go
++++ b/pkg/hostagent/requirements.go
+@@ -21,40 +21,57 @@ import (
+ 	"github.com/lima-vm/lima/v2/pkg/sshutil"
+ )
+ 
+-func (a *HostAgent) waitForRequirements(label string, requirements []requirement) error {
+-	const (
+-		retries       = 200
+-		sleepDuration = 3 * time.Second
+-	)
+-	var errs []error
+-
++func (a *HostAgent) waitForRequirements(ctx context.Context, label string, requirements []requirement) error {
+ 	fn := a.waitForRequirement
+ 	if *a.instConfig.OS == limatype.WINDOWS {
+ 		fn = a.waitForWinRequirement
+ 	}
++	return waitForRequirements(ctx, label, requirements, fn)
++}
+ 
++func waitForRequirements(ctx context.Context, label string, requirements []requirement, probe func(context.Context, requirement) error) error {
+ 	for i, req := range requirements {
+ 		logrus.Infof("Waiting for the %s requirement %d of %d: %#q", label, i+1, len(requirements), req.description)
+-	retryLoop:
+-		for j := range retries {
+-			err := fn(req)
++		for {
++			if err := ctx.Err(); err != nil {
++				return err
++			}
++			err := probe(ctx, req)
++			if ctx.Err() != nil {
++				return ctx.Err()
++			}
+ 			if err == nil {
+ 				logrus.Infof("The %s requirement %d of %d is satisfied", label, i+1, len(requirements))
+-				break retryLoop
++				break
++			}
++			var exitErr *exec.ExitError
++			// Exit 1 means not ready and 255 means SSH is not reachable yet.
++			// Invalid commands, local execution errors and explicit boot failures
++			// are failures, rather than reasons to wait indefinitely.
++			retryable := errors.As(err, &exitErr) && (exitErr.ExitCode() == 1 || exitErr.ExitCode() == 255)
++			if retryable && exitErr.ExitCode() == 255 {
++				message := strings.ToLower(err.Error())
++				for _, failure := range []string{"permission denied (", "host key verification failed", "bad configuration option", "bad owner or permissions"} {
++					if strings.Contains(message, failure) {
++						retryable = false
++						break
++					}
++				}
+ 			}
+-			if req.fatal {
++			if req.fatal || !retryable {
+ 				logrus.Infof("No further %s requirements will be checked", label)
+-				errs = append(errs, fmt.Errorf("failed to satisfy the %s requirement %d of %d %#q: %s; skipping further checks: %w", label, i+1, len(requirements), req.description, req.debugHint, err))
+-				return errors.Join(errs...)
++				return fmt.Errorf("failed to satisfy the %s requirement %d of %d %#q: %s: %w", label, i+1, len(requirements), req.description, req.debugHint, err)
+ 			}
+-			if j == retries-1 {
+-				errs = append(errs, fmt.Errorf("failed to satisfy the %s requirement %d of %d %#q: %s: %w", label, i+1, len(requirements), req.description, req.debugHint, err))
+-				break retryLoop
++			timer := time.NewTimer(3 * time.Second)
++			select {
++			case <-ctx.Done():
++				timer.Stop()
++				return ctx.Err()
++			case <-timer.C:
+ 			}
+-			time.Sleep(sleepDuration)
+ 		}
+ 	}
+-	return errors.Join(errs...)
++	return nil
+ }
+ 
+ // prefixExportParam will modify a script to be executed by ssh.ExecuteScript so that it exports
+@@ -88,7 +105,7 @@ func (a *HostAgent) waitForRequirements(label string, requirements []requirement
+ //
+ // An earlier implementation used $'…' for quoting, but that isn't supported if the
+ // user switched the default shell to fish.
+-func prefixExportParam(script string, guestOS *limatype.OS) (string, error) {
++func prefixExportParam(script string, guestOS *limatype.OS, iid string) (string, error) {
+ 	interpreter, err := ssh.ParseScriptInterpreter(script)
+ 	if err != nil {
+ 		return "", err
+@@ -105,6 +122,10 @@ func prefixExportParam(script string, guestOS *limatype.OS) (string, error) {
+ 	}
+ 	exportParam := `param_env="$(` + sudo + ` cat ` + cidata + `/param.env)"; while read -r line; do [ -n "$line" ] && export "$line"; done<<EOF\n${param_env}\nEOF\n`
+ 
++	if guestOS != nil && *guestOS == limatype.LINUX {
++		// The check runs in the shell wrapper, even for non-shell probes.
++		exportParam += fmt.Sprintf(`if [ "$(cat /run/lima-boot-failed 2>/dev/null)" = %q ]; then echo 'Lima boot scripts failed; see /var/log/cloud-init-output.log' >&2; exit 125; fi\n`, iid)
++	}
+ 	// double up all '%' characters so we can pass them through unchanged in the format string of printf
+ 	interpreter = strings.ReplaceAll(interpreter, "%", "%%")
+ 	exportParam = strings.ReplaceAll(exportParam, "%", "%%")
+@@ -118,13 +139,13 @@ func (a *HostAgent) bashAvailable() bool {
+ 	return *a.instConfig.OS != limatype.FREEBSD && *a.instConfig.OS != limatype.WINDOWS
+ }
+ 
+-func (a *HostAgent) waitForRequirement(r requirement) error {
++func (a *HostAgent) waitForRequirement(ctx context.Context, r requirement) error {
+ 	logrus.Debugf("executing script %#q", r.description)
+ 	script := r.script
+ 	if a.bashAvailable() {
+ 		var err error
+ 		// FIXME: prefixExportParam depends on bash
+-		script, err = prefixExportParam(r.script, a.instConfig.OS)
++		script, err = prefixExportParam(script, a.instConfig.OS, a.iid)
+ 		if err != nil {
+ 			return err
+ 		}
+@@ -148,7 +169,7 @@ func (a *HostAgent) waitForRequirement(r requirement) error {
+ 			AdditionalArgs: sshutil.DisableControlMasterOptsFromSSHArgs(sshConfig.AdditionalArgs),
+ 		}
+ 	}
+-	stdout, stderr, err := ssh.ExecuteScript(a.instSSHAddress, a.sshLocalPort, sshConfig, script, r.description)
++	stdout, stderr, err := ssh.ExecuteScript(ctx, a.instSSHAddress, a.sshLocalPort, sshConfig, script, r.description)
+ 	logrus.Debugf("stdout=%#q, stderr=%#q, err=%v", stdout, stderr, err)
+ 	if err != nil {
+ 		return fmt.Errorf("stdout=%#q, stderr=%#q: %w", stdout, stderr, err)
+@@ -159,7 +180,7 @@ func (a *HostAgent) waitForRequirement(r requirement) error {
+ // This function is copied from sshocker's ExecuteScript, because
+ // the function doesn't support Windows commands.
+ // TODO: Support Windows on sshocker, and replace this function.
+-func (a *HostAgent) waitForWinRequirement(r requirement) error {
++func (a *HostAgent) waitForWinRequirement(ctx context.Context, r requirement) error {
+ 	logrus.Debugf("executing script for windows %q", r.description)
+ 	script := r.script
+ 	sshConfig := a.sshConfig
+@@ -190,7 +211,8 @@ func (a *HostAgent) waitForWinRequirement(r requirement) error {
+ 		sshArgs = append(sshArgs, "-p", strconv.Itoa(a.sshLocalPort))
+ 	}
+ 	sshArgs = append(sshArgs, a.instSSHAddress, "--", script)
+-	sshCmd := exec.CommandContext(context.Background(), sshBinary, sshArgs...)
++	sshCmd := exec.CommandContext(ctx, sshBinary, sshArgs...)
++	sshCmd.WaitDelay = time.Second
+ 	sshCmd.Stdin = strings.NewReader(script)
+ 	var stderr bytes.Buffer
+ 	sshCmd.Stderr = &stderr
+diff --git a/pkg/hostagent/startup_lifecycle_test.go b/pkg/hostagent/startup_lifecycle_test.go
+new file mode 100644
+index 0000000..6f04088
+--- /dev/null
++++ b/pkg/hostagent/startup_lifecycle_test.go
+@@ -0,0 +1,325 @@
++// SPDX-FileCopyrightText: Copyright The Lima Authors
++// SPDX-License-Identifier: Apache-2.0
++
++package hostagent
++
++import (
++	"bytes"
++	"context"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"net"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"runtime"
++	"strconv"
++	"strings"
++	"testing"
++	"testing/synctest"
++	"time"
++
++	"github.com/lima-vm/lima/v2/pkg/driver"
++	"github.com/lima-vm/lima/v2/pkg/hostagent/events"
++	"github.com/lima-vm/lima/v2/pkg/limatype"
++	"github.com/lima-vm/lima/v2/pkg/osutil"
++	"github.com/lima-vm/lima/v2/pkg/portfwd"
++	"github.com/lima-vm/sshocker/pkg/ssh"
++)
++
++func TestMain(m *testing.M) {
++	mode := os.Getenv("EDEN_STARTUP_SSH_TEST")
++	if mode == "" {
++		os.Exit(m.Run())
++	}
++	if marker := os.Getenv("EDEN_STARTUP_SSH_MARKER"); marker != "" {
++		if err := os.WriteFile(marker, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
++			os.Exit(99)
++		}
++	}
++	if mode == "blocked" {
++		time.Sleep(20 * time.Second)
++		os.Exit(99)
++	}
++	if code, err := strconv.Atoi(mode); err == nil {
++		fmt.Fprint(os.Stderr, "startup fixture error")
++		os.Exit(code)
++	}
++	_, _ = io.Copy(io.Discard, os.Stdin)
++	os.Exit(0)
++}
++
++func startupExitError(t *testing.T, code int) error {
++	t.Helper()
++	cmd := exec.Command(os.Args[0], "-test.run=^$")
++	cmd.Env = append(os.Environ(), "EDEN_STARTUP_SSH_TEST="+strconv.Itoa(code))
++	err := cmd.Run()
++	var exitErr *exec.ExitError
++	if !errors.As(err, &exitErr) || exitErr.ExitCode() != code {
++		t.Fatalf("fixture exit: %v", err)
++	}
++	return err
++}
++
++func TestRequirementsWaitForReadinessWithoutAttemptLimit(t *testing.T) {
++	pending := startupExitError(t, 1)
++	synctest.Test(t, func(t *testing.T) {
++		started := time.Now()
++		calls := 0
++		err := waitForRequirements(t.Context(), "essential", []requirement{{description: "slow boot"}}, func(context.Context, requirement) error {
++			calls++
++			if calls <= 205 {
++				return pending
++			}
++			return nil
++		})
++		if err != nil || calls != 206 || time.Since(started) <= 10*time.Minute {
++			t.Fatalf("slow startup rejected: calls=%d elapsed=%s err=%v", calls, time.Since(started), err)
++		}
++	})
++}
++
++func TestRequirementsCancelAndPropagateFailures(t *testing.T) {
++	pending, failed := startupExitError(t, 255), startupExitError(t, 125)
++	for _, tc := range []struct {
++		name  string
++		err   error
++		fatal bool
++	}{
++		{"local failure", errors.New("cannot execute SSH"), false},
++		{"boot failure", failed, false},
++		{"fatal probe", pending, true},
++		{"SSH authentication", fmt.Errorf("Permission denied (publickey): %w", pending), false},
++		{"SSH host key", fmt.Errorf("Host key verification failed: %w", pending), false},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			calls := 0
++			err := waitForRequirements(t.Context(), "essential", []requirement{{description: tc.name, fatal: tc.fatal}, {}}, func(context.Context, requirement) error { calls++; return tc.err })
++			if !errors.Is(err, tc.err) || calls != 1 {
++				t.Fatalf("failure lost or dependent work ran: calls=%d err=%v", calls, err)
++			}
++		})
++	}
++	synctest.Test(t, func(t *testing.T) {
++		ctx, cancel := context.WithCancel(t.Context())
++		calls := 0
++		go func() { time.Sleep(time.Second); cancel() }()
++		err := waitForRequirements(ctx, "essential", []requirement{{}}, func(context.Context, requirement) error { calls++; return pending })
++		if !errors.Is(err, context.Canceled) || calls != 1 {
++			t.Fatalf("retry sleep did not cancel: calls=%d err=%v", calls, err)
++		}
++	})
++}
++
++type startupDriver struct {
++	driver.Driver
++	exited            chan error
++	setupErr          error
++	stop              func(context.Context) error
++	connecting        chan struct{}
++	connectionStopped chan struct{}
++}
++
++func (d *startupDriver) Start(context.Context) (chan error, error)   { return d.exited, nil }
++func (d *startupDriver) AdditionalSetupForSSH(context.Context) error { return d.setupErr }
++func (d *startupDriver) Info(context.Context) driver.Info            { return driver.Info{} }
++func (d *startupDriver) Stop(ctx context.Context) error              { return d.stop(ctx) }
++
++func (d *startupDriver) ForwardGuestAgent(context.Context) bool { return false }
++func (d *startupDriver) GuestAgentConn(ctx context.Context) (net.Conn, string, error) {
++	select {
++	case d.connecting <- struct{}{}:
++	default:
++	}
++	<-ctx.Done()
++	select {
++	case d.connectionStopped <- struct{}{}:
++	default:
++	}
++	return nil, "", ctx.Err()
++}
++
++type startupEvents struct {
++	bytes.Buffer
++	ready chan struct{}
++}
++
++func (w *startupEvents) Write(p []byte) (int, error) {
++	var ev events.Event
++	if err := json.Unmarshal(p, &ev); err != nil {
++		return 0, err
++	}
++	if ev.Status.Running {
++		select {
++		case w.ready <- struct{}{}:
++		default:
++		}
++	}
++	return w.Buffer.Write(p)
++}
++
++func TestHostAgentStartupShutdownOrdering(t *testing.T) {
++	bin := t.TempDir()
++	exe := "ssh"
++	if runtime.GOOS == "windows" {
++		exe += ".exe"
++	}
++	image, err := os.ReadFile(os.Args[0])
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(filepath.Join(bin, exe), image, 0o700); err != nil {
++		t.Fatal(err)
++	}
++	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
++	for _, mode := range []string{"ready", "cancel", "signal", "driver-failure", "startup-failure", "setup-failure", "watcher-cancel"} {
++		t.Run(mode, func(t *testing.T) {
++			dir := t.TempDir()
++			marker := filepath.Join(dir, "probe.pid")
++			probeMode := "success"
++			if mode == "cancel" || mode == "signal" || mode == "driver-failure" {
++				probeMode = "blocked"
++			}
++			if mode == "startup-failure" {
++				probeMode = "125"
++			}
++			t.Setenv("EDEN_STARTUP_SSH_TEST", probeMode)
++			t.Setenv("EDEN_STARTUP_SSH_MARKER", marker)
++			ctx, cancel := context.WithCancel(t.Context())
++			defer cancel()
++			closed, stopped := false, false
++			failure := errors.New("driver failed")
++			d := &startupDriver{exited: make(chan error, 1), connecting: make(chan struct{}, 8), connectionStopped: make(chan struct{}, 8)}
++			if mode == "setup-failure" {
++				d.setupErr = failure
++			}
++			d.stop = func(ctx context.Context) error {
++				if closed {
++					return errors.New("shared files closed before guest shutdown")
++				}
++				if ctx.Err() != nil {
++					return errors.New("guest shutdown inherited cancelled startup")
++				}
++				stopped = true
++				return nil
++			}
++			out := &startupEvents{ready: make(chan struct{}, 1)}
++			a := &HostAgent{
++				instConfig: &limatype.LimaYAML{OS: new(limatype.LINUX), Plain: new(true), MountType: new(limatype.NINEP), SSH: limatype.SSH{ForwardAgent: new(false)}, HostResolver: limatype.HostResolver{Enabled: new(false)}, Containerd: limatype.Containerd{System: new(false), User: new(false)}},
++				instDir:    dir, iid: "startup-test", driver: d, signalCh: make(chan os.Signal, 1), eventEnc: json.NewEncoder(out),
++				sshConfig: &ssh.SSHConfig{},
++			}
++			if mode == "watcher-cancel" {
++				a.instConfig.Plain = new(false)
++				a.instConfig.MountInotify = new(true)
++				a.guestAgentAliveCh = make(chan struct{})
++				a.grpcPortForwarder = portfwd.NewPortForwarder(nil, true, true, nil)
++			}
++			a.cleanUp(func() error {
++				closed = true
++				if !stopped {
++					return errors.New("cleanup preceded guest shutdown")
++				}
++				return nil
++			})
++			done := make(chan error, 1)
++			go func() { done <- a.Run(ctx) }()
++			if mode == "watcher-cancel" {
++				select {
++				case <-d.connecting:
++					cancel()
++				case err := <-done:
++					t.Fatalf("startup failed before guest agent connection: %v", err)
++				case <-time.After(5 * time.Second):
++					cancel()
++					<-done
++					t.Fatal("guest agent watcher never started")
++				}
++			} else if probeMode == "blocked" {
++				deadline := time.Now().Add(5 * time.Second)
++				for {
++					if _, err := os.Stat(marker); err == nil {
++						break
++					}
++					if time.Now().After(deadline) {
++						cancel()
++						<-done
++						t.Fatal("SSH fixture never started")
++					}
++					time.Sleep(10 * time.Millisecond)
++				}
++				switch mode {
++				case "cancel":
++					cancel()
++				case "signal":
++					a.signalCh <- os.Interrupt
++				case "driver-failure":
++					d.exited <- failure
++				}
++			} else if mode == "ready" {
++				select {
++				case <-out.ready:
++					a.signalCh <- os.Interrupt
++				case err := <-done:
++					t.Fatalf("startup failed: %v", err)
++				case <-time.After(5 * time.Second):
++					cancel()
++					<-done
++					t.Fatal("startup did not become ready")
++				}
++			}
++			select {
++			case err := <-done:
++				switch mode {
++				case "ready", "signal":
++					if err != nil {
++						t.Fatal(err)
++					}
++				case "cancel", "watcher-cancel":
++					if !errors.Is(err, context.Canceled) {
++						t.Fatalf("cancel lost: %v", err)
++					}
++				case "driver-failure", "setup-failure":
++					if !errors.Is(err, failure) {
++						t.Fatalf("driver failure lost: %v", err)
++					}
++				case "startup-failure":
++					if err == nil || !strings.Contains(err.Error(), "125") {
++						t.Fatalf("boot failure lost: %v", err)
++					}
++				}
++			case <-time.After(5 * time.Second):
++				cancel()
++				<-done
++				t.Fatal("shutdown did not join startup promptly")
++			}
++			if !closed || !stopped {
++				t.Fatalf("resources not cleaned: stopped=%v closed=%v", stopped, closed)
++			}
++			if mode == "watcher-cancel" {
++				if a.getClient() != nil {
++					t.Fatal("guest client recreated after shutdown")
++				}
++				select {
++				case <-d.connectionStopped:
++				case <-time.After(time.Second):
++					t.Fatal("guest connection did not close")
++				}
++			}
++			if mode != "ready" && strings.Contains(out.String(), `"running":true`) {
++				t.Fatal("failed/cancelled startup published running")
++			}
++			if raw, err := os.ReadFile(marker); err == nil {
++				pid, err := strconv.Atoi(string(raw))
++				if err != nil {
++					t.Fatal(err)
++				}
++				if osutil.ProcessAlive(pid) {
++					t.Fatalf("SSH probe %d still alive after Run", pid)
++				}
++			}
++		})
++	}
++}

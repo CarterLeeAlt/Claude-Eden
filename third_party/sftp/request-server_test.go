@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -828,25 +829,49 @@ func TestRequestServerListerAtCloser(t *testing.T) {
 	assert.True(t, listerAt.isClosed)
 }
 
+type recordingStatVFSFileCmder struct {
+	StatVFSFileCmder
+	results chan StatVFS
+}
+
+func (h *recordingStatVFSFileCmder) StatVFS(r *Request) (*StatVFS, error) {
+	stat, err := h.StatVFSFileCmder.StatVFS(r)
+	if err != nil {
+		return nil, err
+	}
+	// Copy before the request server fills in the response ID.
+	h.results <- *stat
+	return stat, nil
+}
+
 func TestRequestStatVFS(t *testing.T) {
 	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
 		t.Skip("StatVFS is implemented on linux and darwin")
 	}
 
-	p := clientRequestServerPair(t)
+	handlers := InMemHandler()
+	recorded := make(chan StatVFS, 1)
+	handlers.FileCmd = &recordingStatVFSFileCmder{
+		StatVFSFileCmder: handlers.FileCmd.(StatVFSFileCmder),
+		results:         recorded,
+	}
+	p := clientRequestServerPairWithHandlers(t, handlers)
 	defer p.Close()
 
 	_, ok := p.cli.HasExtension("statvfs@openssh.com")
 	require.True(t, ok, "request server doesn't list statvfs extension")
+	// This test is the client's only caller; predict the next ID before sending.
+	wantID := atomic.LoadUint32(&p.cli.nextid) + 1
 	vfs, err := p.cli.StatVFS("/")
 	require.NoError(t, err)
-	expected, err := getStatVFSForPath("/")
-	require.NoError(t, err)
-	require.NotEqual(t, 0, expected.ID)
-	// check some stats
-	require.Equal(t, expected.Bavail, vfs.Bavail)
-	require.Equal(t, expected.Bfree, vfs.Bfree)
-	require.Equal(t, expected.Blocks, vfs.Blocks)
+	var expected StatVFS
+	select {
+	case expected = <-recorded:
+	default:
+		t.Fatal("StatVFS handler did not record its response")
+	}
+	expected.ID = wantID
+	require.Equal(t, expected, *vfs)
 
 	checkRequestServerAllocator(t, p)
 }

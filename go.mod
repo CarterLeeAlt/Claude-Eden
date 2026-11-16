@@ -27,6 +27,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/inetaf/tcpproxy v0.0.0-20250222171855-c4b9df066048
+	github.com/klauspost/compress v1.18.5
 	github.com/lima-vm/lima/v2 v2.0.0
 	github.com/lima-vm/sshocker v0.3.11
 	github.com/mattn/go-isatty v0.0.24

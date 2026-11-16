@@ -28,9 +28,13 @@ const clipboardWireLimit = 30 << 20
 // 使用当前后端配套的客机脚本建立 Linux 剪贴板连接。
 // 将脚本压缩为单个参数，避免完整脚本经过两层转义后超出 Windows 进程命令行上限。
 var linuxClipboardCommand = sync.OnceValues(func() (string, error) {
+	return compressedClipboardCommand(eden.SharedClipboardHelper)
+})
+
+func compressedClipboardCommand(script string) (string, error) {
 	var compressed bytes.Buffer
 	writer := zlib.NewWriter(&compressed)
-	if _, err := io.WriteString(writer, eden.SharedClipboardHelper); err != nil {
+	if _, err := io.WriteString(writer, script); err != nil {
 		return "", err
 	}
 	if err := writer.Close(); err != nil {
@@ -40,7 +44,7 @@ var linuxClipboardCommand = sync.OnceValues(func() (string, error) {
 	const bootstrap = `import base64,sys,zlib; exec(compile(zlib.decompress(base64.b64decode(sys.argv.pop(1))), '<workbench-shared-clipboard>', 'exec'))`
 	return "exec sudo -n /usr/bin/python3 -c " + shellescape.Quote(bootstrap) + " " +
 		base64.StdEncoding.EncodeToString(compressed.Bytes()), nil
-})
+}
 
 type clipboardPayload struct {
 	Hello   *clipboardHello `json:"hello,omitempty"`
@@ -66,7 +70,11 @@ type clipboardHello struct {
 // The profile chooses the transport. A guest file selection can never choose
 // an executable, account, remote command or host path.
 func (s *Server) clipboardCommand(ctx context.Context, operation string, selection clipboardFileSelection) (*exec.Cmd, string, error) {
-	command, err := linuxClipboardCommand()
+	helper, err := s.linuxTemplate(eden.SharedClipboardHelper)
+	if err != nil {
+		return nil, "", err
+	}
+	command, err := compressedClipboardCommand(helper)
 	if err != nil {
 		return nil, "", err
 	}

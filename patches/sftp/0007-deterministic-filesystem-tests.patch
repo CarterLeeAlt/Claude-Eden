@@ -1,0 +1,145 @@
+diff --git a/request-server_test.go b/request-server_test.go
+--- a/request-server_test.go
++++ b/request-server_test.go
+@@ -10,6 +10,7 @@ import (
+ 	"path"
+ 	"path/filepath"
+ 	"runtime"
++	"sync/atomic"
+ 	"testing"
+ 	"time"
+ 
+@@ -828,25 +829,49 @@ func TestRequestServerListerAtCloser(t *testing.T) {
+ 	assert.True(t, listerAt.isClosed)
+ }
+ 
++type recordingStatVFSFileCmder struct {
++	StatVFSFileCmder
++	results chan StatVFS
++}
++
++func (h *recordingStatVFSFileCmder) StatVFS(r *Request) (*StatVFS, error) {
++	stat, err := h.StatVFSFileCmder.StatVFS(r)
++	if err != nil {
++		return nil, err
++	}
++	// Copy before the request server fills in the response ID.
++	h.results <- *stat
++	return stat, nil
++}
++
+ func TestRequestStatVFS(t *testing.T) {
+ 	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+ 		t.Skip("StatVFS is implemented on linux and darwin")
+ 	}
+ 
+-	p := clientRequestServerPair(t)
++	handlers := InMemHandler()
++	recorded := make(chan StatVFS, 1)
++	handlers.FileCmd = &recordingStatVFSFileCmder{
++		StatVFSFileCmder: handlers.FileCmd.(StatVFSFileCmder),
++		results:         recorded,
++	}
++	p := clientRequestServerPairWithHandlers(t, handlers)
+ 	defer p.Close()
+ 
+ 	_, ok := p.cli.HasExtension("statvfs@openssh.com")
+ 	require.True(t, ok, "request server doesn't list statvfs extension")
++	// This test is the client's only caller; predict the next ID before sending.
++	wantID := atomic.LoadUint32(&p.cli.nextid) + 1
+ 	vfs, err := p.cli.StatVFS("/")
+ 	require.NoError(t, err)
+-	expected, err := getStatVFSForPath("/")
+-	require.NoError(t, err)
+-	require.NotEqual(t, 0, expected.ID)
+-	// check some stats
+-	require.Equal(t, expected.Bavail, vfs.Bavail)
+-	require.Equal(t, expected.Bfree, vfs.Bfree)
+-	require.Equal(t, expected.Blocks, vfs.Blocks)
++	var expected StatVFS
++	select {
++	case expected = <-recorded:
++	default:
++		t.Fatal("StatVFS handler did not record its response")
++	}
++	expected.ID = wantID
++	require.Equal(t, expected, *vfs)
+ 
+ 	checkRequestServerAllocator(t, p)
+ }
+diff --git a/server_test.go b/server_test.go
+--- a/server_test.go
++++ b/server_test.go
+@@ -6,11 +6,14 @@ import (
+ 	"errors"
+ 	"io"
+ 	"os"
++	"os/exec"
+ 	"path"
+ 	"runtime"
++	"strconv"
+ 	"sync"
+ 	"syscall"
+ 	"testing"
++	"time"
+ 
+ 	"github.com/stretchr/testify/assert"
+ 	"github.com/stretchr/testify/require"
+@@ -215,17 +218,42 @@ func TestOpenStatRace(t *testing.T) {
+ }
+ 
+ func TestOpenWithPermissions(t *testing.T) {
++	skipIfWindows(t)
++	if runtime.GOOS == "linux" && os.Getenv("SFTP_TEST_OPEN_PERMISSIONS_CHILD") != "1" {
++		// Only this child gets the known creation mask; the rest of the suite keeps its mask.
++		executable, err := os.Executable()
++		if err != nil {
++			t.Fatal(err)
++		}
++		deadline := time.Now().Add(time.Minute)
++		if parentDeadline, ok := t.Deadline(); ok && parentDeadline.Add(-2*time.Second).Before(deadline) {
++			deadline = parentDeadline.Add(-2 * time.Second)
++		}
++		if !time.Now().Before(deadline) {
++			t.Fatal("insufficient time to run and reap the open permissions child")
++		}
++		ctx, cancel := context.WithDeadline(t.Context(), deadline)
++		defer cancel()
++		cmd := exec.CommandContext(ctx, "sh", "-c", `umask 022 && exec "$@"`, "sftp-open-permissions",
++			executable, "-test.run=^TestOpenWithPermissions$", "-test.count=1", "-test.timeout=45s", "-test.v",
++			"-allocator="+strconv.FormatBool(*testAllocator))
++		cmd.Env = append(os.Environ(), "SFTP_TEST_OPEN_PERMISSIONS_CHILD=1")
++		cmd.WaitDelay = time.Second
++		output, err := cmd.CombinedOutput()
++		if err != nil {
++			t.Fatalf("open permissions child: %v (context: %v)\n%s", err, ctx.Err(), output)
++		}
++		t.Logf("open permissions child:\n%s", output)
++		return
++	}
+ 	ctx, cancel := context.WithCancel(context.Background())
+ 	defer cancel()
+ 
+-	skipIfWindows(t)
+-
+ 	client, server := clientServerPair(t)
+ 	defer client.Close()
+ 	defer server.Close()
+ 
+-	tmppath := path.Join(os.TempDir(), "open_permissions")
+-	defer os.Remove(tmppath)
++	tmppath := path.Join(t.TempDir(), "open_permissions")
+ 
+ 	pflags := toPflags(os.O_RDWR | os.O_CREATE | os.O_TRUNC)
+ 
+@@ -284,6 +312,10 @@ func TestOpenWithPermissions(t *testing.T) {
+ 		t.Fatal("unpexpected packet type:", unimplementedPacketErr(typ))
+ 	}
+ 
++	stat, err = os.Stat(tmppath)
++	if err != nil {
++		t.Fatal("unexpected error:", err)
++	}
+ 	if stat.Mode()&os.ModePerm != 0o745 {
+ 		t.Errorf("stat.Mode() = %v, was expecting unchanged 0o745", stat.Mode())
+ 	}

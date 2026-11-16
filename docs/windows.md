@@ -1,6 +1,6 @@
 # Windows 安装、更新与发布
 
-Claude Eden 的使用环境为 **Windows 10 主机 + 本地 Debian 13 客机**。在 Windows 安装并打开应用，选择存储位置、导入自己的代理后进入工作台。
+Claude Eden 的使用环境为 **Windows 10 主机 + 本地 Debian 13 客机**。在 Windows 安装并打开应用，选择存储位置、配置自己的代理节点后进入工作台。
 
 ## Windows 版本与功能范围
 
@@ -28,7 +28,7 @@ Claude Eden 的使用环境为 **Windows 10 主机 + 本地 Debian 13 客机**�
 | 系统 | Windows 10；当前 x64 构建用于 Intel／AMD x64 电脑，系统能力按实际运行时与虚拟化检查结果判断 |
 | 虚拟化 | BIOS/UEFI 已启用处理器虚拟化，Windows 已启用“Windows 虚拟机监控程序平台” |
 | 存储 | 使用本地磁盘，保留安装包、Linux 镜像、虚拟磁盘和更新备份所需空间；初始虚拟磁盘上限为 24 GiB |
-| 代理 | 自己的 Clash/Mihomo YAML 来源或 HTTP/SOCKS5 节点；Claude Eden 不提供代理服务 |
+| 代理 | 自己的 HTTP CONNECT、SOCKS5 或 SSH 节点；Claude Eden 随附 Mihomo 核心，不提供代理服务 |
 
 在“启用或关闭 Windows 功能”中启用“Windows 虚拟机监控程序平台”，按系统要求重启。也可在管理员终端执行：
 
@@ -43,7 +43,7 @@ DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All /NoRestart
 1. 查看 [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases) 中实际发布的 Windows 安装包，核对对应发行条目的 `SHA256SUMS`。签名安装包名为 `Eden-<版本>-windows-amd64-setup.exe`；未签名开发包名为 `Eden-<版本>-windows-amd64-setup-unsigned.exe`，需手动安装和更新。尚无安装包时按下文从源码构建。
 2. 运行安装程序，选择安装位置。首次安装默认选择本地 D 盘的 `D:\Eden`；没有本地 D 盘时使用 `%LOCALAPPDATA%\Programs\Eden`。安装器随附 .NET 桌面运行组件、WebView2 安装程序、QEMU、OpenSSH 客户端和代理核心，无需另装 Go、Node.js 或 Clash。
 3. 在“快捷方式”页选择“添加桌面快捷方式”和“添加到开始菜单”。首次安装默认勾选两项，后续 Claude Eden 更新沿用上次选择。卸载会清理 Claude Eden 创建的快捷方式。
-4. 从选中的快捷方式启动 Claude Eden，确认 Debian 13。如果 C 盘空间有限，选择其他磁盘的专用空文件夹，再导入代理并启动环境。程序准备官方镜像、工具和虚拟磁盘；已有环境可从设置迁移。见[选盘与迁移步骤](getting-started.md#选择环境存储位置)和[客机系统指南](guide/guest-systems.md)。
+4. 从选中的快捷方式启动 Claude Eden，确认 Debian 13。如果 C 盘空间有限，选择其他磁盘的专用空文件夹，再配置代理节点并启动环境。程序准备官方镜像、工具和虚拟磁盘；已有环境可从设置迁移。见[选盘与迁移步骤](getting-started.md#选择环境存储位置)和[客机系统指南](guide/guest-systems.md)。
 
 安装器不设置系统代理，不安装 SSH 服务，不把随附工具加入系统 PATH。WebView2 是 Microsoft 提供的系统浏览器运行时，其安装与维护由 Microsoft 安装程序负责。
 
@@ -84,7 +84,7 @@ Claude Eden 支持含中文的安装目录。启动时优先读取随附 QEMU �
 - 工作台能打开，环境不能联网：检查 Claude Eden 内是否已选择节点及网络检查结果。Windows 浏览器能联网不表示工作台节点已配置。
 - 提示权限或路径不可用：使用当前用户有权限访问的本地目录，不把 Claude Eden 安装目录、私有配置或磁盘根目录作为共享项目。更新器拒绝含符号链接或目录联接的安装路径。
 
-反馈问题时提供 Claude Eden 版本、Windows 版本与内部版本号、CPU 架构、失败步骤和错误原文。不要附带代理密码、订阅链接、会话地址或未脱敏的配置文件。
+反馈问题时提供 Claude Eden 版本、Windows 版本与内部版本号、CPU 架构、失败步骤和错误原文。不要附带代理密码、SSH 私钥、会话地址或未脱敏的配置文件。
 
 ## 静默安装选项
 

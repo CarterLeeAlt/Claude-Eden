@@ -6,11 +6,14 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path"
 	"runtime"
+	"strconv"
 	"sync"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -215,17 +218,42 @@ func TestOpenStatRace(t *testing.T) {
 }
 
 func TestOpenWithPermissions(t *testing.T) {
+	skipIfWindows(t)
+	if runtime.GOOS == "linux" && os.Getenv("SFTP_TEST_OPEN_PERMISSIONS_CHILD") != "1" {
+		// Only this child gets the known creation mask; the rest of the suite keeps its mask.
+		executable, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(time.Minute)
+		if parentDeadline, ok := t.Deadline(); ok && parentDeadline.Add(-2*time.Second).Before(deadline) {
+			deadline = parentDeadline.Add(-2 * time.Second)
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatal("insufficient time to run and reap the open permissions child")
+		}
+		ctx, cancel := context.WithDeadline(t.Context(), deadline)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "sh", "-c", `umask 022 && exec "$@"`, "sftp-open-permissions",
+			executable, "-test.run=^TestOpenWithPermissions$", "-test.count=1", "-test.timeout=45s", "-test.v",
+			"-allocator="+strconv.FormatBool(*testAllocator))
+		cmd.Env = append(os.Environ(), "SFTP_TEST_OPEN_PERMISSIONS_CHILD=1")
+		cmd.WaitDelay = time.Second
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("open permissions child: %v (context: %v)\n%s", err, ctx.Err(), output)
+		}
+		t.Logf("open permissions child:\n%s", output)
+		return
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	skipIfWindows(t)
 
 	client, server := clientServerPair(t)
 	defer client.Close()
 	defer server.Close()
 
-	tmppath := path.Join(os.TempDir(), "open_permissions")
-	defer os.Remove(tmppath)
+	tmppath := path.Join(t.TempDir(), "open_permissions")
 
 	pflags := toPflags(os.O_RDWR | os.O_CREATE | os.O_TRUNC)
 
@@ -284,6 +312,10 @@ func TestOpenWithPermissions(t *testing.T) {
 		t.Fatal("unpexpected packet type:", unimplementedPacketErr(typ))
 	}
 
+	stat, err = os.Stat(tmppath)
+	if err != nil {
+		t.Fatal("unexpected error:", err)
+	}
 	if stat.Mode()&os.ModePerm != 0o745 {
 		t.Errorf("stat.Mode() = %v, was expecting unchanged 0o745", stat.Mode())
 	}

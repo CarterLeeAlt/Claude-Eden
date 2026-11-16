@@ -318,18 +318,6 @@ func StartWithPaths(ctx context.Context, inst *limatype.Instance, launchHostAgen
 		return fmt.Errorf("failed to request start via autostart manager: %w", err)
 	}
 
-	if err := waitHostAgentStart(ctx, haPIDPath, haStderrPath); err != nil {
-		return err
-	}
-
-	// Buffered: the goroutine that loses the race below must not block on its
-	// send for as long as the program lives (it would, once StartWithPaths
-	// has returned).
-	watchErrCh := make(chan error, 1)
-	go func() {
-		watchErrCh <- watchHostAgentEvents(ctx, inst, haStdoutPath, haStderrPath, begin, showProgress)
-		close(watchErrCh)
-	}()
 	waitErrCh := make(chan error, 1)
 	if haCmd != nil {
 		go func() {
@@ -339,14 +327,32 @@ func StartWithPaths(ctx context.Context, inst *limatype.Instance, launchHostAgen
 	} else {
 		defer close(waitErrCh)
 	}
+	if err := waitHostAgentStart(ctx, haPIDPath, haStderrPath, waitErrCh); err != nil {
+		return err
+	}
+
+	// The process may exit before publishing its PID or readiness event.
+	// Cancel and join the event reader when another completion path wins.
+	watchCtx, cancelWatch := context.WithCancel(ctx)
+	watchErrCh := make(chan error, 1)
+	watchDone := make(chan struct{})
+	go func() {
+		defer close(watchDone)
+		watchErrCh <- watchHostAgentEvents(watchCtx, inst, haStdoutPath, haStderrPath, begin, showProgress)
+	}()
+	defer func() { cancelWatch(); <-watchDone }()
 
 	select {
+	case <-ctx.Done():
+		return ctx.Err()
 	case watchErr := <-watchErrCh:
 		// watchErr can be nil
 		return watchErr
 		// leave the hostagent process running
 	case waitErr := <-waitErrCh:
-		// waitErr should not be nil
+		if waitErr == nil {
+			return errors.New("host agent process exited before readiness")
+		}
 		return fmt.Errorf("host agent process has exited: %w", waitErr)
 	}
 }
@@ -355,23 +361,40 @@ func Start(ctx context.Context, inst *limatype.Instance, launchHostAgentForegrou
 	return StartWithPaths(ctx, inst, launchHostAgentForeground, showProgress, "", "")
 }
 
-func waitHostAgentStart(_ context.Context, haPIDPath, haStderrPath string) error {
-	begin := time.Now()
-	deadlineDuration := 5 * time.Second
-	deadline := begin.Add(deadlineDuration)
+func waitHostAgentStart(ctx context.Context, haPIDPath, haStderrPath string, exited <-chan error) error {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
 	for {
-		if _, err := os.Stat(haPIDPath); !errors.Is(err, os.ErrNotExist) {
-			return nil
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("hostagent (%#q) did not start up in %v (hint: see %#q)", haPIDPath, deadlineDuration, haStderrPath)
+		if info, err := os.Stat(haPIDPath); err == nil {
+			if !info.Mode().IsRegular() {
+				return fmt.Errorf("hostagent PID path is not a regular file: %s", haPIDPath)
+			}
+			return nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-exited:
+			if err == nil {
+				err = errors.New("process exited before publishing its PID")
+			}
+			return fmt.Errorf("hostagent did not start (hint: see %#q): %w", haStderrPath, err)
+		case <-ticker.C:
 		}
 	}
 }
 
 func watchHostAgentEvents(ctx context.Context, inst *limatype.Instance, haStdoutPath, haStderrPath string, begin time.Time, showProgress bool) error {
-	ctx, cancel := context.WithTimeout(ctx, watchHostAgentTimeout(ctx))
-	defer cancel()
+	if timeout := watchHostAgentTimeout(ctx); timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
 
 	var (
 		printedSSHLocalPort  bool
@@ -444,6 +467,9 @@ func watchHostAgentEvents(ctx context.Context, inst *limatype.Instance, haStdout
 	if xerr := hostagentevents.Watch(ctx, haStdoutPath, haStderrPath, begin, true, onEvent); xerr != nil {
 		return xerr
 	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 
 	if err != nil {
 		return err
@@ -459,7 +485,8 @@ func watchHostAgentEvents(ctx context.Context, inst *limatype.Instance, haStdout
 type watchHostAgentEventsTimeoutKey = struct{}
 
 // WithWatchHostAgentTimeout sets the value of the timeout to use for
-// watchHostAgentEvents in the given Context.
+// watchHostAgentEvents in the given Context. Zero waits until readiness,
+// process exit or cancellation without imposing an elapsed-time failure.
 func WithWatchHostAgentTimeout(ctx context.Context, timeout time.Duration) context.Context {
 	return context.WithValue(ctx, watchHostAgentEventsTimeoutKey{}, timeout)
 }

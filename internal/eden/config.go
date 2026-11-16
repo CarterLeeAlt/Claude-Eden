@@ -9,22 +9,26 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"time"
 	_ "time/tzdata"
+
+	"github.com/sylvinus/agent-vm/internal/guestprofile"
 )
 
 const ConfigEnv = "EDEN_CONFIG"
 
 type Config struct {
-	ProxyURL        string     `json:"proxy_url"`
-	ProxyRevision   string     `json:"proxy_revision,omitempty"`
-	DNSURL          string     `json:"dns_url"`
-	Timezone        string     `json:"timezone"`
-	Locale          string     `json:"locale"`
-	BrowserLanguage string     `json:"browser_language"`
-	ExitPolicy      ExitPolicy `json:"exit_policy"`
+	GuestProfile    guestprofile.Profile `json:"-"`
+	ProxyURL        string               `json:"proxy_url"`
+	ProxyRevision   string               `json:"proxy_revision,omitempty"`
+	DNSURL          string               `json:"dns_url"`
+	Timezone        string               `json:"timezone"`
+	Locale          string               `json:"locale"`
+	BrowserLanguage string               `json:"browser_language"`
+	ExitPolicy      ExitPolicy           `json:"exit_policy"`
 }
 
 func DefaultConfig() Config {
@@ -35,20 +39,27 @@ func Load(path string) (Config, error) {
 	var c Config
 	f, err := os.Open(path)
 	if err != nil {
-		return c, fmt.Errorf("cannot read Eden configuration: %w", err)
+		return c, fmt.Errorf("cannot read Claude Eden configuration: %w", err)
 	}
 	defer f.Close()
 	d := json.NewDecoder(io.LimitReader(f, 64<<10))
 	d.DisallowUnknownFields()
 	if err = d.Decode(&c); err != nil {
-		return c, errors.New("invalid Eden JSON configuration")
+		return c, errors.New("invalid Claude Eden JSON configuration")
 	}
 	var extra any
 	if d.Decode(&extra) != io.EOF {
-		return c, errors.New("Eden configuration must contain one JSON object")
+		return c, errors.New("Claude Eden configuration must contain one JSON object")
 	}
 	c.ExitPolicy = c.ExitPolicy.Normalized()
-	return c, c.Validate()
+	if err = c.Validate(); err != nil {
+		return c, err
+	}
+	profile, err := guestprofile.Load(filepath.Dir(path))
+	if profile != nil {
+		c.GuestProfile = *profile
+	}
+	return c, err
 }
 
 func (c Config) Validate() error {
@@ -78,13 +89,13 @@ func (c Config) Validate() error {
 		return errors.New("timezone must be an explicit IANA name, e.g. Etc/UTC")
 	}
 	if _, err := time.LoadLocation(c.Timezone); err != nil {
-		return errors.New("unknown Eden timezone")
+		return errors.New("unknown Claude Eden timezone")
 	}
-	if !regexp.MustCompile(`^[A-Za-z]{2,3}_[A-Za-z]{2,3}\.UTF-8$`).MatchString(c.Locale) {
-		return errors.New("locale must have the form en_US.UTF-8")
+	if !regexp.MustCompile(`^(en|zh|ja|ko|de|fr)_[A-Za-z]{2,3}\.UTF-8$`).MatchString(c.Locale) {
+		return errors.New("系统语言仅支持简体中文、繁体中文、英语、日语、韩语、德语和法语，请使用 en_US.UTF-8 等有效格式")
 	}
-	if !regexp.MustCompile(`^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$`).MatchString(c.BrowserLanguage) {
-		return errors.New("invalid browser language tag")
+	if !regexp.MustCompile(`^(en|zh|ja|ko|de|fr)(-[A-Za-z0-9]{2,8})*$`).MatchString(c.BrowserLanguage) {
+		return errors.New("网页首选语言仅支持简体中文、繁体中文、英语、日语、韩语、德语和法语，请使用 en-US 等有效格式")
 	}
 	return c.ExitPolicy.Validate()
 }

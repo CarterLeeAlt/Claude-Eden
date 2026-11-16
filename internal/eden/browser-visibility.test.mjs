@@ -71,3 +71,36 @@ test("a newer browser viewer restores a hide that is already running", async () 
   assert.equal(state, "fullscreen");
   assert.equal(visibility.saved.size, 0);
 });
+
+test("fullscreen over a maximized window restores both states before minimizing", async () => {
+  let state = "fullscreen";
+  const transitions = [];
+  const visibility = new BrowserVisibility(async (method, input) => {
+    if (method === "Browser.getWindowForTarget") return { windowId: 1, bounds: { windowState: state } };
+    if (method === "Browser.getWindowBounds") return { bounds: { windowState: state } };
+    assert.equal(method, "Browser.setWindowBounds");
+    if (input.bounds.windowState === "minimized") assert.equal(state, "normal");
+    state = state === "fullscreen" && input.bounds.windowState === "normal" ? "maximized" : input.bounds.windowState;
+    transitions.push(state);
+  }, () => ["one"]);
+  await visibility.set(false);
+  assert.deepEqual(transitions, ["maximized", "normal", "minimized"]);
+  await visibility.set(true);
+  assert.equal(state, "fullscreen");
+  assert.equal(visibility.saved.size, 0);
+});
+
+test("a slow window manager completes startup without the interactive retry limit", async () => {
+  let reads = 0;
+  const visibility = new BrowserVisibility(async method => {
+    if (method === "Browser.getWindowBounds") return { bounds: { windowState: ++reads > 45 ? "fullscreen" : "normal" } };
+    return {};
+  }, () => [], async () => true, () => true);
+  await visibility.setBounds(1, { windowState: "fullscreen" });
+  assert.equal(reads, 46);
+});
+
+test("startup still propagates a window manager command failure", async () => {
+  const visibility = new BrowserVisibility(async () => { throw new Error("window process exited"); }, () => [], async () => true, () => true);
+  await assert.rejects(visibility.setBounds(1, { windowState: "fullscreen" }), /window process exited/);
+});

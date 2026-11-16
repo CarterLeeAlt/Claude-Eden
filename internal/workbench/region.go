@@ -7,9 +7,7 @@ import "github.com/sylvinus/agent-vm/internal/eden"
 var regionLanguage = map[string]string{
 	"US": "en", "GB": "en", "CA": "en", "AU": "en", "NZ": "en", "IE": "en", "SG": "en", "IN": "en", "PH": "en", "ZA": "en",
 	"JP": "ja", "KR": "ko", "CN": "zh", "TW": "zh", "HK": "zh",
-	"DE": "de", "AT": "de", "CH": "de", "FR": "fr", "BE": "nl", "NL": "nl", "SE": "sv", "FI": "fi", "NO": "nb", "DK": "da",
-	"ES": "es", "MX": "es", "AR": "es", "CL": "es", "PT": "pt", "BR": "pt", "IT": "it", "PL": "pl", "CZ": "cs", "RO": "ro", "HU": "hu", "GR": "el",
-	"ID": "id", "MY": "ms", "VN": "vi", "IL": "he", "TR": "tr", "UA": "uk", "RU": "ru", "AE": "ar", "SA": "ar",
+	"DE": "de", "AT": "de", "CH": "de", "FR": "fr",
 }
 
 func languageSuggestion(country string) (locale, browser string) {

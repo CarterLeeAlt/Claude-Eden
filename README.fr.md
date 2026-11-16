@@ -2,7 +2,7 @@
 
 <h1>Claude Eden</h1>
 
-**Gardez Miss Claude dans une cage pour que nous puissions mieux protéger notre temps ensemble**
+**Un espace isolé pour travailler avec Claude**
 
 <img src="assets/claude-eden-character.png" alt="Claude Eden" width="320" />
 
@@ -10,7 +10,7 @@
 
 **[Projet](https://github.com/CarterLeeAlt/Claude-Eden) · [Versions publiées](https://github.com/CarterLeeAlt/Claude-Eden/releases) · [Commencer](docs/getting-started.md) · [FAQ](docs/troubleshooting.md) · [Guide d’utilisation (chinois)](docs/guide/index.md)**
 
-[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [Русский](README.ru.md) · [العربية](README.ar.md) · [فارسی](README.fa.md) · [한국어](README.ko.md) · [Español](README.es.md) · [မြန်မာဘာသာ](README.my.md) · [Беларуская](README.be.md) · [پښتو](README.ps.md) · [دری](README.prs.md) · [አማርኛ](README.am.md) · [Soomaali](README.so.md) · [ትግርኛ](README.ti.md) · [Français](README.fr.md)
+[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Deutsch](README.de.md) · [Français](README.fr.md)
 
 </div>
 
@@ -30,10 +30,12 @@ Claude Eden réunit terminal, navigateur, éditeur et Claude Desktop officiel da
 - **Travaillez dans une seule fenêtre.** Exécutez Claude Code dans le terminal, examinez les modifications dans l'éditeur et utilisez le navigateur Workbench pour prévisualiser les services et vous connecter.
 - **Développez dans un environnement Linux indépendant.** Utilisez les outils Linux dans l’invité Debian 13 local et partagez uniquement les projets que vous autorisez explicitement. [Invité Debian 13](docs/guide/guest-systems.md)
 - **Contrôlez ce que vous partagez.** Seuls l'espace de travail par défaut et les dossiers de projet explicitement ouverts sont partagés. L'état de connexion Claude de l'hôte, les profils de navigateur et les clés SSH ne sont pas importés automatiquement.
-- **Consultez l'état de votre réseau.** La gestion intégrée du proxy réseau vous permet d'importer des abonnements, de sélectionner des points de terminaison et de vérifier l'adresse IP de sortie. L'environnement reste hors ligne jusqu'à ce que les vérifications critiques soient réussies. Si le proxy réseau n'est pas disponible, il n'est pas possible de recourir à une connexion directe.
+- **Consultez l'état de votre réseau.** Configurez manuellement des nœuds HTTP CONNECT, SOCKS5 ou SSH, sélectionnez un seul nœud et vérifiez l'adresse IP de sortie. L'environnement reste hors ligne jusqu'à la réussite des vérifications critiques ; une panne du proxy ne permet jamais à l'invité de se connecter directement.
 - **Continuez la prochaine fois.** Les outils, les fichiers et l'état de connexion persistent sur le disque virtuel. Les tâches en arrière-plan peuvent continuer à s'exécuter lorsque vous fermez la fenêtre.
 - **Gérez plusieurs comptes Claude Code.** Consultez les quotas, attribuez les comptes aux nouvelles sessions et, avec une autorisation explicite, changez de compte en conservant l’historique. [Claude Code](docs/guide/accounts.md)
 - **Connectez-vous par un réseau privé.** Connectez Tailscale dans Claude Eden pour accéder par SSH à l’hôte et à l’environnement dans les deux sens. [Tailscale / SSH](docs/guide/tailscale.md)
+
+Les langues de l’invité sont le chinois simplifié et traditionnel, l’anglais, le japonais, le coréen, l’allemand et le français. La recommandation liée à la région de sortie reste dans cette liste ; sans recommandation, la langue choisie est conservée. L’interface du workbench et le guide détaillé sont en chinois.
 
 ## Démarrage rapide
 
@@ -65,7 +67,7 @@ Les versions Windows signées se mettent à jour via le proxy choisi. Les versio
 
 ### 1. Sélectionnez un proxy réseau
 
-Sur la page d'accueil, cliquez sur « Configurer le réseau et le proxy », puis sur « Ajouter une source ». Importez un abonnement YAML Clash/Mihomo ou un fichier YAML local et sélectionnez un point de terminaison sous « Nœuds ». Si aucun proxy réseau n'est disponible, vous pouvez sélectionner explicitement « Télécharger cet abonnement via le réseau hôte » ou importer directement un fichier local. Plus tard, gérez les points de terminaison sous « Paramètres → Réseau et proxy ».
+Dans « Paramètres → Réseau et proxy », cliquez sur « Ajouter un nœud ». Choisissez HTTP CONNECT, SOCKS5 ou SSH, puis saisissez le serveur, le port et les informations d'authentification. Enregistrez et validez, sélectionnez un nœud, puis cliquez sur « Appliquer le proxy ». Plusieurs nœuds peuvent être enregistrés pour un changement manuel ; un seul est utilisé à la fois. Mihomo est fourni avec Claude Eden.
 
 ### 2. Démarrez l'environnement
 
@@ -101,7 +103,7 @@ Le projet évolue. Vos retours et contributions sont les bienvenus dans ce dép�
 
 ## Origines et licences
 
-Claude Eden est dérivé de [Claude-Cage](https://github.com/Lee-xeo/Claude-Cage) et de [agent-vm](https://github.com/sylvinus/agent-vm). Les licences et attributions d’origine sont conservées.
+Les sources, attributions et mentions de droits d’auteur d’origine de Claude Eden figurent dans [NOTICE](NOTICE), et la licence dans [LICENSE](LICENSE).
 
 La licence principale du projet est [MIT](LICENSE). Les composants groupés conservent leurs licences respectives. Mihomo est distribué sous forme d'exécutable distinct sous GPL-3.0. Voir aussi [NOTICE](NOTICE) · [Licences tierces](THIRD_PARTY_LICENSES) · [noVNC](ui/vendor/novnc/LICENSE.txt)。
 

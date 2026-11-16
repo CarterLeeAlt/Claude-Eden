@@ -518,28 +518,18 @@
 
 /* ── Proxy (px-based component, lifted to the same scale) ── */
 .settings-page .proxy-node small,
-.settings-page .proxy-source small,
 .settings-page .proxy-connection small,
 .settings-page .proxy-summary > div > span,
-.settings-page .proxy-route-heading p,
-.settings-page .proxy-hop-control small,
-.settings-page .proxy-route-actions > span,
+.settings-page .proxy-selection > span,
 .settings-page .proxy-toolbar > span,
-.settings-page .proxy-yaml-help,
-.settings-page .proxy-yaml-status,
-.settings-page .proxy-yaml-error,
 .settings-page .proxy-notice,
 .settings-page .proxy-diagnostics,
-.settings-page .proxy-source-error,
-.settings-page .proxy-source-skipped,
 .settings-page .proxy-empty p,
 .settings-page .proxy-delay,
 .settings-page .proxy-node-role {
   font-size: var(--s-xs);
 }
-.settings-page .proxy-node-choice strong,
-.settings-page .proxy-source strong,
-.settings-page .proxy-yaml-file strong {
+.settings-page .proxy-node-choice strong {
   font-size: var(--s-md);
 }
 

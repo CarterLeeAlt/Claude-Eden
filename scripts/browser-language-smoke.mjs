@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createPrivacyController } from './browser-privacy-fixture.mjs';
 
 assert.equal(process.platform, 'linux');
-const languages = process.env.EDEN_TEST_LANGUAGES?.split(',') || ['en-US', 'zh-TW', 'zh-CN', 'ja-JP', 'de-DE', 'fr-FR'];
+const languages = process.env.EDEN_TEST_LANGUAGES?.split(',') || ['zh-CN', 'zh-TW', 'en-US', 'ja-JP', 'ko-KR', 'de-DE', 'fr-FR'];
 for (const language of languages) {
   process.env.WORKBENCH_LANGUAGE = language;
   // Workbench applies both the guest locale and the browser language at startup.

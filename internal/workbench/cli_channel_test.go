@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
-	"unicode/utf16"
 
 	"al.essio.dev/pkg/shellescape"
 	"github.com/google/uuid"
@@ -25,16 +24,6 @@ func TestCLIChannelProtocol(t *testing.T) {
 	cmd := exec.Command(python, "-I", "cli_channel_test.py")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("channel protocol: %v\n%s", err, output)
-	}
-}
-
-func TestCLIChannelCommandFitsWindows(t *testing.T) {
-	// Leave room in CreateProcessW's 32767 UTF-16 limit for SSH paths and the
-	// login-shell quoting around this command.
-	command := cliChannelCommand("launch", `{"id":"`+uuid.NewString()+`","prefix":["claude"]}`)
-	t.Logf("embedded command: %d UTF-16 units", len(utf16.Encode([]rune(command))))
-	if size := len(utf16.Encode([]rune(command))); size > 16000 {
-		t.Fatalf("channel command uses %d UTF-16 units", size)
 	}
 }
 

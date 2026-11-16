@@ -27,7 +27,7 @@ func (s *Server) accountAction(w http.ResponseWriter, r *http.Request) {
 	}
 	if action != "create" && action != "unlock" && action != "device-unlock" && action != "recovery-reset" {
 		if _, ok := s.account.accessFor(s.hasTrustedView(r)); !ok {
-			http.Error(w, "请先解锁 Eden", http.StatusLocked)
+			http.Error(w, "请先解锁 Claude Eden", http.StatusLocked)
 			return
 		}
 	}

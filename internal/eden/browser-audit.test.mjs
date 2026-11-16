@@ -106,3 +106,25 @@ test("a settings page that cannot close stays excluded", async () => {
   assert.equal(b.pages.size, 1);
   assert.ok(b.excluded.has(b.pages.get("settings-page")));
 });
+
+test("device checks run only in the local diagnostic target and remain opt-in", async () => {
+  for (const device of [false, true]) {
+    const b = browser();
+    let observed = false;
+    const cdp = async (method, params, session) => {
+      if (method === "Runtime.evaluate" && session === "settings-page-session") {
+        observed = true;
+        assert.equal(params.expression.includes("collectDeviceObservation"), device);
+        assert.equal(params.awaitPromise, true);
+        assert.equal(params.returnByValue, true);
+        assert.ok(!params.expression.includes("getUserMedia"));
+      }
+      return b.cdp(method, params, session);
+    };
+    await auditBrowser(cdp, b.excluded, false, "UTC", device);
+    assert.equal(observed, true);
+    assert.equal(b.calls.includes("Page.navigate"), false);
+    assert.equal(b.pages.size, 0);
+    assert.equal(b.excluded.size, 0);
+  }
+});

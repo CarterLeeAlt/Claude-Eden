@@ -175,6 +175,10 @@ func (s *Server) runCacheMaintenance(ctx context.Context, request map[string]any
 	if err != nil {
 		return nil, err
 	}
-	python := []string{"sudo", "-n", "/usr/bin/python3", "-I", "-c", cacheMaintenanceScript}
+	script, err := s.linuxTemplate(cacheMaintenanceScript)
+	if err != nil {
+		return nil, err
+	}
+	python := []string{"sudo", "-n", "/usr/bin/python3", "-I", "-c", script}
 	return s.guest(ctx, "exec "+shellescape.QuoteCommand(python)+" <<'MAINTENANCE_INPUT'\n"+string(input)+"\nMAINTENANCE_INPUT\n")
 }

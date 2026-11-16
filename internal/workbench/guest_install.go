@@ -10,13 +10,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/guestos"
+	"github.com/sylvinus/agent-vm/internal/guestprofile"
 	"github.com/sylvinus/agent-vm/internal/host"
 	"github.com/sylvinus/agent-vm/internal/hostimage"
 	"github.com/sylvinus/agent-vm/internal/hostproxy"
 )
 
 type guestInstallRequest struct {
-	System string `json:"guest_system"`
+	GuestProfile *guestprofile.Options `json:"guest_profile,omitempty"`
+	System       string                `json:"guest_system"`
 }
 
 type guestInstallView struct {
@@ -51,7 +53,7 @@ func (s *Server) guestInstallView() (guestInstallView, error) {
 
 func (s *Server) guestInstallation(w http.ResponseWriter, r *http.Request) {
 	if !s.hasTrustedView(r) {
-		http.Error(w, "请在本机 Eden 窗口选择客户机系统", http.StatusForbidden)
+		http.Error(w, "请在本机 Claude Eden 窗口选择客户机系统", http.StatusForbidden)
 		return
 	}
 	v, err := s.guestInstallView()
@@ -121,6 +123,9 @@ func (s *Server) beginGuestInstall(w http.ResponseWriter, r *http.Request, in gu
 		}
 		if current == nil && loc.HasEnvironment || current != nil && *current != install {
 			return errors.New("已有其他环境或安装任务，请重新打开安装页面")
+		}
+		if err := s.prepareGuestProfile(in.GuestProfile); err != nil {
+			return err
 		}
 		if err := guestos.SaveInstallation(s.profile, install); err != nil {
 			return err

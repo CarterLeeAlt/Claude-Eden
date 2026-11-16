@@ -55,9 +55,13 @@ func validFileTargetID(target, id string) bool {
 // Desktop requests use the private session socket, carried over the existing
 // SSH connection. Directory selections use an authorized project's guest path.
 func (s *Server) guestFiles(ctx context.Context, target, method, path string, body io.Reader, name string) (map[string]any, error) {
-	script := "sudo -H -u developer curl --silent --show-error --max-time 1800 --write-out '\\nWORKBENCH_FILE_HTTP:%{http_code}' --unix-socket /run/workbench-desktop/files.sock -X " + method
+	asWorkUser, err := s.linuxTemplate("sudo -H -u developer ")
+	if err != nil {
+		return nil, err
+	}
+	script := asWorkUser + "curl --silent --show-error --max-time 1800 --write-out '\\nWORKBENCH_FILE_HTTP:%{http_code}' --unix-socket /run/workbench-desktop/files.sock -X " + method
 	if target == "terminal" {
-		script = "sudo -H -u developer /usr/local/bin/workbench-desktop-files --save-file " + shellescape.Quote(name)
+		script = asWorkUser + "/usr/local/bin/workbench-desktop-files --save-file " + shellescape.Quote(name)
 	} else {
 		if body != nil {
 			script += " --upload-file -"
@@ -66,7 +70,7 @@ func (s *Server) guestFiles(ctx context.Context, target, method, path string, bo
 	}
 	var stderr fileControlStderr
 	var data []byte
-	var err, readErr error
+	var readErr error
 	shared := false
 	if target != "terminal" && method == "GET" && path == "/requests" {
 		script = desktopFilesPoll + script
@@ -89,7 +93,7 @@ func (s *Server) guestFiles(ctx context.Context, target, method, path string, bo
 			return nil, pipeErr
 		}
 		if err = cmd.Start(); err != nil {
-			return nil, usererror.Wrap("连接文件传递服务", err, "请确认 Eden 安装完整，环境已经启动；持续失败时在设置中导出诊断包。")
+			return nil, usererror.Wrap("连接文件传递服务", err, "请确认 Claude Eden 安装完整，环境已经启动；持续失败时在设置中导出诊断包。")
 		}
 		data, readErr = io.ReadAll(io.LimitReader(pipe, 65537+64))
 		if readErr != nil || len(data) > 65536+64 {
@@ -320,7 +324,7 @@ func (s *Server) fileInputUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	if target == "terminal" {
 		path, _ := result["path"].(string)
-		valid := strings.HasPrefix(path, "/home/developer/.local/share/workbench/attachments/files/") && !strings.ContainsAny(path, "\x00\r\n")
+		valid := s.linuxPathHasPrefix(path, "/home/developer/.local/share/workbench/attachments/files/") && !strings.ContainsAny(path, "\x00\r\n")
 		if !valid {
 			http.Error(w, "文件保存路径无效", 502)
 			return

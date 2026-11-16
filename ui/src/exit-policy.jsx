@@ -41,7 +41,7 @@ export function ExitPolicyFields({
       <label className="toggle-row">
         <span>
           <strong>静态 IP</strong>
-          <small>绑定当前最终出口节点；同一节点的 IPv4 地址变化时暂停外网。</small>
+          <small>绑定当前节点；同一节点的 IPv4 地址变化时暂停外网。</small>
         </span>
         <input
           type="checkbox"
@@ -164,7 +164,7 @@ export function ExitPolicyFields({
         </div>
       )}
       <p className="footnote">
-        出口规则按最终出口节点保存，切换节点时自动恢复；首次使用的节点检测后绑定。仅更换中转、重检或重启会保留该节点的基准。命中大陆网段、定位为中国大陆、无法确认出口地区或超出保存范围时暂停外网，离线终端和文件仍可使用。
+        出口规则按选定节点保存，切换节点时自动恢复；首次使用的节点检测后绑定。重检或重启会保留该节点的基准。命中大陆网段、定位为中国大陆、无法确认出口地区或超出保存范围时暂停外网，离线终端和文件仍可使用。
       </p>
       <p className="field-help">
         范围依据 IP 数据库的近似定位。后台约每 30

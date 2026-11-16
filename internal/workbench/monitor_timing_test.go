@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/sylvinus/agent-vm/internal/diagnostics"
 	"github.com/sylvinus/agent-vm/internal/eden"
@@ -164,6 +165,42 @@ func TestMonitorTimingAttributesSlowProbe(t *testing.T) {
 	}
 }
 
+func TestSafetyMonitorClosesWithLongLocalizedFailure(t *testing.T) {
+	s, gate := grantedToolUpdateServer(t)
+	s.setJobForTest(Job{})
+	s.safety.VerifiedAt = time.Now().Add(-time.Minute)
+	s.monitorSafetyWithProbe(func(context.Context, eden.Config) (string, error) {
+		return "", errors.New(strings.Repeat("连接失败。", 30))
+	})
+	state := gate.Status()
+	if state.Mode != eden.GateClosed || len(state.Reason) > 200 || !utf8.ValidString(state.Reason) {
+		t.Fatalf("long diagnosis retained access: %+v", state)
+	}
+	if len(s.safety.Error) <= 200 || s.safety.Gate == nil || s.safety.Gate.Mode != eden.GateClosed {
+		t.Fatal("monitor lost the full diagnostic or the confirmed state")
+	}
+}
+
+func TestSafetyObservationReportsUnconfirmedClose(t *testing.T) {
+	s, gate := grantedToolUpdateServer(t)
+	s.setJobForTest(Job{})
+	dir := t.TempDir()
+	if err := writePrivate(filepath.Join(dir, "eden-gate.json"), map[string]string{"socket": filepath.Join(dir, "absent.sock"), "token": strings.Repeat("a", 64), "run_id": gate.Status().RunID}); err != nil {
+		t.Fatal(err)
+	}
+	client, err := eden.OpenGateClient(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.finishSafetyObservation(t.Context(), client, gate.Status(), "", strings.Repeat("连接失败。", 30), true)
+	if gate.Status().Mode != eden.GateOpen {
+		t.Fatal("fixture unexpectedly closed the gate")
+	}
+	if s.safety.Gate != nil || !strings.Contains(s.safety.Error, "未能确认外网已关闭") || strings.Contains(s.safety.Error, "外网已暂停") {
+		t.Fatalf("transport failure claimed confirmed closure: %+v", s.safety)
+	}
+}
+
 func TestMonitorTimingRecordsRenewalAndSkips(t *testing.T) {
 	s, gate := grantedToolUpdateServer(t)
 	client, err := s.gateClient()
@@ -202,7 +239,7 @@ func TestNetworkMonitorRecordsAllOuterStages(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("missing network round: %v", records)
 	}
-	for _, stage := range []string{"physical_interface", "proxy_health", "safety", "recovery", "subscriptions"} {
+	for _, stage := range []string{"physical_interface", "proxy_health", "safety", "recovery"} {
 		if records[0][stage+"_ms"] == "" {
 			t.Fatalf("missing %s timing: %v", stage, records[0])
 		}

@@ -72,24 +72,28 @@ eden agent call account.create --input /private/path/account.json
 eden agent call account.unlock --input -
 ```
 
-`--input -` 读取一个完整 JSON 对象后等待 EOF。Agent 应通过子进程的标准输入传递凭据，或使用访问受限的临时文件并及时清理。不要把含密码的示例值、订阅链接或节点密钥写进共享日志、提交记录、聊天回显和 shell 历史。这个接口面向用户授权、在主机同一操作系统账户下运行的 Agent，权限与本机工作台一致；它不是给不受信任插件使用的受限远程接口。
+`--input -` 读取一个完整 JSON 对象后等待 EOF。Agent 应通过子进程的标准输入传递凭据，或使用访问受限的临时文件并及时清理。不要把密码或节点密钥写进共享日志、提交记录、聊天回显和 shell 历史。这个接口面向用户授权、在主机同一操作系统账户下运行的 Agent，权限与本机工作台一致；它不是给不受信任插件使用的受限远程接口。
 
-### 导入代理并确认出口
+### 添加代理节点并确认出口
 
-先读 `proxy.status`。已有可用来源时复用，避免重复导入。首次导入可用用户提供的订阅链接，也可用私有文件中的 Clash/Mihomo 配置或分享链接。
+先读 `proxy.status`，复用已有节点，避免重复添加。`nodes` 返回节点 ID、名称、协议、服务器与认证方式，密码和私钥仅返回是否已保存的标记。支持手动 HTTP CONNECT（`http`）、SOCKS5（`socks5`）和 SSH（`ssh`）节点；也可按[本机客户端转发说明](network.md#通过本机代理客户端转发)配置本机代理监听。
 
 ```json
-{"name":"我的代理","url":"https://用户自己的订阅地址","interval_hours":0,"host_download":true}
+{"node":{"name":"我的代理","type":"socks5","server":"用户提供的服务器","port":1080,"username":"用户提供的账号","password":"用户提供的密码"}}
 ```
 
 ```sh
-eden agent call proxy.import --input /private/path/subscription.json --wait 2m
+eden agent call proxy.add --input /private/path/node.json --wait 2m
 eden agent call proxy.status
 ```
 
-`host_download:true` 允许主机下载这份订阅，仅用于订阅获取。已有 Claude Eden 代理时，可省略它让订阅经过现有代理。订阅由用户提供，不自动提取其他软件的凭据。
+`proxy.add` 校验并保存一个节点，每次调用会创建新节点；响应结果不明确时先查询列表。保存节点不改变当前出口。凭据通过私有输入传递，不自动提取其他软件的凭据。
 
-从返回的来源和节点列表选择用户要求的出口；不要把订阅中的第一个节点当成用户已经同意的出口。
+SSH 节点增加 `auth_method`：密码使用 `password`，私钥使用 `private-key`。对应填写 `password` 或 `private_key`；加密私钥增加 `private_key_passphrase`，可信服务器公钥通过字符串数组 `host_key` 提供。私钥必须是完整内容，不是文件路径。
+
+`proxy.edit` 接收 `node_id` 与完整 `node` 元数据。同一协议和认证方式下，省略秘密字段保留原凭据，显式空字符串清除对应值；切换协议或认证方式须提供有效的新凭据。修改当前节点会重建网络连接并复检，人工暂停保持有效。
+
+从返回的节点列表选择用户要求的出口，每次只应用一个节点。
 
 ```json
 {"node_id":"proxy.status 返回的节点 ID"}
@@ -100,7 +104,9 @@ eden agent call proxy.select --input /private/path/selection.json --wait 2m
 eden agent call proxy.status
 ```
 
-链式代理使用 `proxy.route`，输入 `{"node_ids":["入口ID","最终出口ID"]}`，顺序为入口到出口。更新订阅使用 `proxy.refresh` 和已有来源 `id`；`proxy.import` 每次创建来源，不能盲目重试。成功应用代理只表示代理已准备好，客机启动后的安全检查还需单独验证。
+`proxy.delete` 接收 `node_id`；删除当前节点会停止核心并关闭外网，直到用户明确应用其他节点。`proxy.restart` 重启当前核心，`proxy.stop` 关闭代理和客机外网。网络故障处理必须遵守[客机网络硬规则](network.md#客机网络硬规则)。
+
+保存成功表示节点格式和核心配置通过校验。应用节点后，用 `settings.get` 读取完整设置，将返回的设置对象传给 `settings.probe`，通过所选代理发起真实 HTTPS 请求并核对出口 IP 和位置。分别报告配置校验、实际连通性和出口验证结果；客机启动后继续核对 `network.check` 和当前联网授权。
 
 ### 准备环境并打开项目
 
@@ -196,7 +202,7 @@ eden agent job 012345abcdef --wait 30m
 eden agent diagnostics --output /absolute/path/eden-diagnostics.zip
 ```
 
-诊断导出在后台不可用时也能收集主机日志；可连接时尝试补充客机信息。使用新的输出文件名，已有文件会保留。诊断包经过现有脱敏流程，分享前仍由用户决定。不要把原始配置、订阅地址、密钥、账户文件或虚拟机磁盘作为诊断附件自动上传。
+诊断导出在后台不可用时也能收集主机日志；可连接时尝试补充客机信息。使用新的输出文件名，已有文件会保留。诊断包经过现有脱敏流程，分享前仍由用户决定。不要把原始配置、密钥、账户文件或虚拟机磁盘作为诊断附件自动上传。
 
 更新组件用 `environment.update`，更新工具用 `environment.tools`，均可通过作业接口跟踪。`environment.stop` 会终止环境内活动任务，保留磁盘和登录资料。应用升级、跨版本回滚及卸载仍遵循[维护与数据指南](maintenance.md)，以安装器和系统包管理器为入口。
 

@@ -116,10 +116,10 @@ for (const scenario of ["connect", "prepare-failed", "candidate-failed", "commit
     assert.equal(await page.getByRole("button", { name: "SSH 主机", exact: true }).count(), 0);
     await page.screenshot({ path: `${output}/${scenario}-connected.png` });
     state.status.ready = state.status.vm_running = true;
-    await page.getByRole("heading", { name: "Eden 环境已就绪", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Claude Eden 环境已就绪", exact: true }).waitFor();
     await page.waitForFunction(() => Boolean(window.edenWorkbenchAction));
     await page.evaluate(() => window.edenNativeAction("quit"));
-    const quit = page.getByRole("dialog", { name: "退出 Eden", exact: true });
+    const quit = page.getByRole("dialog", { name: "退出 Claude Eden", exact: true });
     await quit.getByRole("button", { name: "取消", exact: true }).click();
     assert.ok(!calls.some(call => ["/client/hosts", "/client/connect"].includes(call.path)));
     assert.equal(state.requests.filter(request => request.path === "/start").length, 0, "connecting must not install or start the guest");

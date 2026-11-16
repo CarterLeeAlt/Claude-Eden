@@ -31,7 +31,7 @@ export async function createPrivacyController({ preferences, headless = true } =
   const origin = `http://localhost:${site.address().port}`;
   let agent, control, stderr = '';
   const waitFor = async (read, label) => {
-    const deadline = Date.now() + 15000;
+    const deadline = Date.now() + Number(process.env.EDEN_BROWSER_TEST_TIMEOUT_MS || 15000);
     while (Date.now() < deadline) {
       if (agent && agent.exitCode !== null) throw new Error(`Controller exited: ${stderr}`);
       const value = await read();
@@ -58,21 +58,25 @@ export async function createPrivacyController({ preferences, headless = true } =
   };
   const stop = async () => {
     if (agent?.exitCode === null) {
-      const done = once(agent, 'exit'); agent.kill('SIGTERM');
+      const done = once(agent, 'close'); agent.kill('SIGTERM');
       const kill = setTimeout(() => agent.kill('SIGKILL'), 5000);
-      await done; clearTimeout(kill);
+      const [code, signal] = await done; clearTimeout(kill);
+      assert.equal(signal, null, `Controller required forced shutdown: ${stderr}`);
+      assert.equal(code, 0, `Controller shutdown failed: ${stderr}`);
     }
   };
   const close = async () => {
-    await stop();
-    site.closeAllConnections();
-    await new Promise(resolve => site.close(resolve));
-    await rm(directory, { recursive: true, force: true });
+    try { await stop(); }
+    finally {
+      site.closeAllConnections();
+      await new Promise(resolve => site.close(resolve));
+      await rm(directory, { recursive: true, force: true });
+    }
   };
   try {
     const sourceDirectory = new URL('../internal/eden/', import.meta.url);
     for (const name of await readdir(sourceDirectory))
-      if ((name.startsWith('browser-') && name.endsWith('.mjs')) || name === 'display-density.mjs' || name === 'native-input.mjs' || name === 'tailnet-client.mjs' || name === 'browser-extension-archive.py')
+      if ((name.endsWith('.mjs') && !name.endsWith('.test.mjs')) || name === 'browser-extension-archive.py')
         await cp(new URL(name, sourceDirectory), join(directory, name));
     await cp(new URL('split-extension', sourceDirectory), join(directory, 'extension'), { recursive: true });
     const source = await readFile(new URL('browser-agent.mjs', sourceDirectory), 'utf8');

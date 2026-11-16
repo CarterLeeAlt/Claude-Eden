@@ -50,7 +50,7 @@ func (s *Server) audio(w http.ResponseWriter, r *http.Request) {
 	available := !s.closing && !s.guestUpdateRequired
 	s.mu.Unlock()
 	if !available || !s.vmRunning() {
-		http.Error(w, "请先启动并更新 Eden 环境", http.StatusConflict)
+		http.Error(w, "请先启动并更新 Claude Eden 环境", http.StatusConflict)
 		return
 	}
 	if !websocket.IsWebSocketUpgrade(r) {
@@ -68,7 +68,12 @@ func (s *Server) audio(w http.ResponseWriter, r *http.Request) {
 	defer func() { s.mu.Lock(); s.audioClients--; s.mu.Unlock() }()
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	cmd := s.sshCommand(ctx, "-T", s.sshTarget(), "--", audioCaptureCommand)
+	command, err := s.linuxTemplate(audioCaptureCommand)
+	if err != nil {
+		http.Error(w, "音频创建配置无效", http.StatusConflict)
+		return
+	}
+	cmd := s.sshCommand(ctx, "-T", s.sshTarget(), "--", command)
 	pipe, err := cmd.StdoutPipe()
 	if err != nil {
 		http.Error(w, "声音连接未能建立", http.StatusBadGateway)

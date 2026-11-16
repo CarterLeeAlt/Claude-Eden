@@ -17,28 +17,35 @@ for (const platform of ["windows"]) {
     clientContext: { mode: "local", connection_id: "local", client_platform: platform, server_platform: platform, connection: { state: "disconnected" } },
   });
   const { page, state } = f;
-  const saved = { active: false, sources: [], port: 17896, core_available: true };
+    const saved = { active: false, selected: "", nodes: [], port: 17896, core_available: true, state_label: "尚未配置" };
   const submissions = [];
   let fail = false;
   try {
     await page.route("**/api/proxy", r => r.fulfill({ json: saved }));
-    await page.route("**/api/proxy/import", r => {
+    await page.route("**/api/proxy/add", r => {
       const body = r.request().postDataJSON();
-      const node = JSON.parse(body.content).proxies[0];
+      const node = body.node;
       submissions.push({ body, node });
-      const job = { id: "manual-" + submissions.length, running: false, error: fail ? "测试核心拒绝配置" : "", message: "已导入" };
+      const job = { id: "manual-" + submissions.length, running: false, error: fail ? "测试核心拒绝配置" : "", message: "已保存" };
       state.status.job = job;
-      if (!fail) saved.sources.push({ id: job.id, name: body.name, nodes: [{ id: job.id, name: node.name, type: node.type }], remote: false, updated_at: new Date().toISOString() });
+      if (!fail) {
+        const { password, private_key, private_key_passphrase, ...metadata } = node;
+        saved.nodes.push({ ...metadata, id: job.id, has_password: Boolean(password), has_private_key: Boolean(private_key), has_private_key_passphrase: Boolean(private_key_passphrase) });
+      }
       return r.fulfill({ json: job });
+    });
+    await page.route("**/api/proxy/edit", r => {
+      const body = r.request().postDataJSON();
+      submissions.push({ body, node: body.node });
+      state.status.job = { id: "edit-" + submissions.length, running: false, error: "", message: "已保存" };
+      return r.fulfill({ json: state.status.job });
     });
     await page.getByRole("button", { name: /^设置/ }).click();
     await page.getByRole("button", { name: "网络与代理", exact: true }).click();
-    await page.getByRole("tab", { name: "订阅", exact: true }).click();
     const open = async () => {
-      await page.getByRole("button", { name: "添加来源", exact: true }).click();
-      await page.getByRole("button", { name: "手动节点", exact: true }).click();
+      await page.getByRole("button", { name: "添加节点", exact: true }).click();
     };
-    const submit = page.getByRole("button", { name: "导入并验证", exact: true });
+    const submit = page.getByRole("button", { name: "保存并验证", exact: true });
     const protocol = page.getByRole("combobox", { name: "协议", exact: true });
     const auth = page.getByRole("combobox", { name: "认证方式", exact: true });
     const server = page.getByLabel("服务器", { exact: true });
@@ -49,7 +56,7 @@ for (const platform of ["windows"]) {
     const passphrase = () => page.getByLabel("私钥口令（可选）", { exact: true });
     const hostKey = () => page.getByLabel("服务器公钥（可选，建议填写）", { exact: true });
     const top = locator => locator.evaluate(el => el.offsetTop);
-    const waitDone = () => page.locator(".proxy-import").waitFor({ state: "hidden" });
+    const waitDone = () => page.locator(".proxy-node-editor").waitFor({ state: "hidden" });
     await open();
 
     // Both pointer and keyboard open an in-flow list and restore the layout.
@@ -57,7 +64,9 @@ for (const platform of ["windows"]) {
     await protocol.click();
     await page.getByRole("listbox", { name: "协议选项", exact: true }).waitFor();
     assert.ok(await top(server) > before, "opening the protocol list must push later fields down");
-    assert.equal(await page.getByRole("listbox").evaluate(el => getComputedStyle(el).position), "static");
+    const listBounds = await page.getByRole("listbox").boundingBox();
+    const serverBounds = await server.boundingBox();
+    assert.ok(serverBounds.y >= listBounds.y + listBounds.height, "expanded protocol choices must not overlap later fields");
     await protocol.press("Escape");
     assert.equal(await top(server), before);
     assert.equal(await protocol.evaluate(el => el === document.activeElement), true);
@@ -84,12 +93,12 @@ for (const platform of ["windows"]) {
     await hostKey().fill("ssh-ed25519 fixture-first\n\nssh-rsa fixture-second\n");
     await submit.click();
     await waitDone();
-    assert.deepEqual(submissions.at(-1).node, { name: "固定出口", type: "ssh", server: "203.0.113.10", port: 2222, username: "admin", password: "fixture-password", "host-key": ["ssh-ed25519 fixture-first", "ssh-rsa fixture-second"] });
-    assert.equal(submissions.at(-1).body.interval_hours, 0);
+    assert.deepEqual(submissions.at(-1).node, { name: "固定出口", type: "ssh", server: "203.0.113.10", port: 2222, username: "admin", auth_method: "password", password: "fixture-password", host_key: ["ssh-ed25519 fixture-first", "ssh-rsa fixture-second"] });
+    assert.deepEqual(Object.keys(submissions.at(-1).body), ["node"]);
 
     await open();
     assert.equal(await protocol.innerText(), "SOCKS5");
-    assert.equal(await password().inputValue(), "", "successful imports clear credentials");
+    assert.equal(await password().inputValue(), "", "successful saves clear credentials");
     await chooseInline(protocol, "ssh");
     await page.getByLabel("节点名称", { exact: true }).fill("私钥出口");
     await server.fill("203.0.113.11");
@@ -106,11 +115,11 @@ for (const platform of ["windows"]) {
     await page.getByRole("region", { name: "设置", exact: true }).getByRole("alert").filter({ hasText: "测试核心拒绝配置" }).waitFor();
     assert.equal(await key().inputValue(), privateKey, "failed validation keeps the draft for retry");
     assert.equal(await passphrase().inputValue(), "fixture-passphrase");
-    assert.equal(saved.sources.length, 1);
+    assert.equal(saved.nodes.length, 1);
     fail = false;
     await submit.click();
     await waitDone();
-    assert.deepEqual(submissions.at(-1).node, { name: "私钥出口", type: "ssh", server: "203.0.113.11", port: 22, username: "key-user", "private-key": privateKey, "private-key-passphrase": "fixture-passphrase" });
+    assert.deepEqual(submissions.at(-1).node, { name: "私钥出口", type: "ssh", server: "203.0.113.11", port: 22, username: "key-user", auth_method: "private-key", private_key: privateKey, private_key_passphrase: "fixture-passphrase", host_key: [] });
 
     // Switching authentication or protocol never submits hidden credentials.
     await open();
@@ -131,8 +140,8 @@ for (const platform of ["windows"]) {
     await submit.click();
     await waitDone();
     assert.equal(submissions.at(-1).node.password, "chosen-password");
-    assert.equal("private-key" in submissions.at(-1).node, false);
-    assert.equal("private-key-passphrase" in submissions.at(-1).node, false);
+    assert.equal("private_key" in submissions.at(-1).node, false);
+    assert.equal("private_key_passphrase" in submissions.at(-1).node, false);
 
     for (const type of ["http", "socks5"]) {
       await open();
@@ -152,6 +161,33 @@ for (const platform of ["windows"]) {
       await waitDone();
       assert.deepEqual(submissions.at(-1).node, { name: type + "出口", type, server: "203.0.113.13", port: 8080, username: "proxy-user", password: "proxy-password" });
     }
+    await page.getByRole("button", { name: "编辑 固定出口", exact: true }).click();
+    assert.equal(await password().inputValue(), "", "saved passwords must not be sent to the editor");
+    assert.equal(await submit.isEnabled(), true, "unchanged saved credentials can be reused");
+    await submit.click(); await waitDone();
+    assert.equal("password" in submissions.at(-1).node, false, "blank edit preserves the saved password by omission");
+    assert.ok(submissions.at(-1).body.node_id);
+    await page.getByRole("button", { name: "编辑 私钥出口", exact: true }).click();
+    assert.equal(await key().inputValue(), "");
+    assert.equal(await passphrase().inputValue(), "");
+    await submit.click(); await waitDone();
+    assert.equal("private_key" in submissions.at(-1).node, false);
+    assert.equal("private_key_passphrase" in submissions.at(-1).node, false);
+    await page.getByRole("button", { name: "编辑 私钥出口", exact: true }).click();
+    await key().fill(privateKey);
+    await submit.click(); await waitDone();
+    assert.equal(submissions.at(-1).node.private_key, privateKey);
+    assert.equal(submissions.at(-1).node.private_key_passphrase, "", "replacement key clears an omitted old key passphrase");
+    await page.getByRole("button", { name: "编辑 http出口", exact: true }).click();
+    await username().fill("");
+    await submit.click(); await waitDone();
+    assert.equal(submissions.at(-1).node.password, "", "removing a proxy username explicitly clears its password");
+    for (const width of [820, 560]) {
+      await page.setViewportSize({ width, height: 900 });
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      await page.screenshot({ path: path.join(output, `${platform}-nodes-${width}.png`) });
+    }
+    await page.setViewportSize({ width: 1280, height: 1100 });
     await open();
     await chooseInline(protocol, "ssh");
     await chooseInline(auth, "private-key");

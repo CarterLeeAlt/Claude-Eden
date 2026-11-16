@@ -18,6 +18,8 @@ import (
 const browserResponseLimit = 1 << 20
 const browserOrigin = "http://127.0.0.1:18500"
 
+var errBrowserStarting = errors.New("浏览器仍在启动，请等待启动完成")
+
 // browserClient owns host connections to the guest browser controller. Closing
 // it cancels those connections; the guest browser process remains untouched.
 type browserClient struct {
@@ -88,7 +90,7 @@ func (c *browserClient) request(ctx context.Context, token, method, path string,
 	case "/audit", "/paste-image", "/tailnet":
 		timeout = 20 * time.Second
 	case "/editor-restart":
-		timeout = 30 * time.Second
+		timeout = 0 // Service readiness, request cancellation or client shutdown ends the wait.
 	case "/extensions":
 		timeout = 25 * time.Second
 	}
@@ -115,14 +117,17 @@ func (c *browserClient) request(ctx context.Context, token, method, path string,
 			Error string `json:"error"`
 		}
 		_ = json.Unmarshal(data, &result)
+		if response.StatusCode == http.StatusServiceUnavailable && result.Error == "Browser is starting" {
+			return nil, errBrowserStarting
+		}
 		known := map[string]string{
-			"Tab no longer exists": "标签页已关闭。请重新打开网页后再操作。",
-			"Browser is starting":  "浏览器仍在启动。请等待启动完成后再操作。",
-			"Input target changed": "接收内容的页面已切换。请回到原页面并重新点击输入框。",
-			"Image target changed": "接收图片的页面已切换。请回到原页面并重新点击输入框。",
-			"Copy target changed":  "要复制内容的页面已切换。请回到原页面重新复制。",
-			"Image too large":      "图片超过允许大小。请缩小图片后重新粘贴。",
-			"Invalid PNG":          "图片不是有效的 PNG 文件。请重新复制或导出图片。",
+			"Tab no longer exists":  "标签页已关闭。请重新打开网页后再操作。",
+			"Input target changed":  "接收内容的页面已切换。请回到原页面并重新点击输入框。",
+			"Input session expired": "输入法会话已结束。请重新点击输入框后输入。",
+			"Image target changed":  "接收图片的页面已切换。请回到原页面并重新点击输入框。",
+			"Copy target changed":   "要复制内容的页面已切换。请回到原页面重新复制。",
+			"Image too large":       "图片超过允许大小。请缩小图片后重新粘贴。",
+			"Invalid PNG":           "图片不是有效的 PNG 文件。请重新复制或导出图片。",
 			"Only HTTP(S) URLs without credentials are accepted":         "网址中包含账号或密码。请使用不带登录凭据的 http 或 https 网址。",
 			"Only HTTP(S) URLs and supported browser pages are accepted": "不支持这个网址类型。请使用 http 或 https 网址。",
 			"Unknown browser action":                                     "浏览器组件不支持这次操作。请更新环境组件后再试。",

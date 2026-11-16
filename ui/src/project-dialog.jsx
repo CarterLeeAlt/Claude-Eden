@@ -115,7 +115,7 @@ export function ProjectDialog({
           <span className="save-note">
             {busy
               ? submitting ? removeTarget ? "正在移除项目…" : "正在连接项目…" : status.job?.message
-              : adding ? editing ? "会话历史保留" : "首个文件夹为默认目录" : "使用已授权的 Eden 项目"}
+              : adding ? editing ? "会话历史保留" : "首个文件夹为默认目录" : "使用已授权的 Claude Eden 项目"}
           </span>
           <button disabled={busy} onClick={onClose}>
             取消
@@ -141,7 +141,7 @@ export function ProjectDialog({
         className="modal-body project-form"
         onSubmit={open}
       >
-        <p>{adding ? "为项目命名，并添加需要一起使用的文件夹。" : activate ? "选择要打开的项目，或添加新项目。" : "从 Eden 项目列表选择工作目录。新项目由 Eden 授权并共享。"}</p>
+        <p>{adding ? "为项目命名，并添加需要一起使用的文件夹。" : activate ? "选择要打开的项目，或添加新项目。" : "从 Claude Eden 项目列表选择工作目录。新项目由 Claude Eden 授权并共享。"}</p>
         {!adding && <>
           <fieldset className="project-picker-list" disabled={busy || Boolean(removeTarget)}>
             <legend>项目</legend>
@@ -157,7 +157,7 @@ export function ProjectDialog({
               </label>
               {path === project && !removeTarget && <div className="project-picker-actions">
                 {selectedGroup && <button type="button" className="icon-button" aria-label="编辑名称与文件夹…" disabled={busy || !status.ready} onClick={edit}><PencilLine size={16} aria-hidden="true" /></button>}
-                {activate && <button type="button" className="icon-button project-picker-remove" aria-label="从 Eden 移除此项目" disabled={busy} onClick={() => { setRemoveTarget(path); setError(""); setRecovery(""); }}><FolderMinus size={16} aria-hidden="true" /></button>}
+                {activate && <button type="button" className="icon-button project-picker-remove" aria-label="从 Claude Eden 移除此项目" disabled={busy} onClick={() => { setRemoveTarget(path); setError(""); setRecovery(""); }}><FolderMinus size={16} aria-hidden="true" /></button>}
               </div>}
             </div>)}
           </fieldset>
@@ -206,7 +206,7 @@ export function ProjectDialog({
         {adding && <p className="field-help">Claude 从默认文件夹启动，并可读写其余绑定文件夹。修改绑定后，新建或重新打开会话生效。{editing && "默认文件夹用于关联会话历史，需保留。解绑前请关闭项目的终端、运行中会话和编辑器。"}</p>}
         <p className="field-help project-picker-note">
           <span>绑定文件夹中的改动会直接写入本机。</span>
-          <span>所有项目共用 Eden 环境，已有终端和网页会保持运行。</span>
+          <span>所有项目共用 Claude Eden 环境，已有终端和网页会保持运行。</span>
         </p>
         {!status.ready && <p className="field-help">环境就绪后可添加或打开项目。已有项目仍可从列表移除。</p>}
         {error && (

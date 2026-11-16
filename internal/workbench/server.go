@@ -78,6 +78,7 @@ type Server struct {
 	preferences                                      Preferences
 	jobs                                             jobManager
 	ready                                            bool
+	environmentGeneration                            uint64
 	location                                         *Location
 	exitProbeError                                   string
 	locationError                                    string
@@ -300,7 +301,7 @@ func (s *Server) handler() http.Handler {
 			return
 		}
 		if !s.consumeTicket(v.Token) {
-			http.Error(w, "访问凭证无效，请从 Eden 应用重新打开。", http.StatusUnauthorized)
+			http.Error(w, "访问凭证无效，请从 Claude Eden 应用重新打开。", http.StatusUnauthorized)
 			return
 		}
 		http.SetCookie(w, &http.Cookie{Name: s.cookieName(), Value: s.session, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 86400 * 30})
@@ -330,6 +331,9 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("POST /api/projects/remove", s.removeProject)
 	mux.HandleFunc("POST /api/projects/refresh", s.refreshProjectFiles)
 	mux.HandleFunc("GET /api/environment/versions", s.environmentVersions)
+	mux.HandleFunc("POST /api/environment/device-check", s.deviceCheck)
+	mux.HandleFunc("GET /api/environment/guest-profile", s.guestProfileOptions)
+	mux.HandleFunc("POST /api/environment/guest-profile/preview", s.guestProfileOptions)
 	s.registerCacheMaintenance(mux)
 	mux.HandleFunc("GET /api/environment/guest-systems", s.guestInstallation)
 	mux.HandleFunc("GET /api/environment/storage", s.environmentStorage)
@@ -443,7 +447,7 @@ func (s *Server) handler() http.Handler {
 		if strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/api/session" && r.URL.Path != "/api/launch" && r.URL.Path != "/api/handoff" {
 			c, e := r.Cookie(s.cookieName())
 			if e != nil || !equalSecret(c.Value, s.session) {
-				http.Error(w, "请从 Eden 应用重新打开工作台", 401)
+				http.Error(w, "请从 Claude Eden 应用重新打开工作台", 401)
 				return
 			}
 		}
@@ -461,7 +465,7 @@ func (s *Server) handler() http.Handler {
 		}
 		ctx, finish, err := s.beginActivity(r.Context())
 		if err != nil {
-			http.Error(w, "后台正在更新，请重新打开 Eden。", http.StatusServiceUnavailable)
+			http.Error(w, "后台正在更新，请重新打开 Claude Eden。", http.StatusServiceUnavailable)
 			return
 		}
 		defer finish()
@@ -472,7 +476,7 @@ func (s *Server) handler() http.Handler {
 		if strings.HasPrefix(r.URL.Path, "/api/") && !accountRoute && !bootstrapRoute && !strings.HasPrefix(r.URL.Path, "/api/diagnostics") && !(r.Method == "GET" && r.URL.Path == "/api/appearance") {
 			epoch, unlocked := s.account.accessFor(trustedDesktop)
 			if !unlocked {
-				http.Error(w, "Eden 已锁定，请先登录", http.StatusLocked)
+				http.Error(w, "Claude Eden 已锁定，请先登录", http.StatusLocked)
 				return
 			}
 			ctx, cancel := context.WithCancel(r.Context())
@@ -665,6 +669,12 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 	if r.ContentLength != 0 && !readJSON(w, r, &input) {
 		return
 	}
+	if input.GuestProfile != nil {
+		if err := input.GuestProfile.Validate(); err != nil {
+			requestError(w, err)
+			return
+		}
+	}
 	if input.System != "" && input.System != "debian-13" {
 		http.Error(w, "当前版本仅支持 Debian 13 客户机", http.StatusBadRequest)
 		return
@@ -693,6 +703,9 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.launch(w, "start", func() error {
+		if err := s.prepareGuestProfile(input.GuestProfile); err != nil {
+			return err
+		}
 		if err := s.prepareEnvironment(); err != nil {
 			return err
 		}

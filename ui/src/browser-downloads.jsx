@@ -130,10 +130,10 @@ export function useDesktopFiles(ready, onStatus, desktopVisible) {
               await api("/input/files/desktop/open", {
                 id: request.id,
                 stage: "complete",
-                error: "请在 Eden 桌面应用中打开文件",
+                error: "请在 Claude Eden 桌面应用中打开文件",
               });
               throw new Error(
-                "请在 Eden 桌面应用中打开文件，或从下载列表保存文件",
+                "请在 Claude Eden 桌面应用中打开文件，或从下载列表保存文件",
               );
             }
             await native("desktopFileAction", { id: request.id });

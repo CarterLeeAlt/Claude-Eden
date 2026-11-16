@@ -19,7 +19,7 @@ RUN="/run"
 if [ "${UNAME}" != "Linux" ]; then
 	RUN="/var/run"
 fi
-rm -f "${RUN}/lima-boot-done"
+rm -f "${RUN}/lima-boot-done" "${RUN}/lima-boot-failed"
 
 # A boot script that reboots the guest creates this file first, so that the rest
 # of this script knows the guest is on its way down.
@@ -29,6 +29,7 @@ rm -f "${LIMA_REBOOT_REQUIRED}"
 
 # shellcheck disable=SC2163
 while read -r line; do [ -n "$line" ] && export "$line"; done <"${LIMA_CIDATA_MNT}"/lima.env
+trap 'status=$?; if [ "$status" -ne 0 ]; then echo "${LIMA_CIDATA_IID}" >"${RUN}/lima-boot-failed"; fi' EXIT
 # shellcheck disable=SC2163
 while read -r line; do [ -n "$line" ] && export "$line"; done <"${LIMA_CIDATA_MNT}"/param.env
 
@@ -249,7 +250,9 @@ fi
 # A pending reboot suppresses the signal, because the reboot is asynchronous
 # and the host agent would otherwise call the guest ready while sshd is
 # already going down.
-if [ -e "${LIMA_REBOOT_REQUIRED}" ]; then
+if [ "${CODE}" -ne 0 ]; then
+	WARNING "Boot scripts failed; not signaling readiness"
+elif [ -e "${LIMA_REBOOT_REQUIRED}" ]; then
 	INFO "Not signaling boot completion because a boot script requested a reboot"
 else
 	echo "${LIMA_CIDATA_IID}" >"${RUN}/lima-boot-done"

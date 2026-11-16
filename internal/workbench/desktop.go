@@ -44,8 +44,8 @@ const (
 	controllerVMRequestTimeout = 8 * time.Second
 	// Release probes once for its decision and once more before handing off.
 	controllerReleaseRequestTimeout = 11 * time.Second
-	// Connecting may start a controller and then wait for its first status.
-	localBootstrapTimeout = controllerVMRequestTimeout + 12*time.Second
+	// Cleanup of a cancelled local selection has a separate bounded wait.
+	localReleaseTimeout = controllerVMRequestTimeout + 12*time.Second
 )
 
 // controllerRequestBudget extends the client timeout only for the requests
@@ -85,6 +85,13 @@ func openController(profile string) (*controllerClient, error) {
 }
 
 func connectController(profile string) (*controllerClient, error) {
+	return connectControllerContext(context.Background(), profile)
+}
+
+func connectControllerContext(ctx context.Context, profile string) (*controllerClient, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if controllerLockFree(profile) {
 		return nil, errControllerUnavailable
 	}
@@ -96,7 +103,13 @@ func connectController(profile string) (*controllerClient, error) {
 		return nil, err
 	}
 	record := c.record
-	status, err := c.call("POST", "/api/launch", map[string]string{"token": record.Token}, &c.launch)
+	// A new controller acquires the lock before replacing a crashed owner's
+	// record. Do not authenticate that dead owner's reused port while it starts.
+	if !processExists(record.PID) {
+		c.close()
+		return nil, errControllerUnavailable
+	}
+	status, err := c.callContext(ctx, "POST", "/api/launch", map[string]string{"token": record.Token}, &c.launch)
 	if err != nil {
 		c.close()
 		var networkError *url.Error
@@ -145,7 +158,7 @@ func (c *controllerClient) setTrustedViewCookie(origin *url.URL) {
 // spawning a replacement against an occupied lock.
 func waitControllerReady(ctx context.Context, profile string) (*controllerClient, error) {
 	for {
-		c, err := connectController(profile)
+		c, err := connectControllerContext(ctx, profile)
 		if !errors.Is(err, errControllerUnavailable) {
 			return c, err
 		}
@@ -158,7 +171,7 @@ func waitControllerReady(ctx context.Context, profile string) (*controllerClient
 		}
 		select {
 		case <-ctx.Done():
-			return nil, errors.New("本机后台尚未退出或仍未响应，请稍后重试")
+			return nil, ctx.Err()
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
@@ -210,21 +223,19 @@ func pendingUpdate(c *controllerClient) DesktopResult {
 // Desktop never silently loads a different build's UI. Completing an update is
 // an explicit user action because it stops the existing environment's work.
 func Desktop(configPath string, options DesktopOptions) (DesktopResult, error) {
-	return desktopLaunch(filepath.Dir(configPath), false, options, func() error { return startController(configPath) })
+	return desktopLaunch(context.Background(), filepath.Dir(configPath), false, options, func() (<-chan error, error) { return startController(configPath) })
 }
 
-func desktopLaunch(profile string, gateway bool, options DesktopOptions, start func() error) (DesktopResult, error) {
+func desktopLaunch(ctx context.Context, profile string, gateway bool, options DesktopOptions, start func() (<-chan error, error)) (DesktopResult, error) {
 	want, err := currentController()
 	if err != nil {
 		return DesktopResult{}, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
-	defer cancel()
 	current, err := waitControllerReady(ctx, profile)
 	if err == nil {
 		defer current.close()
 		if current.launch.DesktopGateway != gateway {
-			return DesktopResult{}, errors.New("此目录已被另一种 Eden 服务使用，请核对配置路径")
+			return DesktopResult{}, errors.New("此目录已被另一种 Claude Eden 服务使用，请核对配置路径")
 		}
 		if options.CompleteUpdate {
 			if current.launch.DesktopGateway {
@@ -259,24 +270,44 @@ func desktopLaunch(profile string, gateway bool, options DesktopOptions, start f
 	} else if !errors.Is(err, errControllerUnavailable) {
 		return DesktopResult{}, err
 	}
-	if err = start(); err != nil {
+	exited, err := start()
+	if err != nil {
 		return DesktopResult{}, err
 	}
-	for i := 0; i < 60; i++ {
-		c, readErr := connectController(profile)
-		if readErr == nil {
-			c.close()
-			if c.launch.DesktopGateway != gateway {
-				return DesktopResult{}, errors.New("打开期间控制服务身份发生变化，请重新选择")
-			}
-			if want.matches(c.launch.Controller) {
-				return DesktopResult{Status: "ready", URL: c.launch.URL, Controller: c.launch.Controller}, nil
-			}
-			return pendingUpdate(c), nil
-		}
-		time.Sleep(200 * time.Millisecond)
+	c, err := waitStartedController(ctx, profile, exited)
+	if err != nil {
+		return DesktopResult{}, err
 	}
-	return DesktopResult{}, errors.New("工作台未能启动，请查看私有配置中的 control.log 后重试。")
+	defer c.close()
+	if c.launch.DesktopGateway != gateway {
+		return DesktopResult{}, errors.New("打开期间控制服务身份发生变化，请重新选择")
+	}
+	if want.matches(c.launch.Controller) {
+		return DesktopResult{Status: "ready", URL: c.launch.URL, Controller: c.launch.Controller}, nil
+	}
+	return pendingUpdate(c), nil
+}
+
+func waitStartedController(ctx context.Context, profile string, exited <-chan error) (*controllerClient, error) {
+	for {
+		c, readErr := connectControllerContext(ctx, profile)
+		if readErr == nil {
+			return c, nil
+		}
+		if !errors.Is(readErr, errControllerUnavailable) {
+			return nil, readErr
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case err := <-exited:
+			if err == nil {
+				err = errors.New("进程已退出")
+			}
+			return nil, fmt.Errorf("工作台后台在就绪前退出，请查看私有配置中的 control.log：%w", err)
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 }
 
 // PrepareUpdate is shared by the explicit migration button and the installer.
@@ -341,7 +372,7 @@ func PrepareUpdate(configPath string, stop bool) (DesktopResult, error) {
 }
 func (c *controllerClient) stopAndHandoff() error {
 	if c.launch.Controller.Protocol != controlProtocol {
-		return errors.New("当前后台协议不受此版本支持，已保留运行环境。请使用匹配的 Eden 版本停止环境。")
+		return errors.New("当前后台协议不受此版本支持，已保留运行环境。请使用匹配的 Claude Eden 版本停止环境。")
 	}
 	u, _ := url.Parse(c.launch.URL)
 	status, err := c.call("POST", "/api/session", map[string]string{"token": u.Fragment}, nil)
@@ -432,26 +463,32 @@ func (c *controllerClient) waitForExit() error {
 	}
 	return errors.New("后台尚未退出，未强制结束进程。请稍后重试更新。")
 }
-func startController(configPath string) error {
+func startController(configPath string) (<-chan error, error) {
 	exe, err := os.Executable()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	return startControllerExecutable(configPath, exe)
 }
 
-func startControllerExecutable(configPath, exe string, extraEnv ...string) error {
+func startControllerExecutable(configPath, exe string, extraEnv ...string) (<-chan error, error) {
 	profile := filepath.Dir(configPath)
 	if err := host.EnsurePrivateDir(profile); err != nil {
-		return err
+		return nil, err
 	}
 	cmd := exec.Command(exe, "log-relay", "controller")
 	cmd.Dir = profile
 	cmd.Env = append(os.Environ(), eden.ConfigEnv+"="+configPath)
 	cmd.Env = append(cmd.Env, extraEnv...)
 	detachController(cmd)
+	return startControllerCommand(cmd)
+}
+
+func startControllerCommand(cmd *exec.Cmd) (<-chan error, error) {
 	if err := cmd.Start(); err != nil {
-		return err
+		return nil, err
 	}
-	return cmd.Process.Release()
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait(); close(exited) }()
+	return exited, nil
 }

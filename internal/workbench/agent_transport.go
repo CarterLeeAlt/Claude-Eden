@@ -35,7 +35,7 @@ func agentConnectTarget(ctx context.Context, configPath string, target AgentTarg
 	path := desktopConfigPath(configPath)
 	c, err := connectController(filepath.Dir(path))
 	if err != nil {
-		return nil, &AgentError{Code: "service_unavailable", Message: "Open the Eden desktop before managing client configuration.", NextAction: "open_desktop"}
+		return nil, &AgentError{Code: "service_unavailable", Message: "Open the Claude Eden desktop before managing client configuration.", NextAction: "open_desktop"}
 	}
 	want, err := currentController()
 	if err != nil || !want.matches(c.launch.Controller) || !c.launch.DesktopGateway || filepath.Clean(c.launch.ConfigPath) != filepath.Clean(path) {

@@ -20,7 +20,7 @@ const { browser, page, errors } = await createWorkbench({
   },
 });
 try {
-  await page.getByRole("button", { name: "启动 Eden 环境", exact: true }).click();
+  await page.getByRole("button", { name: "启动 Claude Eden 环境", exact: true }).click();
   await page.getByRole("button", { name: "新建终端", exact: true }).first().click();
   await page.getByRole("menuitem", { name: "普通终端", exact: true }).click();
   await page.getByText("$", { exact: true }).first().waitFor();

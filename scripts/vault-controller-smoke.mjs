@@ -21,7 +21,8 @@ await new Promise(resolve => site.listen(0, "127.0.0.1", resolve));
 const origin = `https://127.0.0.1:${site.address().port}`;
 let agent, control, stderr = "";
 async function waitFor(fn, label) {
-  for (let i=0;i<150;i++) { if (agent?.exitCode !== null) throw new Error("Controller exited: " + stderr.slice(-1000)); const result=await fn(); if(result) return result; await delay(50); }
+  const deadline=Date.now()+Number(process.env.EDEN_BROWSER_TEST_TIMEOUT_MS||7500);
+  while(Date.now()<deadline) { if (agent?.exitCode !== null) throw new Error("Controller exited: " + stderr.slice(-1000)); const result=await fn(); if(result) return result; await delay(50); }
   throw new Error("Timed out: " + label);
 }
 async function api(path, input) {
@@ -37,7 +38,7 @@ async function evaluate(id, expression) {
 }
 try {
   const sourceDir=new URL("../internal/eden/",import.meta.url);
-  for(const name of await readdir(sourceDir)) if ((name.startsWith("browser-")&&name.endsWith(".mjs"))||name==="native-input.mjs") await cp(new URL(name,sourceDir),join(dir,name));
+  for(const name of await readdir(sourceDir)) if (name.endsWith(".mjs")&&!name.endsWith(".test.mjs")) await cp(new URL(name,sourceDir),join(dir,name));
   await cp(new URL("split-extension",sourceDir),join(dir,"extension"),{recursive:true});
   const original=await readFile(new URL("browser-agent.mjs",sourceDir),"utf8");
   const marker='const input = JSON.parse(text || "{}");';
@@ -79,7 +80,7 @@ try {
   assert.ok((await vault({action:"candidate",candidate:pending.id})).vaultError);
   console.log("PASS: production controller HTTPS capture/fill, private authentication, public-state redaction, navigation and lock");
 } finally {
-  if(agent?.exitCode===null){const exit=once(agent,"exit");agent.kill("SIGTERM");const timer=setTimeout(()=>agent.kill("SIGKILL"),5000);await exit;clearTimeout(timer);}
+  if(agent?.exitCode===null){const exit=once(agent,"close");agent.kill("SIGTERM");const timer=setTimeout(()=>agent.kill("SIGKILL"),5000);await exit;clearTimeout(timer);}
   await new Promise(resolve=>site.close(resolve));
   await rm(dir,{recursive:true,force:true});
 }

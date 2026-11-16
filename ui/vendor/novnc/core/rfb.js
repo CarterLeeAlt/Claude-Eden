@@ -147,6 +147,7 @@ export default class RFB extends EventTargetMixin {
 
         this._supportsContinuousUpdates = false;
         this._enabledContinuousUpdates = false;
+        this._workbenchDisplayVisible = true;
 
         this._supportsSetDesktopSize = false;
         this._screenID = 0;
@@ -2661,6 +2662,25 @@ export default class RFB extends EventTargetMixin {
         return true;
     }
 
+    // Suspend framebuffer requests without discarding decoder/connection state.
+    // The authenticated host bridge handles display demand on this same wire.
+    workbenchSetVisible(visible) {
+        if (this._workbenchDisplayVisible === visible) return;
+        this._workbenchDisplayVisible = visible;
+        if (!visible) this.workbenchSuspendInput();
+        if (this._rfbConnectionState !== 'connected') return;
+        if (!visible && this._enabledContinuousUpdates) {
+            RFB.messages.enableContinuousUpdates(this._sock, false, 0, 0, this._fbWidth, this._fbHeight);
+            this._enabledContinuousUpdates = false;
+        }
+        this._sock.workbenchControl({ type: 'visibility', visible });
+        if (visible) {
+            this._enabledContinuousUpdates = this._supportsContinuousUpdates;
+            this._updateContinuousUpdates();
+            RFB.messages.fbUpdateRequest(this._sock, true, 0, 0, this._fbWidth, this._fbHeight);
+        }
+    }
+
     _normalMsg() {
         let msgType;
         if (this._FBU.rects > 0) {
@@ -2669,11 +2689,11 @@ export default class RFB extends EventTargetMixin {
             msgType = this._sock.rQshift8();
         }
 
-        let first, ret;
+        let ret;
         switch (msgType) {
             case 0:  // FramebufferUpdate
                 ret = this._framebufferUpdate();
-                if (ret && !this._enabledContinuousUpdates) {
+                if (ret && !this._enabledContinuousUpdates && this._workbenchDisplayVisible) {
                     RFB.messages.fbUpdateRequest(this._sock, true, 0, 0,
                                                  this._fbWidth, this._fbHeight);
                 }
@@ -2693,16 +2713,12 @@ export default class RFB extends EventTargetMixin {
                 return this._handleServerCutText();
 
             case 150: // EndOfContinuousUpdates
-                first = !this._supportsContinuousUpdates;
                 this._supportsContinuousUpdates = true;
                 this._enabledContinuousUpdates = false;
-                if (first) {
+                if (this._workbenchDisplayVisible) {
                     this._enabledContinuousUpdates = true;
                     this._updateContinuousUpdates();
                     Log.Info("Enabling continuous updates.");
-                } else {
-                    // FIXME: We need to send a framebufferupdaterequest here
-                    // if we add support for turning off continuous updates
                 }
                 return true;
 
@@ -3098,7 +3114,7 @@ export default class RFB extends EventTargetMixin {
     }
 
     _updateContinuousUpdates() {
-        if (!this._enabledContinuousUpdates) { return; }
+        if (!this._enabledContinuousUpdates || !this._workbenchDisplayVisible) { return; }
 
         RFB.messages.enableContinuousUpdates(this._sock, true, 0, 0,
                                              this._fbWidth, this._fbHeight);
@@ -3111,7 +3127,7 @@ export default class RFB extends EventTargetMixin {
         this._fbHeight = height;
 
         this._display.resize(this._fbWidth, this._fbHeight);
-        if (sizeChanged && this._display instanceof WorkbenchBrowserDisplay && this._rfbConnectionState === 'connected') {
+        if (sizeChanged && this._workbenchDisplayVisible && this._display instanceof WorkbenchBrowserDisplay && this._rfbConnectionState === 'connected') {
             // Refresh unchanged regions too, so the stretched preview is fully replaced.
             // The server answers a full request with its screen layout, which arrives
             // here again at the same size; asking once more would never stop.

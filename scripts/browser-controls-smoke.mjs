@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
-import { mkdtemp, readFile, writeFile, copyFile, cp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, writeFile, copyFile, cp, rm } from "node:fs/promises";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -60,7 +60,7 @@ async function listenEvents() {
   })().catch(error => { if (!eventController.signal.aborted) stderr += error.message; });
 }
 async function waitFor(read, label) {
-  const deadline = Date.now() + 15000;
+  const deadline = Date.now() + Number(process.env.EDEN_BROWSER_TEST_TIMEOUT_MS || 15000);
   while (Date.now() < deadline) {
     const value = await read();
     if (value) return value;
@@ -102,11 +102,13 @@ async function start() {
 }
 async function stop() {
   if (!agent || agent.exitCode !== null) return;
-  const exited = once(agent, "exit");
+  const exited = once(agent, "close");
   agent.kill("SIGTERM");
   const force = setTimeout(() => agent.kill("SIGKILL"), 5000);
-  await exited;
+  const [code, signal] = await exited;
   clearTimeout(force);
+  assert.equal(signal, null, `Controller required forced shutdown: ${stderr}`);
+  assert.equal(code, 0, `Controller shutdown failed: ${stderr}`);
 }
 try {
   // Redirect deployment paths and the control listener; keep host credentials
@@ -121,8 +123,9 @@ try {
     .replace("/etc/workbench/browser-control.json", join(directory, "control.json"))
     .replace('spawn(browserBinary, flags', 'spawn(browserBinary, [...flags, "--use-mock-keychain", "--password-store=basic"]')
     .replace(listen, 'server.listen(0, "127.0.0.1", () => console.log("CONTROL_PORT=" + server.address().port));'));
-  for (const name of ["browser-audit", "browser-downloads", "browser-uploads", "browser-login", "browser-private", "browser-cookies", "browser-extensions", "browser-vault", "browser-clipboard", "native-input"])
-    await copyFile(new URL(`../internal/eden/${name}.mjs`, import.meta.url), join(directory, `${name}.mjs`));
+  for (const name of await readdir(new URL("../internal/eden/", import.meta.url)))
+    if (name.endsWith(".mjs") && !name.endsWith(".test.mjs"))
+      await copyFile(new URL(`../internal/eden/${name}`, import.meta.url), join(directory, name));
   await cp(new URL("../internal/eden/split-extension", import.meta.url), join(directory, "split-extension"), { recursive: true });
   await writeFile(join(directory, "control.json"), JSON.stringify({ token, workspace: directory }));
   await writeFile(join(directory, "homepage.json"), JSON.stringify({ url: origin + "/first" }));
@@ -172,7 +175,9 @@ try {
   await api("/audit", { timezone: "UTC", network: false });
   const beforeRestart = reports.get("/third").visits;
   await stop();
+  await eventsDone;
   await start();
+  await listenEvents();
   await waitFor(() => reports.get("/third").visits > beforeRestart, "session restoration");
   assert.equal(reports.get("/third").cookie, true, "Browser cookies did not persist");
   assert.equal(reports.get("/third").webdriver, false);
@@ -195,7 +200,9 @@ try {
 } finally {
   eventController.abort();
   await eventsDone;
-  await stop();
-  await new Promise(resolve => site.close(resolve));
-  await rm(directory, { recursive: true, force: true });
+  try { await stop(); }
+  finally {
+    await new Promise(resolve => site.close(resolve));
+    await rm(directory, { recursive: true, force: true });
+  }
 }

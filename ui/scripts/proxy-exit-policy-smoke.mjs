@@ -1,25 +1,25 @@
 // Real settings interactions against isolated API fixtures; no user profile is used.
 import assert from 'node:assert/strict';
-import { createWorkbench, chooseInline } from './workbench-fixture.mjs';
+import { createWorkbench } from './workbench-fixture.mjs';
 const policies = {
  first: { mode:'static',scope:'country',ip:'1.1.1.1' },
  second: { mode:'static',scope:'country',ip:'8.8.4.4' },
 };
 const proxy = {
- sources:[{id:'home',name:'住宅代理',nodes:[{id:'first',name:'住宅节点001',type:'socks5'},{id:'second',name:'住宅节点003',type:'socks5'}]}],
- selected:'first',route:['first'],active:true,running:true,core_available:true,port:17896,state_label:'待启动环境',route_error:'',
+ nodes:[{id:'first',name:'住宅节点001',type:'socks5',server:'127.0.0.1',port:1080},{id:'second',name:'住宅节点003',type:'socks5',server:'127.0.0.1',port:1081}],
+ selected:'first',active:true,running:true,core_available:true,port:17896,state_label:'待启动环境',
 };
 let fail = false, sequence = 0;
 const f = await createWorkbench({beforeNavigate: async (page,state)=>{
  state.settings.exit_policy = {...policies.first};
  await page.route('**/api/proxy', r=>r.fulfill({json:proxy}));
- await page.route('**/api/proxy/route', r=>{
-  const ids=r.request().postDataJSON().node_ids;
+  await page.route('**/api/proxy/select', r=>{
+   const id=r.request().postDataJSON().node_id;
   if (!fail) {
-   proxy.selected=ids.at(-1); proxy.route=ids;
+    proxy.selected=id;
    state.settings.exit_policy={...policies[proxy.selected]};
   }
-  state.status.job={id:`route-${++sequence}`,kind:'proxy',running:false,error:fail?'代理启动失败；原节点已保留':'',message:'节点已应用'};
+   state.status.job={id:`select-${++sequence}`,kind:'proxy',running:false,error:fail?'代理启动失败；原节点已保留':'',message:'节点已应用'};
   return r.fulfill({json:{id:state.status.job.id}});
  });
 }});
@@ -32,7 +32,7 @@ try {
  const dns=page.getByLabel('加密 DNS',{exact:true});
  await dns.fill('https://dns.google/dns-query');
  const select=async(id)=>{
-  await chooseInline(page.getByRole('combobox',{name:'最终出口',exact:true}),id);
+   await page.getByRole('button',{name:`选择节点 ${proxy.nodes.find(node=>node.id===id).name}`,exact:true}).click();
   await page.getByRole('button',{name:'应用代理',exact:true}).click();
   await page.waitForFunction(()=>!document.querySelector('.proxy-progress'));
  };

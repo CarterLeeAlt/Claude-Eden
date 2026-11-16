@@ -21,7 +21,7 @@ if ! command -v xdg-mime >/dev/null; then
 fi
 sudo install -d -m 0755 /usr/local/share/applications
 printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Tailscale' 'NoDisplay=true' 'Exec=/usr/local/bin/workbench-open %u' 'MimeType=x-scheme-handler/tailscale;' | sudo tee /usr/local/share/applications/tailnet-login.desktop >/dev/null
-sudo -Hu browser xdg-mime default tailnet-login.desktop x-scheme-handler/tailscale
+sudo -H -u browser xdg-mime default tailnet-login.desktop x-scheme-handler/tailscale
 sudo tee /usr/local/bin/workbench-editor-start >/dev/null <<'SCRIPT'
 #!/bin/sh
 set -eu
@@ -32,12 +32,15 @@ sudo chmod 0755 /usr/local/bin/workbench-editor-start
 sudo tee /etc/systemd/system/workbench-editor.service >/dev/null <<'UNIT'
 [Unit]
 Description=Workbench file editor
+After=systemd-journald@workbench.service
 [Service]
 User=developer
 WorkingDirectory=/home/developer
 Environment=HOME=/home/developer
 EnvironmentFile=/etc/workbench/environment
 ExecStart=/usr/local/bin/workbench-log-run /usr/local/bin/workbench-editor-start
+ExecStartPost=/usr/bin/python3 /usr/local/lib/workbench-wait-services.py --editor
+TimeoutStartSec=infinity
 LogNamespace=workbench
 Restart=on-failure
 RestartSec=2
@@ -60,11 +63,15 @@ fi
 sudo tee /etc/systemd/system/workbench-display.service >/dev/null <<'UNIT'
 [Unit]
 Description=Workbench virtual browser display
+After=systemd-journald@workbench.service
 Wants=workbench-display-governor.service
 [Service]
 User=browser
 ExecStartPre=/usr/bin/rm -f /home/browser/.vnc/display.sock
 ExecStart=/usr/local/bin/workbench-log-run /usr/bin/Xtigervnc :77 -geometry 2880x1800 -depth 24 -rfbport 15900 -localhost -nolisten tcp -SecurityTypes VncAuth -PasswordFile /home/browser/.vnc/passwd -AlwaysShared
+# After= dependents may start only once the X server accepts connections.
+ExecStartPost=/usr/bin/python3 /usr/local/lib/workbench-wait-services.py --display :77
+TimeoutStartSec=infinity
 LogNamespace=workbench
 Restart=on-failure
 UNIT
@@ -81,7 +88,7 @@ sudo tee /etc/systemd/system/workbench-window-manager.service >/dev/null <<'UNIT
 [Unit]
 Description=Workbench window geometry and focus (no desktop shell)
 Requires=workbench-display.service
-After=workbench-display.service
+After=workbench-display.service systemd-journald@workbench.service
 [Service]
 User=browser
 Environment=DISPLAY=:77
@@ -93,7 +100,8 @@ sudo tee /etc/systemd/system/workbench-browser.service >/dev/null <<'UNIT'
 [Unit]
 Description=Workbench persistent browser
 Requires=workbench-display.service workbench-window-manager.service
-After=workbench-display.service workbench-window-manager.service
+Wants=workbench-editor.service workbench-audio.service
+After=workbench-display.service workbench-window-manager.service workbench-editor.service workbench-audio.service systemd-journald@workbench.service
 [Service]
 User=browser
 Environment=DISPLAY=:77
@@ -112,7 +120,7 @@ sudo tee /etc/systemd/system/workbench-display-governor.service >/dev/null <<'UN
 [Unit]
 Description=Workbench browser display pacing
 PartOf=workbench-display.service
-After=workbench-display.service
+After=workbench-display.service systemd-journald@workbench.service
 [Service]
 User=browser
 Environment=DISPLAY=:77
@@ -127,7 +135,7 @@ sudo tee /etc/systemd/system/workbench-webvnc.service >/dev/null <<'UNIT'
 [Unit]
 Description=Workbench browser web access
 Requires=workbench-display.service
-After=workbench-display.service
+After=workbench-display.service systemd-journald@workbench.service
 [Service]
 User=browser
 ExecStart=/usr/local/bin/workbench-log-run /usr/bin/websockify --web=/usr/local/share/workbench-webvnc 127.0.0.1:16080 127.0.0.1:15900
@@ -140,7 +148,7 @@ if ! grep -q 'WORKBENCH_PROMPT' /home/developer/.bashrc; then
   sudo tee -a /home/developer/.bashrc >/dev/null <<'PROMPT'
 # WORKBENCH_PROMPT
 if [ "${WORKBENCH_SESSION:-}" = 1 ]; then
-  PS1='\[\e[32m\]developer\[\e[0m\]:\[\e[34m\]\W\[\e[0m\]\$ '
+  PS1='\[\e[32m\]\u\[\e[0m\]:\[\e[34m\]\W\[\e[0m\]\$ '
 fi
 PROMPT
 fi

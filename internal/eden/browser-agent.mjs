@@ -1,6 +1,7 @@
 import { createTailnetClient } from "./tailnet-client.mjs";
 // Chromium is controlled through inherited pipes, never an exposed CDP port.
 import { spawn, execFile } from "node:child_process";
+import { authenticateEditor } from "./browser-editor.mjs";
 import { promisify } from "node:util";
 const runFile = promisify(execFile);
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, constants } from "node:fs";
@@ -72,6 +73,8 @@ const flags = [
   `--load-extension=${splitDirectory}`,
   "--user-data-dir=/home/browser/profile",
   "--remote-debugging-pipe",
+  // This guest service outlives its last window; Browser.close owns shutdown.
+  "--keep-alive-for-test",
   // The pipe carries user interaction. Set this before any document is created
   // so normal pages, login popups and private contexts share the native getter.
   "--disable-blink-features=AutomationControlled",
@@ -98,6 +101,8 @@ let sequence = 0,
   activeId = "",
   ready = false;
 let shuttingDown = false;
+const startupCancellation = new AbortController();
+let shutdownExitCode = 0;
 const events = new Set();
 let navigation = { id: "", back: false, forward: false }, navigationSequence = 0;
 // Context IDs and unique blank-page URLs are registered before target creation.
@@ -129,20 +134,22 @@ const browserWheel = new BrowserWheel({
   },
 });
 let browserVNCViewers = false;
+let managedVNCConnections = 0;
 function canHideBrowser() {
   // Legacy viewers connect directly to the loopback VNC server. Keep their
   // window visible after the last managed workbench viewer disconnects.
+  let connected = 0;
   for (const file of ["/proc/net/tcp", "/proc/net/tcp6"]) {
     const entries = readFileSync(file, "utf8").trim().split("\n").slice(1);
-    if (entries.some(line => {
+    connected += entries.filter(line => {
       const fields = line.trim().split(/\s+/);
       return fields[3] === "01" && fields[1].endsWith(":3E1C");
-    })) { browserVNCViewers = true; return false; }
+    }).length;
   }
-  browserVNCViewers = false;
-  return true;
+  browserVNCViewers = connected > managedVNCConnections;
+  return !browserVNCViewers;
 }
-const visibility = new BrowserVisibility(cdp, () => [...targets.keys()], canHideBrowser);
+const visibility = new BrowserVisibility(cdp, () => [...targets.keys()], canHideBrowser, () => !ready && !shuttingDown);
 let checkingBrowserViewers = false;
 setInterval(() => {
   if (!ready || visibility.visible || checkingBrowserViewers) return;
@@ -161,7 +168,7 @@ async function clipboardSource() {
   const { browserContextId } = await cdp("Target.createBrowserContext", { disposeOnDetach: true });
   auditExclusions.add(browserContextId);
   try {
-    const origin = "http://127.0.0.1:18500";
+    const origin = `http://127.0.0.1:${server.address().port}`;
     await cdp("Browser.grantPermissions", { browserContextId, origin, permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"] });
     const { targetId } = await cdp("Target.createTarget", { browserContextId, url: origin, hidden: true, background: true });
     const { sessionId } = await cdp("Target.attachToTarget", { targetId, flatten: true });
@@ -196,13 +203,16 @@ const uploadDirectory = "/home/browser/.workbench-uploads";
 rmSync(uploadDirectory, { recursive: true, force: true });
 const uploadSessions = new Map();
 const uploads = new UploadManager({ directory: uploadDirectory, cdp, changed: () => broadcastState() });
-function cdp(method, params = {}, sessionId, timeout = 4500) {
+// Initialization ends on readiness, an explicit error, process exit or stop.
+// A slow restored renderer must not be mistaken for a failed startup.
+function cdp(method, params = {}, sessionId, timeout = ready || shuttingDown ? 4500 : 0) {
+  if (shuttingDown && method !== "Browser.close") return Promise.reject(new Error("Browser is stopping"));
   return new Promise((resolve, reject) => {
     const id = ++sequence;
-    const timer = setTimeout(() => {
+    const timer = timeout > 0 ? setTimeout(() => {
       pending.delete(id);
       reject(new Error(`Browser command timed out: ${method}`));
-    }, timeout);
+    }, timeout) : undefined;
     pending.set(id, { resolve, reject, timer });
     chrome.stdio[3].write(
       JSON.stringify({
@@ -222,7 +232,7 @@ function updateTargetInfo(t) {
   const fresh = !targets.has(t.targetId);
   targets.set(t.targetId, privateBrowser.tab(loginBrowser.tab(t, targets.get(t.targetId))));
   if (isNativeNewTab(t.url)) void restoreHomepage(t.targetId).catch(error => console.error("Could not open homepage:", error.message));
-  if (fresh) void session(t.targetId).catch(() => {});
+  if (fresh && ready) void session(t.targetId).catch(() => {});
   if (t.targetId === activeId) rememberSelection();
   broadcastState();
   if (!activeId) activeId = t.targetId;
@@ -285,6 +295,7 @@ chrome.stdio[4].on("data", (chunk) => {
         : call.resolve(event.result);
       continue;
     }
+    if (shuttingDown) continue;
     vault.event(event);
     const p = event.params || {};
     browserClipboard.event(event);
@@ -366,14 +377,15 @@ chrome.stdio[4].on("data", (chunk) => {
       uploads.cancelTab(uploadTab);
   }
 });
-chrome.on("exit", () => {
+chrome.on("exit", (code, signal) => {
   ready = false;
   for (const p of pending.values()) {
     clearTimeout(p.timer);
     p.reject(new Error("Browser stopped"));
   }
   pending.clear();
-  process.exit(shuttingDown ? 0 : 1);
+  if (code !== 0 || signal) console.error(`Browser exited abnormally: code=${code} signal=${signal}`);
+  process.exit(shuttingDown && code === 0 && !signal ? shutdownExitCode : 1);
 });
 for (const channel of chrome.stdio.slice(3))
   channel.on("error", () => {
@@ -539,6 +551,13 @@ function checkedURL(value) {
   if (value === settingsURL || value.startsWith(settingsURL + "#")) return value;
   throw new Error("Only HTTP(S) URLs and supported browser pages are accepted");
 }
+async function replaceInitialPage(id, url) {
+  // Controller-created blank pages are setup scaffolding, not user history.
+  const result = await cdp("Runtime.evaluate", {
+    expression: `location.replace(${JSON.stringify(url)})`,
+  }, await session(id));
+  if (result.exceptionDetails) throw new Error("Could not open initial page");
+}
 async function newTab(url = homeURL, incognito = false) {
   const address = checkedURL(url);
   if (incognito) {
@@ -546,7 +565,7 @@ async function newTab(url = homeURL, incognito = false) {
       targets.set(tab.targetId, tab);
       await activate(tab.targetId, true);
     });
-    await cdp("Page.navigate", { url: address }, await session(result.id));
+    await replaceInitialPage(result.id, address);
     return result;
   }
   const { targetId } = await cdp("Target.createTarget", {
@@ -557,7 +576,7 @@ async function newTab(url = homeURL, incognito = false) {
   if (!targets.has(targetId))
     targets.set(targetId, { targetId, type: "page", url: "about:blank", title: "" });
   await activate(targetId, true);
-  await cdp("Page.navigate", { url: address }, await session(targetId));
+  await replaceInitialPage(targetId, address);
   return { id: targetId };
 }
 async function browserSettings(section = "general") {
@@ -581,31 +600,11 @@ async function editor(workspace = config.workspace, reload = false) {
   const existing = [...targets.values()].find((t) =>
     t.url === editorURL,
   );
-  if (existing && !reload) {
+  const renewed = await authenticateEditor(cdp, config.editorPassword);
+  if (existing && !reload && !renewed) {
     await activate(existing.targetId);
     return { id: existing.targetId };
   }
-  const response = await fetch("http://127.0.0.1:18080/login", {
-    method: "POST",
-    redirect: "manual",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ password: config.editorPassword }),
-    signal: AbortSignal.timeout(5000),
-  });
-  const cookies = response.headers.getSetCookie().map((raw) => {
-    const first = raw.split(";")[0],
-      index = first.indexOf("=");
-    return {
-      name: first.slice(0, index),
-      value: first.slice(index + 1),
-      domain: "127.0.0.1",
-      path: "/",
-      httpOnly: true,
-      sameSite: "Lax",
-    };
-  });
-  if (!cookies.length) throw new Error("Editor authentication is unavailable");
-  await cdp("Storage.setCookies", { cookies });
   if (existing) {
     await activate(existing.targetId);
     await cdp("Page.reload", {}, await session(existing.targetId));
@@ -614,16 +613,10 @@ async function editor(workspace = config.workspace, reload = false) {
   return newTab(editorURL);
 }
 async function restartEditor(workspace) {
-  await runFile("/usr/bin/sudo", ["/usr/bin/systemctl", "restart", "workbench-editor.service"], { timeout: 18000, maxBuffer: 4096 });
-  const deadline = Date.now() + 5000;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch("http://127.0.0.1:18080/healthz", { signal: AbortSignal.timeout(1000) });
-      if (response.ok) return editor(workspace || config.workspace, true);
-    } catch {}
-    await new Promise(resolve => setTimeout(resolve, 200));
-  }
-  throw new Error("编辑器尚未恢复，请稍后重试。");
+  // ExecStartPost owns HTTP readiness. A slow restart remains cancellable
+  // when this browser session stops, without treating elapsed time as failure.
+  await runFile("/usr/bin/sudo", ["/usr/bin/systemctl", "restart", "workbench-editor.service"], { signal: startupCancellation.signal, maxBuffer: 4096 });
+  return editor(workspace || config.workspace, true);
 }
 async function tabState() {
   await Promise.allSettled([...auditCreations]);
@@ -869,7 +862,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.url === "/audit") {
       if (typeof input.timezone !== "string" || input.timezone.length > 128) throw new Error("诊断时区无效");
-      res.end(JSON.stringify(await auditBrowser(auditCDP, auditExclusions, input.network === true, input.timezone)));
+      res.end(JSON.stringify(await auditBrowser(auditCDP, auditExclusions, input.network === true, input.timezone, input.device === true)));
       return;
     }
     const result = await mutate(async () => {
@@ -929,6 +922,9 @@ const server = http.createServer(async (req, res) => {
         return { ...await newTab(url), url, kind: "web", title: "浏览器设置" };
       }
       if (req.url === "/visibility") {
+        if (!Number.isSafeInteger(input.managed_connections) || input.managed_connections < 0)
+          throw new Error("Invalid managed display connection count");
+        managedVNCConnections = input.managed_connections;
         await visibility.set(input.visible);
         return { ok: true };
       }
@@ -1024,20 +1020,27 @@ const server = http.createServer(async (req, res) => {
     });
     res.end(JSON.stringify(result));
   } catch (error) {
-    res.writeHead(400);
+    res.writeHead(error.message === "Browser is starting" ? 503 : 400);
     res.end(JSON.stringify({ error: error.message }));
   }
 });
 server.listen(18500, "127.0.0.1");
 (async () => {
-  // A cold guest can spend several seconds initializing the sandbox and fonts.
-  // Keep ordinary commands bounded separately from this initial handshake.
-  await cdp("Browser.getVersion", {}, undefined, 30000);
+  await cdp("Browser.getVersion");
   await cdp("Target.setDiscoverTargets", { discover: true });
   const { targetInfos } = await cdp("Target.getTargets");
   for (const t of targetInfos) {
     if (t.url.startsWith("devtools://")) inspectors.add(t.targetId);
     if (isBrowserTab(t)) targets.set(t.targetId, t);
+  }
+  const editors = [...targets.values()].filter(t => t.url.startsWith("http://127.0.0.1:18080/"));
+  if (editors.length && await authenticateEditor(cdp, config.editorPassword, { signal: startupCancellation.signal })) {
+    for (const tab of editors) {
+      const workspace = new URL(tab.url).searchParams.get("folder") || config.workspace;
+      if (!workspace.startsWith("/")) throw new Error("Invalid restored editor workspace");
+      await visibility.activate(tab.targetId);
+      await cdp("Page.navigate", { url: `http://127.0.0.1:18080/?folder=${encodeURIComponent(workspace)}` }, await session(tab.targetId));
+    }
   }
   await cdp("Browser.setDownloadBehavior", {
     behavior: "allowAndName",
@@ -1054,15 +1057,21 @@ server.listen(18500, "127.0.0.1");
   await browserExtensions.restore();
   for (const tab of targets.values()) if (isNativeNewTab(tab.url)) await restoreHomepage(tab.targetId);
   if (freshProfile && activeId && targets.get(activeId)?.url === "about:blank")
-    await cdp("Page.navigate", { url: homeURL }, await session(activeId));
+    await replaceInitialPage(activeId, homeURL);
   ready = true;
+  for (const tab of targets.values()) void session(tab.targetId).catch(() => {});
 })().catch(error => {
+  if (shuttingDown) return;
   console.error("Browser startup failed:", error.message);
-  process.exit(1);
+  shutdownBrowser(1);
 });
-process.on("SIGTERM", () => {
+function shutdownBrowser(exitCode) {
+  if (shuttingDown) return;
+  shutdownExitCode = exitCode;
   shuttingDown = true;
+  startupCancellation.abort();
+  ready = false;
   server.close();
-  cdp("Browser.close").catch(() => {});
-  setTimeout(() => process.exit(0), 2000).unref();
-});
+  cdp("Browser.close").catch(error => console.error("Browser shutdown failed:", error.message));
+}
+process.on("SIGTERM", () => shutdownBrowser(0));

@@ -70,7 +70,7 @@ func validateHostProjectData(root, profile string) error {
 		}
 		for _, dir := range private {
 			if eden.StoragePathsOverlap(root, dir) {
-				return errors.New("Eden 配置、环境存储及备份不能共享")
+				return errors.New("Claude Eden 配置、环境存储及备份不能共享")
 			}
 		}
 	}

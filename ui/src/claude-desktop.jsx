@@ -13,6 +13,7 @@ import { BrowserUploads } from "./browser-uploads";
 import { ProjectDialog } from "./project-dialog";
 import { api, nativeAvailable } from "./api";
 import { SafetyMessage } from "./safety-message";
+import { DeviceCheckButton } from "./device-checks";
 import { RemoteView } from "./views";
 import { useWindowVisibility } from "./window-visibility";
 import "./claude-desktop.css";
@@ -66,6 +67,7 @@ export function DesktopToolbar({ desktop, platform, title = "Claude Desktop", zo
         </span>
         <span className="desktop-toolbar-spacer" />
         {children}
+        <DeviceCheckButton disabled={busy || !desktop?.running} />
         {desktop?.running && (
           <label className="desktop-display-size">
             显示大小
@@ -86,7 +88,7 @@ export function DesktopToolbar({ desktop, platform, title = "Claude Desktop", zo
               if (
                 await onConfirm({
                   title: "关闭 Claude Desktop？",
-                  body: "请先保存应用内的工作。浏览器和 Eden 终端会继续运行。",
+                  body: "请先保存应用内的工作。浏览器和 Claude Eden 终端会继续运行。",
                   confirm: "关闭应用",
                 })
               )
@@ -115,6 +117,7 @@ export function ClaudeDesktop({
   status,
   onProjectOpened,
   visible,
+  selected = visible,
   remoteRef,
   onStatus,
   onFallback,
@@ -134,6 +137,7 @@ export function ClaudeDesktop({
   const [submitting, setSubmitting] = useState(false);
   const [jobID, setJobID] = useState("");
   const opened = useRef(false);
+  useEffect(() => { if (!selected) opened.current = false; }, [selected]);
   const statusRequest = useRef(null);
   const statusRevision = useRef(0);
   const ownJob = status.job?.kind?.startsWith("claude-desktop-");
@@ -199,7 +203,7 @@ export function ClaudeDesktop({
     else refresh();
   }, [status.job]);
   return (
-    <section className="claude-desktop-view" aria-label="Claude Desktop">
+    <section className="claude-desktop-view" aria-label="Claude Desktop" hidden={!visible}>
       {!nativeAvailable() && <BrowserUploads requests={uploads} onStatus={onStatus} />}
       {directoryRequest && <ProjectDialog
         key={directoryRequest.id}
@@ -229,7 +233,7 @@ export function ClaudeDesktop({
           <button onClick={onDetails}>操作详情</button>
         </div>
       )}
-      {desktop?.running && desktop.managed === false && <div className="connection-banner" role="status">当前应用尚未接入 Eden 账户解锁。请先保存并关闭应用，再重新打开。</div>}
+      {desktop?.running && desktop.managed === false && <div className="connection-banner" role="status">当前应用尚未接入 Claude Eden 账户解锁。请先保存并关闭应用，再重新打开。</div>}
       {busy && ownJob && (
         <div className="desktop-progress" role="status">
           <RefreshCw size={16} className="spin" />
@@ -256,15 +260,15 @@ export function ClaudeDesktop({
             <h2>
               {desktop?.installed
                 ? "Claude Desktop"
-                : "在 Eden 中使用 Claude Desktop"}
+                : "在 Claude Eden 中使用 Claude Desktop"}
             </h2>
             <p>
-              Chat 和 Code 共用一个官方应用。在 Eden
+              Chat 和 Code 共用一个官方应用。在 Claude Eden
               内安装、登录并使用，项目文件来自已打开的文件夹。
             </p>
             {!desktop?.installed && (
               <p>
-                首次使用时从 Anthropic 官方源下载，不增加 Eden 默认安装包体积。
+                首次使用时从 Anthropic 官方源下载，不增加 Claude Eden 默认安装包体积。
               </p>
             )}
             <div className="desktop-actions">
@@ -301,9 +305,9 @@ export function ClaudeDesktop({
                 </button>
               )}
             </div>
-            {desktop?.installed && <p>Linux 版通过系统软件源更新。可点击上方“更新应用”，或在 Eden 终端运行 sudo apt update && sudo apt install --only-upgrade claude-desktop。</p>}
+            {desktop?.installed && <p>Linux 版通过系统软件源更新。可点击上方“更新应用”，或在 Claude Eden 终端运行 sudo apt update && sudo apt install --only-upgrade claude-desktop。</p>}
             <p className="desktop-note">
-              关闭应用后释放图形会话资源，登录状态保留在 Eden
+              关闭应用后释放图形会话资源，登录状态保留在 Claude Eden
               环境中。需要额外虚拟机的 Cowork 功能暂未适配。
             </p>
           </div>

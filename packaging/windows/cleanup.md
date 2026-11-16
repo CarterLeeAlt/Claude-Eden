@@ -64,12 +64,13 @@
 | `control.json`、`control.lock`、`control-port.json` | 后台身份、锁和监听端口；先确认 PID、路径和句柄退役。 |
 | `stopped-jobs\<jobID>` | 已停止作业标记。结合 `EDEN_JOB_ID`、实例 `eden-running.json.job_id` 核对，待任务及分离式 hostagent 退出后处理。 |
 | `initialization.json`、`network-intent.json`、`last-safety-report.json`、`resource-limits.json`、`previous-profile.json` | 初始化、网络许可意图、检查结果、资源设置及配置恢复副本。 |
-| `proxy\` | 自有 Mihomo 的来源、配置、进程记录及数据库，含用户订阅和节点凭据；不是其他代理软件的缓存。 |
+| `proxy\` | 自有 Mihomo 的手动节点、配置、进程记录及数据库，含节点凭据；不是其他代理软件的缓存。 |
 | `webview2\`、`window-placement.json` | 本桌面 WebView2 用户数据和窗口位置，区别于 Microsoft 共享运行时。 |
 | `logs\` | 当前实例诊断日志及轮换文件。 |
 | `browser-downloads\` | 浏览器下载状态与索引；实际另存文件由记录定位。 |
 | `environment.json`、`environment-storage.json`、`environment-storage-pending.json`、`environment-storage.lock` | 传输根、存储位置和迁移事务。 |
 | `guest-install.json`、`guest-install-media-<InstallationID>.json` | Debian 安装绑定与已校验介质回执；ID、摘要、路径和磁盘须相互吻合。 |
+| `guest-profile.json` | 创建时保存的账户、主目录、主机名与设备配置；续装、重启和组件更新依赖原值。 |
 | 原子写入临时文件 | `.storage-config-*`、`.eden-write-*`、`.eden-private-probe-*` 等，按所属写入程序和句柄核对。 |
 
 只有确认目录专属、全部 profile 均在授权范围且没有混放个人文件时，才可整目录处理。外部资料不会因被软件读取而成为其自有缓存。
@@ -112,6 +113,8 @@
 
 ### 账户、服务与系统配置
 
+下表给出默认账户与设备值。配置过随机或手动选项的环境，先读取 profile 的 `guest-profile.json`，再核对客机实际账户、HOME、音频名称与扩展路径；服务名仍采用表中的中性名称。
+
 | 位置／对象 | 内容与边界 |
 | --- | --- |
 | `developer`、`/home/developer` | cloud-init 创建的开发和 SSH 管理账户，UID 1000；核对实际主组、sudo 配置与目录归属。 |
@@ -136,7 +139,7 @@
 | `/usr/local/bin/workbench-*`、`client_runtime.py` | 编辑器、浏览器启动、账户、显示、输入、文件与剪贴板入口；以安装脚本的实际文件集合确认，不能仅按通配前缀删除。 |
 | `/usr/local/lib/workbench-claude-bin/claude`、`workbench-claude-{session,open,start}` | 账号 shim 和可选 Desktop 入口，区别于官方 Claude 二进制。 |
 | `/usr/local/lib/` 内浏览器、下载、输入、显示与 `tailnet-client.mjs` | 按 `internal/eden` 的安装脚本核对具体模块及相邻 Python 字节码。 |
-| `/usr/local/lib/workbench-split/` | 内置浏览器扩展 manifest、HTML、JS。 |
+| `/usr/local/lib/workbench-split/` 或创建记录对应的 `/usr/local/lib/browser-panes-<标识>/` | 内置浏览器扩展 manifest、HTML、JS，按保存的扩展标识核对。 |
 | `/usr/local/share/workbench-webvnc`、`/usr/share/novnc` | 前者指向 Debian noVNC；后者为包管理文件，包含产品 patch 和 `workbench-clipboard.js`，保留系统时经包版本恢复。 |
 | `/etc/chromium/policies/managed/workbench-password-vault.json` | 禁用内建密码管理的指定策略文件。 |
 | `/usr/local/bin/sshfs`、Chrome 兼容入口 | 核对实际包装内容和链接目标，保留既有其他 Chrome。 |

@@ -30,14 +30,14 @@ sys.stdout.buffer.write(b.getvalue())`], { maxBuffer: 1 << 20, stdio: ['ignore',
   assert.ok(extension?.enabled); assert.ok(extension.managed);
   assert.equal(extension.source, source);
   const tab = await api('/new', { url: origin + '/extension-test' });
-  await waitFor(() => evaluate(tab.id, 'document.documentElement.dataset.workbenchExtension === "active"'), 'real extension content script');
+  await waitFor(() => evaluate(tab.id, 'document.documentElement?.dataset.workbenchExtension === "active"'), 'real extension content script');
   checks.push('ZIP review does not install until confirmed; declared and content-script permissions shown; installed extension executes in a real page');
   await fixture.restart();
   let list = await api('/extensions', { mode: 'list' });
   assert.equal(list.items.find(item => item.id === extension.id).enabled, true);
   assert.equal(list.items.find(item => item.id === extension.id).source, source);
   let page = await api('/new', { url: origin + '/after-restart' });
-  await waitFor(() => evaluate(page.id, 'document.documentElement.dataset.workbenchExtension === "active"'), 'extension restored after restart');
+  await waitFor(() => evaluate(page.id, 'document.documentElement?.dataset.workbenchExtension === "active"'), 'extension restored after restart');
   await api('/extensions', { mode: 'disable', id: extension.id });
   page = await api('/new', { url: origin + '/disabled' });
   await waitFor(() => evaluate(page.id, 'document.readyState === "complete"'), 'disabled fixture ready');
@@ -47,7 +47,7 @@ sys.stdout.buffer.write(b.getvalue())`], { maxBuffer: 1 << 20, stdio: ['ignore',
   assert.equal(list.items.find(item => item.id === extension.id).enabled, false);
   await api('/extensions', { mode: 'enable', id: extension.id });
   page = await api('/new', { url: origin + '/enabled-again' });
-  await waitFor(() => evaluate(page.id, 'document.documentElement.dataset.workbenchExtension === "active"'), 'enabled fixture');
+  await waitFor(() => evaluate(page.id, 'document.documentElement?.dataset.workbenchExtension === "active"'), 'enabled fixture');
   const storage = await cdp(page.id, 'Extensions.getStorageItems', { id: extension.id, storageArea: 'local' });
   assert.equal(storage.data.persisted, 'retained');
   checks.push('enabled extensions restore after restart; disable survives restart; re-enable preserves extension storage');

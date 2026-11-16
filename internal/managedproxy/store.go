@@ -1,7 +1,8 @@
-// Package managedproxy owns Claude Eden's private proxy sources and generated core configuration.
+// Package managedproxy owns Claude Eden's manual proxy nodes and generated core configuration.
 package managedproxy
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -12,8 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
-	"time"
 
 	"github.com/sylvinus/agent-vm/internal/exitpolicy"
 	"github.com/sylvinus/agent-vm/internal/host"
@@ -21,35 +20,15 @@ import (
 )
 
 const Group = "EDEN"
-const MaxImport = 8 << 20
 const maxStoreSize = 32 << 20
 
-type Node struct {
-	ID     string         `json:"id"`
-	Name   string         `json:"name"`
-	Type   string         `json:"type"`
-	Config map[string]any `json:"config"`
-}
-type Source struct {
-	ID        string      `json:"id"`
-	Name      string      `json:"name"`
-	URL       string      `json:"url,omitempty"`
-	Interval  int         `json:"interval_hours"`
-	Updated   time.Time   `json:"updated_at"`
-	Attempted time.Time   `json:"attempted_at"`
-	Error     string      `json:"error,omitempty"`
-	Usage     string      `json:"usage,omitempty"`
-	Nodes     []Node      `json:"nodes"`
-	Skipped   []NodeIssue `json:"skipped,omitempty"`
-}
 type Store struct {
 	Version      int                          `json:"version"`
 	Port         int                          `json:"port"`
 	Auth         string                       `json:"auth"`
 	Revision     string                       `json:"revision"`
 	Selected     string                       `json:"selected"`
-	Chain        []string                     `json:"chain,omitempty"`
-	Sources      []Source                     `json:"sources"`
+	Nodes        []Node                       `json:"nodes"`
 	ExitPolicies map[string]exitpolicy.Policy `json:"exit_policies,omitempty"`
 }
 
@@ -70,9 +49,9 @@ func Socket(profile string) string {
 }
 func Load(profile string) (Store, error) {
 	var s Store
-	f, err := os.Open(filepath.Join(Dir(profile), "sources.json"))
+	f, err := os.Open(filepath.Join(Dir(profile), "nodes.json"))
 	if os.IsNotExist(err) {
-		return Store{Version: 1, Port: 17896, Auth: Token(), Sources: []Source{}}, nil
+		return Store{Version: 1, Port: 17896, Auth: Token(), Nodes: []Node{}}, nil
 	}
 	if err != nil {
 		return s, err
@@ -82,10 +61,33 @@ func Load(profile string) (Store, error) {
 	if err != nil {
 		return s, err
 	}
-	if len(b) > maxStoreSize || json.Unmarshal(b, &s) != nil || s.Version != 1 || s.Port < 1024 || s.Port > 65535 || len(s.Auth) != 48 {
+	decoder := json.NewDecoder(bytes.NewReader(b))
+	decoder.DisallowUnknownFields()
+	var extra any
+	if len(b) > maxStoreSize || decoder.Decode(&s) != nil || decoder.Decode(&extra) != io.EOF {
 		return s, errors.New("Claude Eden 代理配置无效，请恢复私有配置备份")
 	}
-	return s, nil
+	return s, s.Validate()
+}
+
+func (s Store) Validate() error {
+	if s.Version != 1 || s.Port < 1024 || s.Port > 65535 || len(s.Auth) != 48 {
+		return errors.New("Claude Eden 代理配置无效，请恢复私有配置备份")
+	}
+	seen := make(map[string]bool, len(s.Nodes))
+	for _, node := range s.Nodes {
+		if err := node.Validate(); err != nil {
+			return err
+		}
+		if seen[node.ID] {
+			return errors.New("代理节点 ID 重复，请恢复私有配置备份")
+		}
+		seen[node.ID] = true
+	}
+	if s.Selected != "" && !seen[s.Selected] {
+		return errors.New("所选代理节点不存在，外网保持关闭")
+	}
+	return nil
 }
 func Write(path string, data []byte) error {
 	if err := host.EnsurePrivateDir(filepath.Dir(path)); err != nil {
@@ -111,188 +113,56 @@ func Write(path string, data []byte) error {
 	return os.Rename(f.Name(), path)
 }
 func (s Store) Save(profile string) error {
+	if err := s.Validate(); err != nil {
+		return err
+	}
 	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
 	if len(b) > maxStoreSize {
-		return errors.New("代理来源配置总大小超过 32 MiB，请减少来源或节点；原配置已保留")
+		return errors.New("代理节点配置总大小超过 32 MiB，请减少节点；原配置已保留")
 	}
-	return Write(filepath.Join(Dir(profile), "sources.json"), b)
+	return Write(filepath.Join(Dir(profile), "nodes.json"), b)
 }
 func (s Store) Endpoint() string { return fmt.Sprintf("socks5://eden:%s@127.0.0.1:%d", s.Auth, s.Port) }
 func (s Store) Find(id string) (Node, bool) {
-	for _, src := range s.Sources {
-		for _, n := range src.Nodes {
-			if n.ID == id {
-				return n, true
-			}
+	for _, n := range s.Nodes {
+		if n.ID == id {
+			return n, true
 		}
 	}
 	return Node{}, false
 }
-func (s Store) Count() int {
-	n := 0
-	for _, src := range s.Sources {
-		n += len(src.Nodes)
-	}
-	return n
-}
-func (s *Store) Import(name, rawURL string, data []byte, id string, interval int, usage string) error {
-	name = strings.TrimSpace(name)
-	if name == "" || len(name) > 100 {
-		return errors.New("请填写 1–100 字节的来源名称")
-	}
-	if interval < 0 || interval > 168 {
-		return errors.New("更新间隔应为 0–168 小时，0 表示手动更新")
-	}
-	if id == "" {
-		id = Token()[:16]
-	}
-	nodes, skipped, err := parseNodes(data, id)
-	if err != nil {
+func (s *Store) SetNode(node Node) error {
+	if err := node.Validate(); err != nil {
 		return err
 	}
-	src := Source{ID: id, Name: name, URL: rawURL, Interval: interval, Updated: time.Now(), Attempted: time.Now(), Nodes: nodes, Usage: usage, Skipped: skipped}
-	for i := range s.Sources {
-		if s.Sources[i].ID == id {
-			// Refresh must retain every hop of the saved route, including imported
-			// node-level dialers. A partial import cannot shorten a working chain.
-			route, routeErr := s.Route()
-			if s.Selected != "" && routeErr != nil {
-				return routeErr
-			}
-			available := make(map[string]bool, len(nodes))
-			for _, n := range nodes {
-				available[n.ID] = true
-			}
-			required := make(map[string]bool, len(route))
-			for _, hop := range route {
-				required[hop] = true
-			}
-			for _, old := range s.Sources[i].Nodes {
-				if required[old.ID] && !available[old.ID] {
-					reason := "节点未包含在更新中"
-					for _, issue := range skipped {
-						if issue.Name == old.Name {
-							reason = issue.Reason
-							break
-						}
-					}
-					return fmt.Errorf("订阅更新移除或跳过了当前出口或中转节点 %q：%s；原配置已保留，请先应用其他节点再更新", old.Name, reason)
-				}
-			}
-			s.Sources[i] = src
+	for i := range s.Nodes {
+		if s.Nodes[i].ID == node.ID {
+			s.Nodes[i] = node
 			return nil
 		}
 	}
-	s.Sources = append(s.Sources, src)
+	s.Nodes = append(s.Nodes, node)
 	return nil
 }
 
-func unsafeOption(v any) bool {
-	switch x := v.(type) {
-	case map[string]any:
-		for k, v := range x {
-			if unsafeField(k, v) {
-				return true
-			}
-		}
-	case map[any]any:
-		// YAML maps with a non-string key can still contain core option keys.
-		for k, v := range x {
-			key, _ := k.(string)
-			if unsafeField(key, v) {
-				return true
-			}
-		}
-	case []any:
-		for _, v := range x {
-			if unsafeOption(v) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func unsafeField(key string, value any) bool {
-	key = optionKey(key)
-	if strings.Contains(key, "path") && key != "path" {
-		return true
-	}
-	switch key {
-	case "ca", "certificate", "private-key", "interface-name", "routing-mark":
-		return true
-	}
-	return unsafeOption(value)
-}
-
-// Route returns the actual hops from entry to exit. Explicit UI chains override
-// dialers at runtime without modifying subscription nodes or their credentials.
-func (s Store) Route() ([]string, error) {
-	if _, ok := s.Find(s.Selected); !ok {
-		return nil, errors.New("请先选择有效的最终出口")
-	}
-	if len(s.Chain) > 0 {
-		if s.Chain[len(s.Chain)-1] != s.Selected {
-			return nil, errors.New("代理链与最终出口不一致，请重新配置代理")
-		}
-		seen := map[string]bool{}
-		for _, id := range s.Chain {
-			if _, ok := s.Find(id); !ok {
-				return nil, errors.New("代理链中的节点已被移除，请重新选择；原配置已保留")
-			}
-			if seen[id] {
-				return nil, errors.New("代理链不能重复使用同一个节点")
-			}
-			seen[id] = true
-		}
-		return append([]string(nil), s.Chain...), nil
-	}
-	var reversed []string
-	seen := map[string]bool{}
-	for id := s.Selected; id != ""; {
-		n, ok := s.Find(id)
-		if !ok || seen[id] {
-			return nil, errors.New("导入的代理链存在循环或缺失节点，请检查来源配置")
-		}
-		seen[id] = true
-		reversed = append(reversed, id)
-		id, _ = n.Config["dialer-proxy"].(string)
-	}
-	for i, j := 0, len(reversed)-1; i < j; i, j = i+1, j-1 {
-		reversed[i], reversed[j] = reversed[j], reversed[i]
-	}
-	return reversed, nil
+// Numeric DoH endpoints bootstrap proxy server names without host DNS fallback.
+func BootstrapDNSURLs() []string {
+	return []string{"https://1.1.1.1/dns-query", "https://223.5.5.5/dns-query"}
 }
 
 func (s Store) Runtime(profile string) ([]byte, error) {
-	if _, err := s.Route(); err != nil {
+	if err := s.Validate(); err != nil {
 		return nil, err
 	}
-	dialers := map[string]string{}
-	for i, id := range s.Chain {
-		dialers[id] = ""
-		if i > 0 {
-			dialers[id] = s.Chain[i-1]
-		}
+	if _, ok := s.Find(s.Selected); !ok {
+		return nil, errors.New("请先选择有效的代理节点")
 	}
 	proxies := []map[string]any{}
-	for _, src := range s.Sources {
-		for _, n := range src.Nodes {
-			config := make(map[string]any, len(n.Config))
-			for key, value := range n.Config {
-				config[key] = value
-			}
-			if via, overridden := dialers[n.ID]; overridden {
-				delete(config, "dialer-proxy")
-				if via != "" {
-					config["dialer-proxy"] = via
-				}
-			}
-			proxies = append(proxies, config)
-		}
+	for _, node := range s.Nodes {
+		proxies = append(proxies, node.coreConfig())
 	}
 	// Infrastructure DNS bootstraps only the core's server domains. Guest DNS
 	// remains behind Eden Egress, and there is no host-system resolver fallback.

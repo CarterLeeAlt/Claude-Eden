@@ -4,3 +4,9 @@ sudo env DEBIAN_FRONTEND=noninteractive APT_CONFIG="${WORKBENCH_APT_CONFIG:-/dev
 if ! id browser >/dev/null 2>&1; then
   sudo useradd --create-home --shell /bin/bash browser
 fi
+python3 - <<'WORKBENCH_BROWSER_ACCOUNT'
+import os, pwd
+account = pwd.getpwnam('browser')
+if account.pw_uid < 1000 or account.pw_uid == os.getuid() or account.pw_dir != '/home/browser':
+    raise SystemExit('The browser requires its own ordinary account and home directory.')
+WORKBENCH_BROWSER_ACCOUNT

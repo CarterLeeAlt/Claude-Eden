@@ -80,7 +80,7 @@ func (s *Server) initialization(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.hasTrustedView(r) {
-		http.Error(w, "请在本机 Eden 窗口完成初始化", http.StatusForbidden)
+		http.Error(w, "请在本机 Claude Eden 窗口完成初始化", http.StatusForbidden)
 		return
 	}
 	var input struct {

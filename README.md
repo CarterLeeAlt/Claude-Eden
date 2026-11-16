@@ -10,7 +10,7 @@
 
 **[项目主页](https://github.com/CarterLeeAlt/Claude-Eden) · [发行版本](https://github.com/CarterLeeAlt/Claude-Eden/releases) · [使用文档](docs/guide/index.md) · [常见问题](docs/guide/troubleshooting.md)**
 
-[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [Русский](README.ru.md) · [العربية](README.ar.md) · [فارسی](README.fa.md) · [한국어](README.ko.md) · [Español](README.es.md) · [မြန်မာဘာသာ](README.my.md) · [Беларуская](README.be.md) · [پښتو](README.ps.md) · [دری](README.prs.md) · [አማርኛ](README.am.md) · [Soomaali](README.so.md) · [ትግርኛ](README.ti.md) · [Français](README.fr.md)
+[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Deutsch](README.de.md) · [Français](README.fr.md)
 
 </div>
 
@@ -30,12 +30,14 @@ Claude Eden 在 Windows 10 桌面上管理独立的本地 Debian 13 客机。终
 - **在一个窗口里完成工作。** 用终端运行 Claude Code，用编辑器查看改动，用 Workbench 浏览器预览服务和完成登录。
 - **使用独立的 Linux 开发环境。** 在本地 Debian 13 中使用 Linux 工具链，共享明确授权的项目目录；系统、工具和登录资料保存在独立环境中。 [Debian 13 客机](docs/guide/guest-systems.md)
 - **控制共享范围。** 只共享默认工作区和明确打开的项目文件夹；主机的 Claude 登录、浏览器配置和 SSH 密钥不会自动导入。
-- **看清网络状态。** 内置代理管理支持导入订阅、选择节点和检查出口。关键检查未通过时，环境保持离线；代理不可用时没有直连回退。
+- **看清网络状态。** 手动管理 HTTP CONNECT、SOCKS5、SSH 节点，选择单个出口并完成检查。关键检查未通过时，环境保持离线；代理故障时客机绝不直连。
 - **下次继续使用。** 工具、文件和登录状态保存在虚拟磁盘里，关闭窗口可以保留后台任务。
 - **管理多个 Claude Code 订阅。** 查看额度、为新会话分配账号，并在明确授权后切换账号接续历史。 [Claude Code](docs/guide/accounts.md)
 - **通过私网连接设备。** 在 Claude Eden 内登录 Tailscale，查看网络中的设备，使用 SSH、Web 与其他 TCP 服务。 [Tailscale 私网](docs/guide/tailscale.md)
 
 浏览器收藏、无痕会话、Cookie、扩展、密码保险箱，以及外观、资源、存储和工具更新，见[完整使用文档](docs/guide/index.md)。
+
+客机语言支持简体中文、繁体中文、英语、日语、韩语、德语和法语；按出口地区推荐支持的语言，没有对应建议时保留已选语言。工作台界面与详细使用文档使用中文。
 
 ## 快速开始
 
@@ -67,7 +69,7 @@ Claude Eden 的桌面宿主为 Windows 10，当前安装包为 x64，客机固�
 
 ### 1. 选择代理
 
-导入 Clash/Mihomo YAML 订阅或本地配置，选择节点并点击“应用代理”；需要中转时可配置链式代理。[网络与代理](docs/guide/network.md)
+点击“添加节点”，手动填写 HTTP CONNECT、SOCKS5 或 SSH 的服务器与认证信息，保存并验证后选择一个节点，点击“应用代理”。[网络与代理](docs/guide/network.md)
 
 ### 2. 启动环境
 
@@ -109,7 +111,7 @@ Claude Eden 的桌面宿主为 Windows 10，当前安装包为 x64，客机固�
 
 ## 来源与许可
 
-Claude Eden 基于 [Claude-Cage](https://github.com/Lee-xeo/Claude-Cage) 与 [agent-vm](https://github.com/sylvinus/agent-vm) 二次开发，原始来源与许可证保留。
+Claude Eden 的上游来源、原作者与版权声明见 [NOTICE](NOTICE)，许可证见 [LICENSE](LICENSE)。
 
 项目主许可为 [MIT](LICENSE)。随附组件保留各自许可，Mihomo 作为独立可执行文件按 GPL-3.0 分发；请同时参阅 [NOTICE](NOTICE) · [第三方许可](THIRD_PARTY_LICENSES) · [noVNC](ui/vendor/novnc/LICENSE.txt)。
 

@@ -87,7 +87,7 @@ func proxyConnectionError(ctx context.Context, action string, err error) error {
 // passed to the proxy without resolving them on the host.
 func (e *Egress) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	if network != "tcp" && network != "tcp4" && network != "tcp6" {
-		return nil, errors.New("Eden permits TCP only")
+		return nil, errors.New("Claude Eden permits TCP only")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -220,11 +220,11 @@ func (e *Egress) exchangeDNSOnce(ctx context.Context, q *dns.Msg, wire []byte) (
 	req.Header.Set("Accept", "application/dns-message")
 	resp, err := e.client.Do(req)
 	if err != nil {
-		return nil, true, errors.New("Eden DNS upstream unavailable; check the configured DoH endpoint through the selected proxy")
+		return nil, true, errors.New("Claude Eden DNS upstream unavailable; check the configured DoH endpoint through the selected proxy")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, resp.StatusCode == 429 || resp.StatusCode >= 500, fmt.Errorf("Eden DNS upstream returned HTTP %d", resp.StatusCode)
+		return nil, resp.StatusCode == 429 || resp.StatusCode >= 500, fmt.Errorf("Claude Eden DNS upstream returned HTTP %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 65536))
 	if err != nil {

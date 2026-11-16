@@ -13,10 +13,10 @@ func TestProxySelectionKeepsExitBindingsWithTheirNodes(t *testing.T) {
 	s := testServer(t)
 	p, _ := managedproxy.Load(s.profile)
 	first := p.Selected
-	if err := p.Import("other", "", []byte(`proxies: [{name: other, type: socks5, server: 127.0.0.1, port: 2}]`), "other", 0, ""); err != nil {
+	if err := p.SetNode(managedproxy.Node{ID: managedproxy.Token()[:24], Name: "other", Type: "socks5", Server: "127.0.0.1", Port: 2}); err != nil {
 		t.Fatal(err)
 	}
-	second := p.Sources[1].Nodes[0].ID
+	second := p.Nodes[1].ID
 	if err := p.Save(s.profile); err != nil {
 		t.Fatal(err)
 	}
@@ -65,13 +65,6 @@ func TestProxySelectionKeepsExitBindingsWithTheirNodes(t *testing.T) {
 	bind("8.8.4.4")
 	if got := selectNode(first); got.ExitPolicy.IP != "1.1.1.1" {
 		t.Fatalf("return to first exit lost binding: %+v", got.ExitPolicy)
-	}
-	if err := s.changeProxy("route", proxyInput{NodeIDs: []string{second, first}}, nil); err != nil {
-		t.Fatal(err)
-	}
-	cfg, _ = loadConfig(s.configPath)
-	if cfg.ExitPolicy.IP != "1.1.1.1" {
-		t.Fatal("transit change reset final exit binding")
 	}
 	if err := s.changeProxy("restart", proxyInput{}, nil); err != nil {
 		t.Fatal(err)

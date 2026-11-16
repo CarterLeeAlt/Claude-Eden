@@ -138,7 +138,7 @@ try {
     };
     rfb.focus();
   });
-  const target = page.getByLabel("Eden 网页输入");
+  const target = page.getByLabel("Claude Eden 网页输入");
   const keys = () =>
     page.evaluate(() =>
       probe.packets.filter(p => p[0] !== 248).map((p) => {
@@ -408,6 +408,89 @@ try {
     "CANVAS",
   );
   assert.deepEqual(await keys(), []);
+  const suspendedInput = await page.evaluate(async () => {
+    const { default: RFB } = await import('/.generated/novnc/core/rfb.js');
+    const check = (condition, message) => { if (!condition) throw new Error(message); };
+    const result = promise => promise.then(() => 'resolved', () => 'rejected');
+    const drain = async () => { await Promise.resolve(); await Promise.resolve(); };
+    const u32 = value => [value >>> 24, value >>> 16 & 255, value >>> 8 & 255, value & 255];
+    const client = Object.create(RFB.prototype), packets = [];
+    let outgoing = [], incoming = [];
+    client._sock = {
+      sQpush8: value => outgoing.push(value),
+      sQpush16: value => outgoing.push(value >>> 8 & 255, value & 255),
+      sQpush32: value => outgoing.push(...u32(value)),
+      sQpushString: value => outgoing.push(...new TextEncoder().encode(value)),
+      sQpushBytes: value => outgoing.push(...value),
+      flush: () => { packets.push(outgoing); outgoing = []; },
+      workbenchControl() {},
+      rQwait: (_label, count) => incoming.length < count,
+      rQskipBytes: count => incoming.splice(0, count),
+      rQshift32: () => incoming.splice(0, 4).reduce((value, byte) => (value * 256 + byte) >>> 0, 0),
+      rQshift8: () => incoming.shift(),
+      rQshiftStr: count => String.fromCharCode(...incoming.splice(0, count)),
+    };
+    Object.assign(client, { _rfbConnectionState: 'connected', _viewOnly: false, _supportsFence: true,
+      _workbenchDisplayVisible: true, _enabledContinuousUpdates: false, _fbWidth: 640, _fbHeight: 480,
+      _clipboardServerCapabilitiesActions: { [1 << 27]: true, [1 << 28]: true },
+      _clipboardServerCapabilitiesFormats: { 1: true } });
+    const acknowledge = id => {
+      incoming = [0, 0, 0, ...u32(0), id.length, ...new TextEncoder().encode(id)];
+      check(client._handleServerFenceMsg(), 'late input fence was not consumed');
+    };
+    const requestClipboard = () => {
+      incoming = [0, 0, 0, ...u32(-4), ...u32((1 << 25) | 1)];
+      check(client._handleServerCutText(), 'clipboard request was not consumed');
+    };
+    let committed = 0;
+    const waiting = result(client.workbenchRunInput(() => committed++));
+    const queued = result(client.workbenchRunInput(() => committed++));
+    client.sendKey(0xff0d, 'Enter', true);
+    await drain();
+    const first = client._workbenchInputFence.id;
+    client.workbenchSetVisible(false); client.workbenchSetVisible(true);
+    acknowledge(first);
+    check(await waiting === 'rejected' && await queued === 'rejected', 'hidden queue was replayed after return');
+    check(committed === 0 && packets.filter(value => value[0] === 4).length === 0, 'hidden input reached the wire');
+
+    const acknowledged = result(client.workbenchRunInput(() => committed++));
+    await drain(); acknowledge(client._workbenchInputFence.id); client.workbenchSetVisible(false);
+    check(await acknowledged === 'rejected' && committed === 0, 'acknowledged input escaped the visibility generation');
+    // Cleanup from the new generation is allowed while the viewer is hidden.
+    const cleanup = result(client.workbenchRunInput(() => committed++));
+    await drain(); acknowledge(client._workbenchInputFence.id);
+    check(await cleanup === 'resolved' && committed === 1, 'composition cleanup was blocked by the cancelled queue');
+    client.workbenchSetVisible(true);
+
+    for (const content of [{ text: 'delayed text' }, { png: 'delayed image' }, { files: ['delayed file'] }]) {
+      let ready;
+      const waitingContent = new Promise(resolve => { ready = resolve; });
+      const paste = result(client.workbenchPasteContent(waitingContent, () => committed++, () => true, () => committed++));
+      await drain(); client.workbenchSetVisible(false); client.workbenchSetVisible(true); ready(content);
+      check(await paste === 'rejected' && committed === 1, 'asynchronous clipboard content survived suspension');
+    }
+    for (const phase of ['data', 'fence', 'keys', 'complete']) {
+      const count = packets.filter(value => value[0] === 4).length;
+      const paste = result(client.workbenchPasteText('clipboard ' + phase));
+      await drain();
+      const id = client._workbenchPasteJob.id;
+      if (phase !== 'data') requestClipboard();
+      if (phase === 'keys' || phase === 'complete') acknowledge(id);
+      if (phase === 'complete') acknowledge(id + '-keys');
+      else {
+        client.workbenchSetVisible(false); client.workbenchSetVisible(true);
+        if (phase === 'data') requestClipboard();
+        acknowledge(id); acknowledge(id + '-keys');
+      }
+      check(await paste === (phase === 'complete' ? 'resolved' : 'rejected'), 'clipboard completion state changed at ' + phase);
+      const sent = packets.filter(value => value[0] === 4).length - count;
+      check(sent === (phase === 'keys' || phase === 'complete' ? 4 : 0), 'late clipboard acknowledgement emitted paste keys at ' + phase);
+      check(client._workbenchPasteJob === null, 'paste timer retained after ' + phase);
+    }
+    check(client._rfbConnectionState === 'connected', 'input cancellation disconnected the retained display');
+    return { queued_input: true, resolved_fence: true, asynchronous_clipboard: true, paste_phases: true, cleanup_and_resume: true };
+  });
+  assert.deepEqual(suspendedInput, { queued_input: true, resolved_fence: true, asynchronous_clipboard: true, paste_phases: true, cleanup_and_resume: true });
   assert.deepEqual(errors, []);
   console.log(
     JSON.stringify(
@@ -438,6 +521,7 @@ try {
           "Command mapping",
           "inactive view",
           "reconnect and disposal",
+          "retained hidden input cancellation, late acknowledgements and resumed input",
         ],
         limitation:
           "Covers the Chromium composition engine and simulated event sequences; native Windows IME and guest rendering require separate acceptance.",

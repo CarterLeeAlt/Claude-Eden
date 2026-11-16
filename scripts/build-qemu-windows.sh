@@ -11,9 +11,14 @@ for patch_file in "$patch_dir"/*.patch; do
 done
 mkdir -p "$build_dir" "$output_dir"
 cd "$build_dir"
+# Keep compiler diagnostics independent of the local checkout and build paths.
+source_native=$(cygpath -m "$source_dir")
+build_native=$(cygpath -m "$build_dir")
+path_flags="-ffile-prefix-map=\"$source_native\"=qemu -ffile-prefix-map=\"$build_native\"=qemu-build"
+path_flags+=" -ffile-prefix-map=\"$source_dir\"=qemu -ffile-prefix-map=\"$build_dir\"=qemu-build"
 "$source_dir/configure" --target-list=x86_64-softmmu --without-default-features \
     --prefix=C:/EdenQemu --bindir=. --datadir=share --with-suffix= \
-    --extra-cflags=-D_WIN32_WINNT=0x0A00 \
+    --extra-cflags="-D_WIN32_WINNT=0x0A00 $path_flags" \
     --enable-whpx --enable-tcg --enable-pixman --enable-slirp --enable-tools \
     --disable-docs --disable-guest-agent --disable-werror \
     --disable-debug-info

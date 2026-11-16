@@ -7,8 +7,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 type partialJSONBody struct {
@@ -64,5 +67,37 @@ func TestCloseServiceInterruptsPartialJSONWithUpgradeHeader(t *testing.T) {
 	case <-finished:
 	case <-time.After(time.Second):
 		t.Fatal("service closed before the HTTP handler finished")
+	}
+}
+
+func TestCloseServiceRevokesNetworkBeforeWaitingForActivities(t *testing.T) {
+	s, gate := interfaceMonitorServer(t)
+	grantTestGate(t, gate)
+	ctx, finish, err := s.beginActivity(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var once sync.Once
+	release := func() { once.Do(finish) }
+	closed := make(chan error, 1)
+	go func() { closed <- s.closeService() }()
+	defer func() { release(); <-closed }()
+	select {
+	case <-ctx.Done():
+	case <-time.After(3 * time.Second):
+		t.Fatal("shutdown did not cancel admitted activity")
+	}
+	deadline := time.Now().Add(time.Second)
+	for gate.Status().Mode != eden.GateClosed && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if gate.Status().Mode != eden.GateClosed {
+		t.Fatal("the network remained authorized while an activity delayed shutdown")
+	}
+	select {
+	case err := <-closed:
+		closed <- err
+		t.Fatal("shutdown returned before admitted activity released its resources")
+	default:
 	}
 }

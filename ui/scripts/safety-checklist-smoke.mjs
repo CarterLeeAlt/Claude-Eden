@@ -96,7 +96,7 @@ for (const platform of platforms) {
     assert.equal(await settings.isVisible(), true);
     await dns.fill(state.settings.dns_url);
 
-    await page.route("**/api/proxy/route", route => route.fulfill({ status: 409, contentType: "text/plain; charset=utf-8", body: "关键检测证据不完整，外网保持关闭" }));
+    await page.route("**/api/proxy/select", route => route.fulfill({ status: 409, contentType: "text/plain; charset=utf-8", body: "关键检测证据不完整，外网保持关闭" }));
     await settings.getByRole("button", { name: "重新应用", exact: true }).click();
     const proxyError = settings.getByRole("alert").filter({ hasText: "关键检测证据不完整" });
     await showChecklist(link(proxyError));
@@ -104,7 +104,7 @@ for (const platform of platforms) {
     await settings.getByRole("button", { name: "返回工作台", exact: true }).first().click();
 
     await page.route("**/api/projects/open", route => route.fulfill({ status: 409, contentType: "text/plain; charset=utf-8", body: failure }));
-    await page.getByRole("button", { name: "打开项目", exact: true }).click();
+    await page.keyboard.press("Control+o");
     const projects = page.getByRole("dialog", { name: "打开项目", exact: true });
     await projects.getByRole("button", { name: "打开项目", exact: true }).click();
     await showChecklist(link(projects));

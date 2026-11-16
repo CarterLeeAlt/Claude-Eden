@@ -3,6 +3,7 @@ import { Check, ChevronLeft, LoaderCircle, ShieldCheck } from "lucide-react";
 import { api, native, nativeAvailable } from "./api";
 import { useAccount } from "./account";
 import { InitializationStorage } from "./initialization-storage";
+import { GuestProfileOptions } from "./guest-profile";
 import { ProxySettings } from "./proxy-settings";
 import { SetupProgress } from "./setup-progress";
 import { DiagnosticSettings } from "./diagnostics.jsx";
@@ -34,7 +35,7 @@ export function InitializationGate({ children }) {
     })().catch(error => { if (live) setError(error.message); });
     return () => { live = false; };
   }, [attempt]);
-  if (error) return <InitializationFrame><section className="initialization-content"><h1>继续准备 Eden</h1><p role="alert"><SafetyMessage message={error} /></p><button className="primary" onClick={() => retry(value => value + 1)}>重新连接</button><DiagnosticSettings /></section></InitializationFrame>;
+  if (error) return <InitializationFrame><section className="initialization-content"><h1>继续准备 Claude Eden</h1><p role="alert"><SafetyMessage message={error} /></p><button className="primary" onClick={() => retry(value => value + 1)}>重新连接</button><DiagnosticSettings /></section></InitializationFrame>;
   if (!state) return <InitializationFrame><section className="initialization-content"><h1>正在读取环境状态</h1><p role="status"><LoaderCircle size={18} className="spin" />正在检查已有配置和安装进度…</p></section></InitializationFrame>;
   return state.required ? <Initialization initial={state} onComplete={() => setState({ required: false })} /> : children;
 }
@@ -45,6 +46,8 @@ function Initialization({ initial, onComplete }) {
   const [status, setStatus] = useState(null);
   const [proxy, setProxy] = useState(null);
   const [storage, setStorage] = useState(null);
+  const [guestProfile, setGuestProfile] = useState(null);
+  const [guestProfileReady, setGuestProfileReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [connectionError, setConnectionError] = useState("");
@@ -109,7 +112,7 @@ function Initialization({ initial, onComplete }) {
     if (needsProxySetup(null, status, proxy)) { setError("请先选择并应用代理节点。"); setStep("proxy"); return; }
     await run(async () => {
       await api("/environment/initialization", { action: "install" });
-      const accepted = await api("/start", { guest_system: "debian-13" });
+      const accepted = await api("/start", { guest_system: "debian-13", ...(guestProfile ? { guest_profile: guestProfile } : {}) });
       if (!alive.current) return;
       setStep("install");
       setStatus(current => ({ ...current, job: { ...accepted, running: true, kind: accepted.kind || "start", message: accepted.message || "正在准备客机环境…" } }));
@@ -135,6 +138,7 @@ function Initialization({ initial, onComplete }) {
   }
   async function nextFromSystem() {
     await run(async () => {
+      if (guestProfile) setGuestProfile(await api("/environment/guest-profile/preview", guestProfile));
       const directory = storage.directory.trim();
       if (directory !== storage.location.directory) {
         const accepted = await api("/environment/storage", { directory, previous: storage.location.directory, migrate: false });
@@ -157,7 +161,7 @@ function Initialization({ initial, onComplete }) {
   const failed = Boolean(job.error || error);
   const networkPending = Boolean(status?.ready && status.vm_running && network.mode !== "open");
   const progress = !status?.ready && job.setup_progress ? { ...job, setup_progress: job.setup_progress } : null;
-  const title = step === "system" ? "为 Eden 准备独立环境" : step === "proxy" ? "连接你的网络代理" : ready ? "Eden 已准备就绪" : !busy && networkPending ? "环境已启动，等待联网检查" : failed ? "继续完成环境安装" : busy ? "正在准备你的环境" : "安装并检查客机环境";
+  const title = step === "system" ? "为 Claude Eden 准备独立环境" : step === "proxy" ? "连接你的网络代理" : ready ? "Claude Eden 已准备就绪" : !busy && networkPending ? "环境已启动，等待联网检查" : failed ? "继续完成环境安装" : busy ? "正在准备你的环境" : "安装并检查客机环境";
   const index = steps.findIndex(([key]) => key === step);
   return <InitializationFrame>
     <section className="initialization-content">
@@ -169,22 +173,23 @@ function Initialization({ initial, onComplete }) {
           {step === "system" && <>
             <div className="setting-summary-row"><span>客户机系统</span><strong>Debian 13</strong></div>
             <InitializationStorage value={storage} onChange={setStorage} disabled={busy} />
+            <GuestProfileOptions value={guestProfile} onChange={setGuestProfile} onReady={setGuestProfileReady} disabled={busy} />
           </>}
           {step === "proxy" && <ProxySettings initializing status={status} onConfirm={confirm} onDirty={setProxyDirty} onApplied={async () => { setProxy(await api("/proxy")); pollNow.current?.(); }} />}
-          {step === "install" && (ready ? <div className="initialization-ready"><ShieldCheck size={36} /><h2>环境已就绪</h2><p>独立客机已安装，工具、文件和登录状态会持续保存。以后打开 Eden 可直接进入工作台。</p></div> : <>
+          {step === "install" && (ready ? <div className="initialization-ready"><ShieldCheck size={36} /><h2>环境已就绪</h2><p>独立客机已安装，工具、文件和登录状态会持续保存。以后打开 Claude Eden 可直接进入工作台。</p></div> : <>
             {progress ? <SetupProgress job={progress} onDetails={() => setDetails(true)} onStop={stop} onRetry={install} disconnected={Boolean(connectionError) || submitting} /> : <div className="initialization-operation" role="status">{busy && <LoaderCircle size={22} className="spin" />}<p>{job.kind === "stop" && !job.running && !job.error && !job.canceled && !status.ready ? "安装已停止，可继续安装" : job.message || (status.vm_running ? "请完成客机连接和网络检查。" : "准备继续原安装，已有文件和磁盘会保留。")}</p>{!busy && !job.error && <button className="primary" disabled={Boolean(connectionError)} onClick={install}>{status.ready ? "重新启动并检查" : "继续安装"}</button>}{busy && <button onClick={stop} disabled={submitting}>停止安装</button>}</div>}
             {job.error && !progress && <div className="initialization-notice" role="alert"><SafetyMessage message={job.error} />{!networkPending && <button className="primary" disabled={busy || Boolean(connectionError)} onClick={install}>继续安装</button>}</div>}
             {status.ready && network.mode !== "open" && !busy && <>
               <div className="initialization-network"><p>{status.safety?.error || job.error || status.network_error || "客机已经连接，请完成网络和隔离检查后进入工作台。"}</p><button disabled={Boolean(connectionError)} onClick={checkNetwork}>运行网络与隔离检查</button></div>
             </>}
-            {(progress?.setup_progress.phase === "image" || (failed && !networkPending)) && <p>系统镜像和在主机上准备的安装组件遵循主机代理设置。下载失败时，可在操作详情中查看当前文件和重试记录。客机内的联网请求使用 Eden 代理。</p>}
-            <div className="initialization-recovery"><button onClick={() => setStep("proxy")} disabled={busy}>检查 Eden 代理配置</button>{!progress && <button onClick={() => setDetails(true)}>查看操作详情</button>}</div>
+            {(progress?.setup_progress.phase === "image" || (failed && !networkPending)) && <p>系统镜像和在主机上准备的安装组件遵循主机代理设置。下载失败时，可在操作详情中查看当前文件和重试记录。客机内的联网请求使用 Claude Eden 代理。</p>}
+            <div className="initialization-recovery"><button onClick={() => setStep("proxy")} disabled={busy}>检查 Claude Eden 代理配置</button>{!progress && <button onClick={() => setDetails(true)}>查看操作详情</button>}</div>
           </>)}
         </div>
         {error && <p className="initialization-notice" role="alert"><SafetyMessage message={error} /></p>}
         <footer className="initialization-actions">
           {step === "system" ? <span /> : <button className="text-button" disabled={busy} onClick={back}><ChevronLeft size={16} />上一步</button>}
-          {step === "system" && <button className="primary" disabled={busy || !storage?.directory.trim() || Boolean(connectionError)} onClick={nextFromSystem}>{submitting && <LoaderCircle size={16} className="spin" />}下一步：配置代理</button>}
+          {step === "system" && <button className="primary" disabled={busy || !guestProfileReady || !storage?.directory.trim() || Boolean(connectionError)} onClick={nextFromSystem}>{submitting && <LoaderCircle size={16} className="spin" />}下一步：配置代理</button>}
           {step === "proxy" && <button className="primary" disabled={busy || proxyDirty || needsProxySetup(null, status, proxy) || Boolean(connectionError)} onClick={install}>{submitting ? <LoaderCircle size={16} className="spin" /> : null}开始安装</button>}
           {step === "install" && ready && <button className="primary" disabled={submitting || Boolean(connectionError)} onClick={enter}>进入工作台</button>}
         </footer>

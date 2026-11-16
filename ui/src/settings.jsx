@@ -32,6 +32,15 @@ import { ResourceSettings } from "./resources";
 import { DiagnosticSettings } from "./diagnostics.jsx";
 import { AccountSettings } from "./account";
 import { AboutSettings } from "./about-settings";
+const languages = [
+  { locale: "zh_CN.UTF-8", browser: "zh-CN", label: "简体中文" },
+  { locale: "zh_TW.UTF-8", browser: "zh-TW", label: "繁體中文" },
+  { locale: "en_US.UTF-8", browser: "en-US", label: "English (United States)" },
+  { locale: "ja_JP.UTF-8", browser: "ja-JP", label: "日本語" },
+  { locale: "ko_KR.UTF-8", browser: "ko-KR", label: "한국어" },
+  { locale: "de_DE.UTF-8", browser: "de-DE", label: "Deutsch" },
+  { locale: "fr_FR.UTF-8", browser: "fr-FR", label: "Français" },
+];
 const sections = [
   ["account", "账户", UserRound],
   ["vault", "密码保险箱", KeyRound],
@@ -300,7 +309,7 @@ export function SettingsPanel({
                   </div>
                 )}
                 <p className="footnote">
-                  代理不可用时，Eden 会停止对外联网。修改表单后需要重新验证。
+                  代理不可用时，Claude Eden 会停止对外联网。修改表单后需要重新验证。
                 </p>
                 <section className="network-exit-policy" aria-label="IP 变化规则">
                   <ExitPolicyFields
@@ -318,7 +327,7 @@ export function SettingsPanel({
               <>
                 <div className="section-title">
                   <h3>时区与语言</h3>
-                  <p>这些设置作用于 Eden 内的系统、CLI 和浏览器。</p>
+                  <p>这些设置作用于 Claude Eden 内的系统、CLI 和浏览器。</p>
                 </div>
                 {!draft.auto_timezone && !draft.auto_language && (
                   <p className="field-help">
@@ -373,7 +382,7 @@ export function SettingsPanel({
                   <span>
                     <strong>跟随出口地区的语言建议</strong>
                     <small>
-                      启动或应用设置时更新。多语言地区使用内置默认值；没有建议时保留已选语言。
+                      启动或应用设置时更新，仅推荐支持的语言。多语言地区使用内置默认值；没有建议时保留已选语言。
                     </small>
                   </span>
                   <input
@@ -408,26 +417,12 @@ export function SettingsPanel({
                     disabled={draft.auto_language}
                     onValueChange={(next) => update("locale", next)}
                   >
-                    {[
-                      ["en_US.UTF-8", "English (United States)"],
-                      ["zh_CN.UTF-8", "简体中文"],
-                      ["zh_TW.UTF-8", "繁體中文"],
-                      ["ja_JP.UTF-8", "日本語"],
-                      ["de_DE.UTF-8", "Deutsch"],
-                      ["fr_FR.UTF-8", "Français"],
-                    ].map(([value, label]) => (
-                      <option key={value} value={value}>
+                    {languages.map(({ locale, label }) => (
+                      <option key={locale} value={locale}>
                         {label}
                       </option>
                     ))}
-                    {![
-                      "en_US.UTF-8",
-                      "zh_CN.UTF-8",
-                      "zh_TW.UTF-8",
-                      "ja_JP.UTF-8",
-                      "de_DE.UTF-8",
-                      "fr_FR.UTF-8",
-                    ].includes(draft.locale) && (
+                    {!languages.some(({ locale }) => locale === draft.locale) && (
                       <option value={draft.locale}>{draft.locale}</option>
                     )}
                   </InlineSelect>
@@ -440,26 +435,12 @@ export function SettingsPanel({
                     disabled={draft.auto_language}
                     onValueChange={(next) => update("browser_language", next)}
                   >
-                    {[
-                      ["en-US", "English (United States)"],
-                      ["zh-CN", "简体中文"],
-                      ["zh-TW", "繁體中文"],
-                      ["ja-JP", "日本語"],
-                      ["de-DE", "Deutsch"],
-                      ["fr-FR", "Français"],
-                    ].map(([value, label]) => (
-                      <option key={value} value={value}>
+                    {languages.map(({ browser, label }) => (
+                      <option key={browser} value={browser}>
                         {label}
                       </option>
                     ))}
-                    {![
-                      "en-US",
-                      "zh-CN",
-                      "zh-TW",
-                      "ja-JP",
-                      "de-DE",
-                      "fr-FR",
-                    ].includes(draft.browser_language) && (
+                    {!languages.some(({ browser }) => browser === draft.browser_language) && (
                       <option value={draft.browser_language}>
                         {draft.browser_language}
                       </option>
@@ -467,7 +448,7 @@ export function SettingsPanel({
                   </InlineSelect>
                 </label>
                 <p className="footnote">
-                  网页仍可按自己的规则选择语言。工作台界面使用中文。
+                  支持简体中文、繁体中文、英语、日语、韩语、德语、法语及其地区设置。网页仍可按自己的规则选择语言。工作台界面使用中文。
                 </p>
               </>
             )}
@@ -566,7 +547,7 @@ export function SettingsPanel({
               <>
                 <div className="section-title">
                   <h3>环境与恢复</h3>
-                  <p>本机与 Eden 中的改动会双向同步。</p>
+                  <p>本机与 Claude Eden 中的改动会双向同步。</p>
                 </div>
                 {status.local_vm_storage && <EnvironmentStorage status={status} onConfirm={onConfirm} />}
                 <div className="setting-summary-row">
@@ -581,7 +562,7 @@ export function SettingsPanel({
                 <div className="project-explanation">
                   <FolderOpen size={22} />
                   <div>
-                    <strong>所有项目共用一个 Eden 环境</strong>
+                    <strong>所有项目共用一个 Claude Eden 环境</strong>
                     <p>
                       明确打开的项目文件夹会共享到同一个环境。主机的 Claude
                       登录、SSH 密钥和个人配置不会自动导入。浏览器下载统一保存到

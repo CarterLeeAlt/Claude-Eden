@@ -1,4 +1,4 @@
-// Headless adapter for the production controller. Set EDEN_TEST_BROWSER_PATH
+// Display adapter for the production controller. Set EDEN_TEST_BROWSER_PATH
 // to a Chromium executable that supports unpacked extensions. All browser data
 // and the authenticated, private-pipe test controller live in a temporary folder.
 import assert from "node:assert/strict";
@@ -13,6 +13,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 assert.ok(process.env.EDEN_TEST_BROWSER_PATH, "Set EDEN_TEST_BROWSER_PATH to a local Chromium executable");
 const executable = resolve(process.env.EDEN_TEST_BROWSER_PATH);
+const headless = process.env.EDEN_TEST_BROWSER_HEADED !== "1";
 const directory = await realpath(await mkdtemp(join(tmpdir(), "workbench-browser-metadata-")));
 const token = randomBytes(32).toString("hex");
 const iconRequests = [];
@@ -35,7 +36,11 @@ const site = http.createServer((req, res) => {
   const buttons = req.url === "/copy" ? `<button id="text">Copy text</button><button id="rich">Copy item</button><button id="legacy">Legacy copy</button><button id="plain">Ordinary click</button><textarea id="selection">selected clipboard fixture</textarea><button id="selected">Copy selection</button>
     <script>
       const text = 'production clipboard fixture';
-      document.getElementById('text').onclick = () => navigator.clipboard.writeText(text);
+      document.getElementById('text').onclick = async event => {
+        globalThis.copyAttempt = { trusted: event.isTrusted, focused: document.hasFocus(), phase: 'started' };
+        try { await navigator.clipboard.writeText(text); globalThis.copyAttempt.phase = 'copied'; }
+        catch (error) { globalThis.copyAttempt = { ...globalThis.copyAttempt, phase: 'failed', error: String(error) }; }
+      };
       document.getElementById('rich').onclick = () => navigator.clipboard.write([new ClipboardItem({'text/plain': new Blob(['clipboard item fixture'], {type:'text/plain'})})]);
       let customCopy = false;
       document.addEventListener('copy', event => {
@@ -51,7 +56,13 @@ const site = http.createServer((req, res) => {
       };
     </script>` : "";
   const frame = req.url === "/frame" ? `<iframe id="child" width="1000" height="300" allow="clipboard-write" src="http://127.0.0.1:${site.address().port}/copy"></iframe>` : "";
-  res.end(`<!doctype html><script>globalThis.webdriverAtLoad = navigator.webdriver</script><title>${req.url}</title><link rel="icon" href="${iconOrigin}/${icon}.svg"><p>Isolated browser metadata fixture</p>${buttons}${frame}`);
+  res.end(`<!doctype html><script>
+    globalThis.webdriverAtLoad = navigator.webdriver;
+    document.addEventListener('pointerdown', event => {
+      globalThis.fixturePointer = { trusted: event.isTrusted, x: event.clientX, y: event.clientY,
+        target: event.target.id || event.target.nodeName, focused: document.hasFocus() };
+    }, true);
+  </script><title>${req.url}</title><link rel="icon" href="${iconOrigin}/${icon}.svg"><p>Isolated browser metadata fixture</p>${buttons}${frame}`);
 });
 await new Promise(resolve => site.listen(0, "127.0.0.1", resolve));
 const origin = `http://localhost:${site.address().port}`;
@@ -60,7 +71,7 @@ const snapshots = [], clipboard = [];
 const streamController = new AbortController();
 
 async function waitFor(read, label) {
-  const deadline = Date.now() + 15000;
+  const deadline = Date.now() + Number(process.env.EDEN_BROWSER_TEST_TIMEOUT_MS || 15000);
   while (Date.now() < deadline) {
     if (streamError) throw streamError;
     if (agent && agent.exitCode !== null) throw new Error(`Controller exited during ${label}: ${stderr}`);
@@ -94,6 +105,8 @@ async function click(id, selector) {
     const rect = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
     return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
   })()`);
+  await api("/__metadata-test/cdp", { id, method: "Input.dispatchMouseEvent", params: { type: "mouseMoved", ...point } });
+  await waitFor(() => evaluate(id, `document.querySelector(${JSON.stringify(selector)}).matches(':hover')`), `${selector} pointer hit test`);
   for (const type of ["mousePressed", "mouseReleased"])
     await api("/__metadata-test/cdp", { id, method: "Input.dispatchMouseEvent", params: { type, ...point, button: "left", clickCount: 1 } });
   return context;
@@ -134,7 +147,7 @@ function checkPNG(icon) {
 try {
   const sourceDirectory = new URL("../internal/eden/", import.meta.url);
   for (const name of await readdir(sourceDirectory))
-    if ((name.startsWith("browser-") && name.endsWith(".mjs")) || name === "native-input.mjs")
+    if (name.endsWith(".mjs") && !name.endsWith(".test.mjs"))
       await cp(new URL(name, sourceDirectory), join(directory, name));
   await cp(new URL("split-extension", sourceDirectory), join(directory, "extension"), { recursive: true });
   const source = await readFile(new URL("browser-agent.mjs", sourceDirectory), "utf8");
@@ -155,7 +168,7 @@ try {
     .replace("/etc/workbench/browser-control.json", join(directory, "control.json"))
     .replace("/usr/local/lib/workbench-split", join(directory, "extension"))
     .replace('spawn(browserBinary, flags', `spawn(${JSON.stringify(executable)}, [...flags, "--use-mock-keychain", "--password-store=basic"]`)
-    .replace('"--start-fullscreen",', '"--headless=new",')
+    .replace('"--start-fullscreen",', headless ? '"--headless=new",' : '"--start-fullscreen",')
     .replace(listen, 'server.listen(0, "127.0.0.1", () => console.log("CONTROL_PORT=" + server.address().port));')
     .replace(input, testRoute);
   await writeFile(join(directory, "browser-agent.mjs"), isolated);
@@ -255,11 +268,43 @@ try {
     const before = clipboard.length;
     const context = randomBytes(16).toString("hex");
     await api("/copy-context", { id: frameTab.id, context });
+    // The DOM can finish loading before the child surface enters Chromium's
+    // input hit-test map. Observe the real pointer entering this button before
+    // pressing it; a script-triggered click would not exercise native input.
+    await api("/__metadata-test/cdp", { id: frameTab.id, method: "Input.dispatchMouseEvent", params: {
+      type: "mouseMoved", x: frame.x + button.x, y: frame.y + button.y,
+    } });
+    await waitFor(async () => {
+      const result = await api("/__metadata-test/cdp", { sessionId, method: "Runtime.evaluate", params: {
+        expression: "document.getElementById('text').matches(':hover')", returnByValue: true,
+      } });
+      return result.result.value;
+    }, "OOPIF pointer hit test");
     for (const type of ["mousePressed", "mouseReleased"])
       await api("/__metadata-test/cdp", { id: frameTab.id, method: "Input.dispatchMouseEvent", params: {
         type, x: frame.x + button.x, y: frame.y + button.y, button: "left", clickCount: 1,
       } });
-    await waitFor(() => clipboard.length > before, "OOPIF copy through production SSE");
+    try {
+      const attempt = await waitFor(async () => {
+        const result = await api("/__metadata-test/cdp", { sessionId, method: "Runtime.evaluate", params: {
+          expression: "globalThis.copyAttempt?.phase !== 'started' && globalThis.copyAttempt", returnByValue: true,
+        } });
+        return result.result.value;
+      }, "trusted OOPIF click and native clipboard write");
+      assert.deepEqual(attempt, { trusted: true, focused: true, phase: "copied" });
+      await waitFor(() => clipboard.length > before, "OOPIF copy through production SSE");
+    } catch (error) {
+      const child = await api("/__metadata-test/cdp", { sessionId, method: "Runtime.evaluate", params: {
+        expression: `({ url: location.href, focused: document.hasFocus(), visible: document.visibilityState,
+          attempt: globalThis.copyAttempt, pointer: globalThis.fixturePointer, active: document.activeElement?.outerHTML.slice(0,200),
+          button: document.getElementById('text').getBoundingClientRect().toJSON() })`, returnByValue: true,
+      } });
+      const parent = await evaluate(frameTab.id, `({ focused: document.hasFocus(), visible: document.visibilityState,pointer:globalThis.fixturePointer,
+        pointTarget: document.elementFromPoint(${frame.x + button.x},${frame.y + button.y})?.outerHTML,
+        frame: document.getElementById('child').getBoundingClientRect().toJSON(),viewport:[innerWidth,innerHeight,devicePixelRatio] })`);
+      console.error(JSON.stringify({ fixture: "OOPIF clipboard", button, frame, child: child.result.value, parent }));
+      throw error;
+    }
     assert.deepEqual(clipboard.slice(before), [{ id: frameTab.id, text: "production clipboard fixture", context }]);
     assert.ok(!snapshot.tabs.some(item => item.id === childTarget.targetId), "OOPIF must not become a workbench tab");
   } finally {
@@ -281,17 +326,22 @@ try {
     reconnectController.abort();
     await reader.cancel().catch(() => {});
   }
-  console.log("PASS: production controller headless adapter, initial/REST/SSE favicons, navigation, SPA, dynamic icons, native CSP, failed-load recovery, hidden extension target, copy APIs, selected-text copy and real cross-site OOPIF clipboard SSE");
+  console.log(`PASS: production controller ${headless ? "headless" : "headed"} adapter, initial/REST/SSE favicons, navigation, SPA, dynamic icons, native CSP, failed-load recovery, hidden extension target, pointer hit tests, copy APIs, selected-text copy and real cross-site OOPIF clipboard SSE`);
 } finally {
   streamController.abort();
   await streamTask;
-  if (agent && agent.exitCode === null) {
-    const exited = once(agent, "exit");
-    agent.kill("SIGTERM");
-    const force = setTimeout(() => agent.kill("SIGKILL"), 5000);
-    await exited;
-    clearTimeout(force);
+  try {
+    if (agent && agent.exitCode === null) {
+      const exited = once(agent, "close");
+      agent.kill("SIGTERM");
+      const force = setTimeout(() => agent.kill("SIGKILL"), 5000);
+      const [code, signal] = await exited;
+      clearTimeout(force);
+      assert.equal(signal, null, `Controller required forced shutdown: ${stderr}`);
+      assert.equal(code, 0, `Controller shutdown failed: ${stderr}`);
+    }
+  } finally {
+    await Promise.all([new Promise(resolve => site.close(resolve)), new Promise(resolve => icons.close(resolve))]);
+    await rm(directory, { recursive: true, force: true });
   }
-  await Promise.all([new Promise(resolve => site.close(resolve)), new Promise(resolve => icons.close(resolve))]);
-  await rm(directory, { recursive: true, force: true });
 }

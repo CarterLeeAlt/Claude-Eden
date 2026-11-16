@@ -42,7 +42,7 @@ func TestDesktopRecoversStaleRecordOnReusedPort(t *testing.T) {
 				defer unlockController(lock)
 			}
 			started := errors.New("replacement started")
-			_, err = desktopLaunch(profile, false, DesktopOptions{}, func() error { return started })
+			_, err = desktopLaunch(t.Context(), profile, false, DesktopOptions{}, func() (<-chan error, error) { return nil, started })
 			if held && (err == nil || errors.Is(err, started)) {
 				t.Fatalf("replaced a locked unauthenticated controller: %v", err)
 			}
@@ -147,7 +147,7 @@ func TestControllerRestartAfterGracefulAndForcedExit(t *testing.T) {
 			foreign.Listener = listener
 			foreign.Start()
 			defer foreign.Close()
-			_, err = desktopLaunch(profile, false, DesktopOptions{}, func() error { cmd = start(); return nil })
+			_, err = desktopLaunch(t.Context(), profile, false, DesktopOptions{}, func() (<-chan error, error) { cmd = start(); return nil, nil })
 			if err != nil {
 				t.Fatalf("reopen failed: %v", err)
 			}
@@ -178,9 +178,9 @@ func TestDesktopRecoveryRejectsNonRegularLock(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(profile, "control.json"), []byte("invalid"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := desktopLaunch(profile, false, DesktopOptions{}, func() error {
+	_, err := desktopLaunch(t.Context(), profile, false, DesktopOptions{}, func() (<-chan error, error) {
 		t.Fatal("started with an unusable lock")
-		return nil
+		return nil, nil
 	})
 	if err == nil {
 		t.Fatal("unusable lock accepted")
@@ -201,11 +201,11 @@ func TestDesktopWaitsForRetiringController(t *testing.T) {
 	go func() { time.Sleep(100 * time.Millisecond); _ = unlockController(lock); close(released) }()
 	defer func() { <-released }()
 	started := errors.New("new controller started")
-	_, err = desktopLaunch(profile, false, DesktopOptions{}, func() error {
+	_, err = desktopLaunch(t.Context(), profile, false, DesktopOptions{}, func() (<-chan error, error) {
 		if !controllerLockFree(profile) {
 			t.Error("started before the retiring controller released its lock")
 		}
-		return started
+		return nil, started
 	})
 	if !errors.Is(err, started) {
 		t.Fatalf("did not resume after shutdown: %v", err)
@@ -232,5 +232,48 @@ func TestPrepareUpdateWaitsForRetiringController(t *testing.T) {
 	}
 	if !controllerLockFree(profile) {
 		t.Fatal("update accepted before the controller released its lock")
+	}
+}
+
+func TestDesktopStartupRemainsPendingUntilCancelledOrExited(t *testing.T) {
+	for _, outcome := range []string{"cancel", "exit-success", "exit-failure"} {
+		t.Run(outcome, func(t *testing.T) {
+			profile := t.TempDir()
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			exited := make(chan error, 1)
+			done := make(chan error, 1)
+			go func() {
+				_, err := desktopLaunch(ctx, profile, false, DesktopOptions{}, func() (<-chan error, error) { return exited, nil })
+				done <- err
+			}()
+			// Exceed the old 60 x 200 ms startup loop with a still-live process.
+			wait := 50 * time.Millisecond
+			if outcome == "cancel" {
+				wait = 12500 * time.Millisecond
+			}
+			select {
+			case err := <-done:
+				t.Fatalf("startup ended without readiness, exit or cancellation: %v", err)
+			case <-time.After(wait):
+			}
+			failure := errors.New("fixture launch failed")
+			switch outcome {
+			case "cancel":
+				cancel()
+			case "exit-success":
+				exited <- nil
+			case "exit-failure":
+				exited <- failure
+			}
+			select {
+			case err := <-done:
+				if err == nil || outcome == "cancel" && !errors.Is(err, context.Canceled) || outcome == "exit-failure" && !errors.Is(err, failure) {
+					t.Fatalf("lost startup outcome: %v", err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("startup did not observe cancellation or process exit")
+			}
+		})
 	}
 }

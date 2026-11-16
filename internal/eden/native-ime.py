@@ -107,6 +107,10 @@ class Engine(IBus.Engine):
         self.purpose = 0
         self.probing = False
         self.probe_seen = False
+        self.probe_waiters = []
+        self.probe_timer = None
+        self.probe_context = ''
+        self.probe_generation = 0
         self.reachable = False
         self.updated = 0
 
@@ -139,10 +143,10 @@ class Engine(IBus.Engine):
         global active
         self.clear()
         self.rect = None
-        self.probing = False
         self.reachable = False
         if active is self:
             active = None
+        self.finish_probe()
 
     def do_focus_out_id(self, path):
         self.do_focus_out()
@@ -155,13 +159,43 @@ class Engine(IBus.Engine):
     def do_set_cursor_location(self, x, y, width, height):
         self.rect = [x, y, width, height]
 
+    def probe(self, dispatch):
+        self.probe_waiters.append(dispatch)
+        if self.probing:
+            return
+        self.probing = True
+        self.probe_seen = False
+        self.probe_context = self.context
+        self.probe_generation += 1
+        self.probe_timer = GLib.timeout_add(45, self.finish_probe, True, self.probe_generation)
+        subprocess.Popen(['xdotool', 'key', '--delay', '0', 'F24'],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def finish_probe(self, expired=False, generation=None):
+        if not self.probe_waiters or generation is not None and generation != self.probe_generation:
+            return False
+        if self.probe_timer is not None and not expired:
+            GLib.source_remove(self.probe_timer)
+        self.probe_timer = None
+        self.probing = False
+        self.reachable = self.probe_seen and self is active and self.probe_context == self.context
+        waiters, self.probe_waiters = self.probe_waiters, []
+        for dispatch in waiters:
+            dispatch()
+        return False
+
     def do_set_content_type(self, purpose, hints):
         self.purpose = int(purpose)
 
     def do_process_key_event(self, keyval, keycode, state):
         if self.probing and keyval == probe_key:
-            self.probe_seen = True
-            self.reachable = True
+            # An earlier probe's key release can arrive after the next probe
+            # starts. Only a press acknowledges the current input context.
+            if not state & IBus.ModifierType.RELEASE_MASK:
+                self.probe_seen = True
+                self.reachable = True
+                # Drain already queued caret/focus events before completion.
+                GLib.idle_add(self.finish_probe, False, self.probe_generation)
             return True
         return False
 
@@ -295,16 +329,7 @@ class Handler(socketserver.StreamRequestHandler):
                 engine = active
                 ordinary_probe = value.get('mode') in ('status', 'begin') and engine is not None and engine.purpose not in (8, 9)
                 if probe_ready and ordinary_probe:
-                    engine.probing = True
-                    engine.probe_seen = False
-                    subprocess.Popen(['xdotool', 'key', '--delay', '0', 'F24'],
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-                    def finish():
-                        engine.probing = False
-                        engine.reachable = engine.probe_seen and engine is active
-                        return dispatch()
-                    GLib.timeout_add(45, finish)
+                    engine.probe(dispatch)
                 else:
                     dispatch()
                 return False

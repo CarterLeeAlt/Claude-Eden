@@ -18,7 +18,7 @@ export function LocalWorkbenchRoot({ children }) {
     const query = ++serial.current;
     const value = await api("/client/context");
     if (!alive.current || query !== serial.current) return null;
-    if (!["none", "local"].includes(value.mode)) throw new Error("后台未返回有效的本机工作台状态，请更新 Eden。");
+    if (!["none", "local"].includes(value.mode)) throw new Error("后台未返回有效的本机工作台状态，请更新 Claude Eden。");
     const next = `${value.mode}:${value.connection_id}`;
     if (identity.current && identity.current !== next) {
       attempt.current++;
@@ -114,8 +114,8 @@ export function LocalWorkbenchRoot({ children }) {
     {ready ? children : <main className="local-workbench-connect">
       <img src={logo} alt="" />
       <h1>{connecting || !context && !message ? "正在打开本机工作台" : "连接本机工作台"}</h1>
-      <p>Windows 上的 Eden 管理本地 Debian 13 环境。</p>
-      {(connecting || !context && !message) && <p role="status"><LoaderCircle className="spin" size={18} />{phase === "cancelling" ? "正在取消连接…" : "正在连接 Eden…"}</p>}
+      <p>Windows 上的 Claude Eden 管理本地 Debian 13 环境。</p>
+      {(connecting || !context && !message) && <p role="status"><LoaderCircle className="spin" size={18} />{phase === "cancelling" ? "正在取消连接…" : "正在连接 Claude Eden…"}</p>}
       {message && <p role="alert">{message}</p>}
       <div>{context && !connecting && <button className="primary" onClick={connect}>重新连接本机</button>}
         {!context && message && <button onClick={() => location.reload()}>重新加载</button>}

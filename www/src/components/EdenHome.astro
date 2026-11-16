@@ -14,9 +14,8 @@ const downloads = published.platforms;
 const base = import.meta.env.BASE_URL;
 const repo = 'https://github.com/CarterLeeAlt/Claude-Eden';
 const guideLabels: Record<EdenLocale, string> = {
-  zh: '使用文档', 'zh-TW': '使用文件 · 中文', ru: 'Документация · 中文', ar: 'الدليل · 中文', fa: 'راهنما · 中文',
-  ko: '사용 문서 · 中文', es: 'Documentación · 中文', my: 'လမ်းညွှန် · 中文', be: 'Дакументацыя · 中文',
-  ps: 'لارښود · 中文', prs: 'راهنما · 中文', am: 'መመሪያ · 中文', so: 'Hagaha · 中文', ti: 'መምርሒ · 中文', fr: 'Documentation · 中文',
+  zh: '使用文档', 'zh-TW': '使用文件 · 中文', en: 'Documentation · 中文', ja: '使用ガイド · 中文',
+  ko: '사용 문서 · 中文', de: 'Dokumentation · 中文', fr: 'Documentation · 中文',
 };
 const guideLabel = guideLabels[locale];
 const docHref = (href: string) => href.startsWith(`${repo}/blob/main/docs/guide/`)

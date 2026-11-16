@@ -122,6 +122,11 @@ func (s *Server) beginActivity(parent context.Context) (context.Context, func(),
 func (s *Server) closeService() error {
 	s.closeOnce.Do(func() {
 		s.beginClose()
+		s.jobs.cancelRunning()
+		// Revoke public access before waiting for streams, jobs or mounted files.
+		// Cancellation prevents an admitted network check from granting it again.
+		s.closeErr = s.closeProxyGate("控制服务正在退出，外网保持关闭")
+		s.closeErr = errors.Join(s.closeErr, managedproxy.Stop(s.profile))
 		// Closing PTYs first releases handlers blocked writing terminal input.
 		// The manager also rejects a terminal created by an already-admitted call.
 		s.terminals.close()
@@ -139,8 +144,6 @@ func (s *Server) closeService() error {
 			browser.close()
 		}
 		s.controlSession.close()
-		s.closeErr = s.closeProxyGate("控制服务正在退出，外网保持关闭")
-		s.closeErr = errors.Join(s.closeErr, managedproxy.Stop(s.profile))
 		if s.controlPublished {
 			if err := os.Remove(filepath.Join(s.profile, "control.json")); err != nil && !os.IsNotExist(err) {
 				s.closeErr = errors.Join(s.closeErr, err)

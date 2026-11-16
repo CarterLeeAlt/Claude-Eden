@@ -312,6 +312,20 @@ func TestGateControlAuthenticationAndConfigInvalidation(t *testing.T) {
 		t.Fatal("unauthenticated control accepted")
 	}
 	fixtureGrant(t, g)
+	for _, reason := range []string{strings.Repeat("a", 200), strings.Repeat("a", 201), strings.Repeat("故", 32<<10)} {
+		state, err := client.Close(context.Background(), reason)
+		if err != nil || state.Mode != GateClosed || len(state.Reason) > 200 || g.Allows("tcp", netip.MustParseAddrPort("8.8.8.8:443")) {
+			t.Fatalf("long diagnostic retained network access: %+v %v", state, err)
+		}
+		fixtureGrant(t, g)
+	}
+	if state, err := client.request(context.Background(), &gateCommand{Action: "close", Reason: strings.Repeat("故", 67)}); err != nil || state.Mode != GateClosed || state.Reason != strings.Repeat("故", 66) {
+		t.Fatalf("server did not bound the reason at a UTF-8 boundary: %+v %v", state, err)
+	}
+	fixtureGrant(t, g)
+	if _, err := client.request(context.Background(), &gateCommand{Action: "fault", Reason: strings.Repeat("a", 201)}); err == nil || g.Status().Mode != GateOpen {
+		t.Fatal("long non-close request changed the gate")
+	}
 	cfg.Timezone = "Europe/London"
 	data, _ = json.Marshal(cfg)
 	_ = os.WriteFile(path, data, 0600)

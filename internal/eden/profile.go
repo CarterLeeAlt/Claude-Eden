@@ -48,7 +48,7 @@ func (c Config) Fingerprint() string {
 
 func (c Config) RecordRunning(state, name string) error {
 	if filepath.Base(name) != name {
-		return errors.New("invalid Eden instance name")
+		return errors.New("invalid Claude Eden instance name")
 	}
 	dir := filepath.Join(state, "lima", name)
 	return c.RecordRunningAt(dir)
@@ -93,10 +93,10 @@ func (c Config) CheckRunning(state string) error {
 		}
 		var r runningProfile
 		if json.Unmarshal(b, &r) != nil {
-			return errors.New("invalid running Eden profile record")
+			return errors.New("invalid running Claude Eden profile record")
 		}
 		if r.alive() && r.Fingerprint != c.Fingerprint() {
-			return fmt.Errorf("Eden configuration changed while a VM is running; run eden stop before restarting")
+			return fmt.Errorf("Claude Eden configuration changed while a VM is running; run eden stop before restarting")
 		}
 	}
 	return nil

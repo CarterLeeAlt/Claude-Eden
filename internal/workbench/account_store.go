@@ -286,7 +286,7 @@ func (a *localAccount) updateProfile(name, avatar string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if len(a.key) != 32 {
-		return errors.New("请先解锁 Eden")
+		return errors.New("请先解锁 Claude Eden")
 	}
 	record := *a.record
 	record.Username = name
@@ -305,7 +305,7 @@ func (a *localAccount) changePassword(oldPassword, newPassword string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if len(a.key) != 32 {
-		return errors.New("请先解锁 Eden")
+		return errors.New("请先解锁 Claude Eden")
 	}
 	if time.Now().Before(a.nextAttempt) {
 		return errors.New("请稍后再试")
@@ -342,7 +342,7 @@ func (a *localAccount) desktopKey() ([]byte, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if len(a.key) != 32 {
-		return nil, errors.New("请先登录 Eden，再打开 Claude Desktop")
+		return nil, errors.New("请先登录 Claude Eden，再打开 Claude Desktop")
 	}
 	// Base64 is accepted by the keyring without newline/encoding ambiguity.
 	encoded := make([]byte, base64.RawStdEncoding.EncodedLen(len(a.key)))

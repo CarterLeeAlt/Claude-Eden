@@ -3,12 +3,14 @@ package ssh
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -41,7 +43,7 @@ func (c *SSHConfig) Args() []string {
 }
 
 // ExitMaster executes `ssh -O exit`
-func ExitMaster(host string, port int, c *SSHConfig) error {
+func ExitMaster(ctx context.Context, host string, port int, c *SSHConfig) error {
 	if c == nil {
 		return errors.New("got nil SSHConfig")
 	}
@@ -51,7 +53,8 @@ func ExitMaster(host string, port int, c *SSHConfig) error {
 		args = append(args, "-p", strconv.Itoa(port))
 	}
 	args = append(args, host)
-	cmd := exec.Command(c.Binary(), args...)
+	cmd := exec.CommandContext(ctx, c.Binary(), args...)
+	cmd.WaitDelay = time.Second
 	logrus.Debugf("executing ssh for exiting the master: %s %v", cmd.Path, cmd.Args)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -85,7 +88,7 @@ func ParseScriptInterpreter(script string) (string, error) {
 // Returns stdout and stderr.
 //
 // scriptName is used only for readability of error strings.
-func ExecuteScript(host string, port int, c *SSHConfig, script, scriptName string) (string, string, error) {
+func ExecuteScript(ctx context.Context, host string, port int, c *SSHConfig, script, scriptName string) (string, string, error) {
 	if c == nil {
 		return "", "", errors.New("got nil SSHConfig")
 	}
@@ -99,14 +102,15 @@ func ExecuteScript(host string, port int, c *SSHConfig, script, scriptName strin
 		sshArgs = append(sshArgs, "-p", strconv.Itoa(port))
 	}
 	sshArgs = append(sshArgs, host, "--", interpreter)
-	sshCmd := exec.Command(sshBinary, sshArgs...)
+	sshCmd := exec.CommandContext(ctx, sshBinary, sshArgs...)
+	sshCmd.WaitDelay = time.Second
 	sshCmd.Stdin = strings.NewReader(script)
 	var stderr bytes.Buffer
 	sshCmd.Stderr = &stderr
 	logrus.Debugf("executing ssh for script %q: %s %v", scriptName, sshCmd.Path, sshCmd.Args)
 	out, err := sshCmd.Output()
 	if err != nil {
-		return string(out), stderr.String(), fmt.Errorf("failed to execute script %q: stdout=%q, stderr=%q: %w", scriptName, string(out), stderr.String(), err)
+		return string(out), stderr.String(), fmt.Errorf("failed to execute script %q: stdout=%q, stderr=%q: %w", scriptName, string(out), stderr.String(), errors.Join(ctx.Err(), err))
 	}
 	return string(out), stderr.String(), nil
 }

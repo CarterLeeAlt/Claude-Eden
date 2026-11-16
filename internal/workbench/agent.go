@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
-	"time"
 
 	"github.com/sylvinus/agent-vm/internal/diagnostics"
 )
@@ -60,10 +59,10 @@ func AgentOperations() []AgentOperation {
 	ops[len(ops)-1].InputSchema["properties"].(map[string]any)["patch"] = from(Settings{})
 	ops[len(ops)-1].InputSchema["properties"].(map[string]any)["patch"].(map[string]any)["properties"].(map[string]any)["exit_policy"] = object(map[string]string{"mode": "string", "scope": "string", "ip": "string", "country_code": "string", "region": "string", "city": "string"})
 	post("settings.restore", "Restore the saved previous settings and restart the environment; inspect status and obtain permission to interrupt work first", "/api/restore", object(nil))
-	get("proxy.status", "List source and node IDs without subscription URLs or node secrets", "/api/proxy")
+	get("proxy.status", "List manual nodes and the selected proxy without passwords or private keys", "/api/proxy")
 	proxy := from(proxyInput{})
-	for _, action := range []string{"import", "refresh", "edit", "delete", "select", "route", "restart", "stop"} {
-		post("proxy."+action, "Proxy operation; import creates a source, refresh updates an existing source. Read state before retrying. select/route applies the route", "/api/proxy/"+action, proxy)
+	for _, action := range []string{"add", "edit", "delete", "select", "restart", "stop"} {
+		post("proxy."+action, "Manage HTTP CONNECT, SOCKS5 or SSH nodes. add/edit accepts node; edit/delete/select uses node_id. Omitted secrets preserve credentials for unchanged authentication. select applies exactly one node. Read state before retrying", "/api/proxy/"+action, proxy)
 	}
 	get("guest.options", "Debian 13 image and resumable installation state", "/api/environment/guest-systems")
 	get("initialization.status", "Read initial setup state", "/api/environment/initialization")
@@ -151,14 +150,14 @@ type AgentError struct {
 func (e *AgentError) Error() string { return e.Message }
 
 func agentHTTPError(code int) *AgentError {
-	e := &AgentError{Code: "request_rejected", Message: "Eden rejected the operation. Check the input and run doctor.", NextAction: "doctor", HTTPStatus: code}
+	e := &AgentError{Code: "request_rejected", Message: "Claude Eden rejected the operation. Check the input and run doctor.", NextAction: "doctor", HTTPStatus: code}
 	switch code {
 	case 401:
 		e.Code = "authentication_failed"
 		e.NextAction = "service.start"
 	case 423:
 		e.Code = "account_locked"
-		e.Message = "Unlock Eden before configuring the environment."
+		e.Message = "Unlock Claude Eden before configuring the environment."
 		e.NextAction = "account.unlock"
 	case 403:
 		e.Code = "user_action_required"
@@ -196,23 +195,19 @@ func AgentStartService(ctx context.Context, configPath string) error {
 	if !errors.Is(err, errControllerUnavailable) || !controllerLockFree(profile) {
 		return &AgentError{Code: "service_unavailable", Message: "The controller cannot be authenticated. Preserve its data and inspect diagnostics.", NextAction: "doctor"}
 	}
-	if err := startController(configPath); err != nil {
-		return &AgentError{Code: "service_start_failed", Message: "Eden could not start its controller.", NextAction: "doctor"}
+	exited, err := startController(configPath)
+	if err != nil {
+		return &AgentError{Code: "service_start_failed", Message: "Claude Eden could not start its controller.", NextAction: "doctor"}
 	}
-	timer := time.NewTicker(100 * time.Millisecond)
-	defer timer.Stop()
-	for {
-		select {
-		case <-ctx.Done():
+	c, err = waitStartedController(ctx, profile, exited)
+	if err != nil {
+		if ctx.Err() != nil {
 			return &AgentError{Code: "service_start_timeout", Message: "The controller has not become ready. It may still be starting.", NextAction: "doctor", Retryable: true}
-		case <-timer.C:
-			c, err := connectController(profile)
-			if err == nil {
-				defer c.close()
-				return agentCheckController(c, configPath)
-			}
 		}
+		return &AgentError{Code: "service_start_failed", Message: err.Error(), NextAction: "doctor"}
 	}
+	defer c.close()
+	return agentCheckController(c, configPath)
 }
 
 func agentCheckController(c *controllerClient, configPath string) error {
@@ -229,7 +224,7 @@ func agentCheckController(c *controllerClient, configPath string) error {
 func agentConnect(ctx context.Context, configPath string) (*controllerClient, error) {
 	c, err := connectController(filepath.Dir(configPath))
 	if err != nil {
-		return nil, &AgentError{Code: "service_unavailable", Message: "The local Eden controller is unavailable. Run service.start or doctor.", NextAction: "service.start"}
+		return nil, &AgentError{Code: "service_unavailable", Message: "The local Claude Eden controller is unavailable. Run service.start or doctor.", NextAction: "service.start"}
 	}
 	fail := func(err error) (*controllerClient, error) { c.close(); return nil, err }
 	if err := agentCheckController(c, configPath); err != nil {

@@ -121,7 +121,7 @@ function App() {
   // Keep feedback continuous until polling observes the accepted start job.
   const clientStatus = serverStatus;
   const status = clientStatus && startRequest
-    ? { ...clientStatus, job: { running: true, kind: "start", message: "正在启动 Eden 环境…" } }
+    ? { ...clientStatus, job: { running: true, kind: "start", message: "正在启动 Claude Eden 环境…" } }
     : clientStatus;
   const { active } = layout;
   const setActive = id => setLayout(previous => focusTab(previous, id));
@@ -129,6 +129,8 @@ function App() {
   const [dropSide, setDropSide] = useState(null);
   const terminalControls = useRef(new Map());
   const remote = useRef(),
+    browserRemote = useRef(),
+    desktopRemote = useRef(),
     activeRef = useRef(active),
     lastBrowserTab = useRef(""),
     readyRef = useRef(false),
@@ -143,6 +145,12 @@ function App() {
   activeRef.current = active;
   readyRef.current = Boolean(status?.ready);
   const storageRecovery = status?.storage_recovery?.required;
+  const [desktopMounted, setDesktopMounted] = useState(false);
+  useEffect(() => {
+    if (desktopOpen) setDesktopMounted(true);
+    else if (!status?.vm_running) setDesktopMounted(false);
+  }, [desktopOpen, status?.vm_running]);
+  useEffect(() => { remote.current = desktopOpen ? desktopRemote.current : browserRemote.current; });
   const current = tabs.find((t) => t.id === active),
     terminal = !desktopOpen && current?.kind === "terminal",
     busy = Boolean(status?.job?.running),
@@ -817,7 +825,7 @@ function App() {
     if (!status?.ready) return;
     const stream = new EventSource(runtimeURL("/browser/events"));
     stream.addEventListener("clipboard", (event) => {
-      remote.current?.receiveCopy?.(JSON.parse(event.data));
+      browserRemote.current?.receiveCopy?.(JSON.parse(event.data));
     });
     stream.onopen = () => { browserStreamReady.current = true; };
     stream.onerror = () => { browserStreamReady.current = false; };
@@ -1096,7 +1104,7 @@ function App() {
         }
         if (connectionError || fatal) {
           setDialog({
-            title: "退出 Eden",
+            title: "退出 Claude Eden",
             body: "工作台连接已中断，暂时无法确认环境状态。仍在运行的后台任务会继续。",
             confirm: "仅退出桌面应用",
             resolve: (confirmed) => confirmed && native("quitNow"),
@@ -1104,7 +1112,7 @@ function App() {
           return;
         }
         setDialog({
-          title: "退出 Eden",
+          title: "退出 Claude Eden",
           body: "退出前请保存文件和设置。可以保留环境，让后台任务继续运行；下次打开会重新连接。",
           confirm: "停止环境并退出",
           secondary: "保留运行并退出",
@@ -1330,7 +1338,7 @@ function App() {
           footer={
             <>
               <button onClick={cancelAutomaticExit}>
-                {quitting.error ? "留在 Eden" : "取消自动退出"}
+                {quitting.error ? "留在 Claude Eden" : "取消自动退出"}
               </button>
               {quitting.error && (
                 <button className="primary" onClick={stopAndQuit}>
@@ -1348,7 +1356,7 @@ function App() {
               {quitting.error ||
                 (connectionError
                   ? "正在恢复工作台连接，恢复后会继续确认停止结果。"
-                  : "停止完成后 Eden 会自动退出。取消自动退出只保留窗口，环境仍会停止。")}
+                  : "停止完成后 Claude Eden 会自动退出。取消自动退出只保留窗口，环境仍会停止。")}
             </p>
             {!quitting.error && (
               <p>
@@ -1368,10 +1376,10 @@ function App() {
       <>
         <div className="boot-screen">
           <Shield size={36} />
-          <h1>连接 Eden 工作台</h1>
+          <h1>连接 Claude Eden 工作台</h1>
           <p>{fatal}</p>
           <p className="muted">
-            请从 Eden 应用打开，或在终端运行 <code>eden desktop</code>。
+            请从 Claude Eden 应用打开，或在终端运行 <code>eden desktop</code>。
           </p>
           <button
             className="primary"
@@ -1512,10 +1520,10 @@ function App() {
           <main className={`workspace ${split ? "workspace-split" : ""}`} ref={workspaceBox} hidden={Boolean(managementPage)}
             style={{ "--split-left": `${100 * (dualBrowser && nativeSplit?.fraction || 0.5)}%` }}>
             {dropSide && <div aria-hidden="true" className={`split-drop split-${dropSide}`}>{dropSide === "left" ? "放到左侧" : "放到右侧"}</div>}
-            {!storageRecovery && desktopOpen && <ClaudeDesktop
+            {!storageRecovery && (desktopOpen || desktopMounted) && <ClaudeDesktop
               uploads={desktopFiles.uploads}
               onProjectOpened={() => refreshStatus.current?.()}
-              status={status} visible={!settingsOpen && !managementPage} remoteRef={remote}
+              status={status} selected={desktopOpen} visible={desktopOpen && !settingsOpen && !managementPage} remoteRef={desktopRemote}
               onStatus={notify} onFallback={(text, message) => setTransfer({ text, message })}
               onConfirm={confirm} onDetails={() => setDetails(true)}
               sidebarCollapsed={sidebarCollapsed}
@@ -1529,14 +1537,14 @@ function App() {
             )}
             {!storageRecovery && (status.vm_running || terminal) && (
               <>
-                {!desktopOpen && !showHome && webPanes.length > 0 && (
-                  <section className={`pane-lane browser-lane ${browserTabLayout === "vertical" ? "vertical-browser" : ""} ${dualBrowser ? "" : "split-" + paneSide(webPanes[0].id)}`}>
-                    {browserTabLayout === "vertical" && <BrowserTabRail tabs={browserTabs} metadata={metadata}
+                {tabs.some(tab => tab.kind !== "terminal") && (
+                  <section hidden={!browserVisible} className={`pane-lane browser-lane ${browserTabLayout === "vertical" ? "vertical-browser" : ""} ${dualBrowser ? "" : "split-" + paneSide(webPanes[0]?.id)}`}>
+                    {browserVisible && browserTabLayout === "vertical" && <BrowserTabRail tabs={browserTabs} metadata={metadata}
                       active={liveBrowser?.id} ready={status.ready} busy={busy} splitDrag={splitDrag}
-                      sidebarButton={sidebarButton(paneSide(webPanes[0].id))}
+                      sidebarButton={sidebarButton(paneSide(webPanes[0]?.id))}
                       onSelect={select} onClose={closeTab} onRename={renameTab} onPin={pinTab} onReorder={reorder}
                       onNew={newPage} />}
-                    <div className="browser-headers">{webPanes.map(tab =>
+                    <div className="browser-headers">{browserVisible && webPanes.map(tab =>
                       <div key={paneSide(tab.id) || "single"} className="browser-header-cell" data-focused={active === tab.id}
                         onPointerDownCapture={() => focusHeader(tab)} onFocusCapture={() => focusHeader(tab)}>
                         {browserHeader(tab)}
@@ -1544,14 +1552,14 @@ function App() {
                     <div className="pane-body" onPointerDownCapture={() => {
                       if (!dualBrowser && liveBrowser?.id !== active) focusHeader(liveBrowser);
                     }}>
-                      {status.ready && liveBrowser?.kind === "browser-settings" && <BrowserSettingsPage
+                      {status.ready && browserVisible && liveBrowser?.kind === "browser-settings" && <BrowserSettingsPage
                         key={`${liveBrowser.id}:${browserSettingsRevision}`} tab={liveBrowser} tabs={tabs}
                         currentHome={settings.browser_home_url} layout={browserTabLayout}
                         onLayoutChange={value => persist("eden-browser-tab-layout", value, setBrowserTabLayout)}
                         onSectionChange={openBrowserSettings}
                         onSaved={next => setSettings(previous => ({ ...previous, ...next }))}
                         onInternal={openInternalPage} onOpenPage={openSettingsPageResult} onConfirm={confirm} />}
-                      {status.ready && <RemoteView ref={remote} visible={Boolean(liveBrowserVisible && !settingsOpen && liveBrowser?.kind !== "browser-settings")}
+                      {status.ready && <RemoteView ref={browserRemote} visible={Boolean(liveBrowserVisible && !settingsOpen && liveBrowser?.kind !== "browser-settings")}
                         copyScope={webPanes.map(tab => `${tab.id}:${tab.document || ""}`).join("|")}
                         focused={dualBrowser || liveBrowser?.id === active} keyboard={status.keyboard}
                         systemClipboard={browser.capabilities?.systemClipboard !== false}
@@ -1601,26 +1609,26 @@ function App() {
                     <p className="field-help">在设置中恢复环境存储后，再启动浏览器和终端。诊断包可以从同一页面导出。</p>
                     <button className="primary" onClick={() => openSettings("project")}>恢复环境存储</button>
                   </> : setupProgress ? <>
-                    <h1>{status.job.error ? "环境安装未完成" : "正在安装 Eden 环境"}</h1>
+                    <h1>{status.job.error ? "环境安装未完成" : "正在安装 Claude Eden 环境"}</h1>
                     <SetupProgress job={status.job} onDetails={() => setDetails(true)}
                       onStop={stop} onRetry={() => startEnvironment({ guest_system: "debian-13" })} disconnected={Boolean(connectionError)} />
                   </> : <>
                   <h1>
                     {busy
                       ? status.job.kind === "stop"
-                        ? "正在停止 Eden 环境"
+                        ? "正在停止 Claude Eden 环境"
                         : status.job.kind === "storage"
                           ? "正在调整环境存储"
                         : status.job.kind === "project"
                           ? "正在打开项目"
-                          : "正在准备 Eden 环境"
+                          : "正在准备 Claude Eden 环境"
                       : running
                         ? !status.ready
-                          ? "Eden 环境正在连接"
-                          : "Eden 环境已就绪"
+                          ? "Claude Eden 环境正在连接"
+                          : "Claude Eden 环境已就绪"
                         : setupProxy
                           ? "为 Claude 准备独立工作区"
-                          : "先启动 Eden 环境"}
+                          : "先启动 Claude Eden 环境"}
                   </h1>
                   <p className="welcome-subtitle">
                     <SafetyMessage message={busy
@@ -1636,7 +1644,7 @@ function App() {
                           : "准备独立的浏览器和终端，完成网络检查后开始工作。"} />
                   </p>
                   {!running && (
-                    <ol className="onboarding-steps" aria-label="开始使用 Eden">
+                    <ol className="onboarding-steps" aria-label="开始使用 Claude Eden">
                       {["配置代理", "启动环境", "开始工作"].map(
                         (label, index) => (
                           <li
@@ -1661,12 +1669,12 @@ function App() {
                         size={24}
                       />
                       <span>
-                        <strong>Eden 隔离环境</strong>
+                        <strong>Claude Eden 隔离环境</strong>
                         <small>
                           {running
                             ? runtimeLabel
                             : setupProxy
-                              ? "自备代理订阅、YAML 配置或节点"
+                              ? "添加自己的 HTTP CONNECT、SOCKS5 或 SSH 节点"
                               : "代理已配置，首次启动会下载开发环境"}
                         </small>
                       </span>
@@ -1714,7 +1722,7 @@ function App() {
                           : !running
                             ? setupProxy
                               ? "配置网络与代理"
-                              : "启动 Eden 环境"
+                              : "启动 Claude Eden 环境"
                             : !status.ready
                               ? "恢复浏览器"
                               : !workspace
@@ -1743,7 +1751,7 @@ function App() {
                   {!running && (
                     <p className="welcome-hint">
                       {setupProxy
-                        ? "Eden 不提供代理或 Claude 账户。连接后，在 Eden 内完成 Claude 登录。"
+                        ? "Claude Eden 不提供代理或 Claude 账户。连接后，在 Claude Eden 内完成 Claude 登录。"
                         : "首次安装时可在操作详情中查看下载和配置进度；中断后可以继续安装。"}
                     </p>
                   )}
@@ -1973,7 +1981,7 @@ function App() {
                   setTransfer(null);
                 }}
               >
-                粘贴到 Eden
+                粘贴到 Claude Eden
               </button>
             </>
           }

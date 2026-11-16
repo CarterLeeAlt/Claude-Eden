@@ -16,7 +16,7 @@ const directory = await realpath(await mkdtemp(join(tmpdir(), "workbench-devtool
 const token = randomBytes(32).toString("hex");
 let agent, control, stderr = "";
 async function waitFor(fn, label) {
-  const deadline = Date.now() + 20000;
+  const deadline = Date.now() + Number(process.env.EDEN_BROWSER_TEST_TIMEOUT_MS || 20000);
   while (Date.now() < deadline) {
     if (agent && agent.exitCode !== null) throw new Error("Controller exited: " + stderr);
     const result = await fn();
@@ -39,7 +39,7 @@ const cdp = (method, params = {}, sessionId) => api("/__devtools-test", { method
 try {
   const sourceDirectory = new URL("../internal/eden/", import.meta.url);
   for (const name of await readdir(sourceDirectory))
-    if ((name.startsWith("browser-") && name.endsWith(".mjs")) || name === "native-input.mjs")
+    if (name.endsWith(".mjs") && !name.endsWith(".test.mjs"))
       await cp(new URL(name, sourceDirectory), join(directory, name));
   await cp(new URL("split-extension", sourceDirectory), join(directory, "extension"), { recursive: true });
   const source = await readFile(new URL("browser-agent.mjs", sourceDirectory), "utf8");
@@ -88,7 +88,7 @@ try {
   console.log("PASS: production fullscreen controller opens real DevTools, keeps its page out of Workbench tabs, and preserves the active website when DevTools closes");
 } finally {
   if (agent?.exitCode === null) {
-    const exited = once(agent, "exit");
+    const exited = once(agent, "close");
     agent.kill("SIGTERM");
     const timer = setTimeout(() => agent.kill("SIGKILL"), 5000);
     await exited;

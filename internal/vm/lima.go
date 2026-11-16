@@ -328,15 +328,14 @@ func (l *Lima) Create(ctx context.Context, name, template string, s Settings, lo
 		if err != nil {
 			return err
 		}
-		data, err := json.Marshal(identity)
-		if err != nil {
-			return err
-		}
-		e = append(e, ".guestIdentity = "+string(data))
 		if path := os.Getenv(eden.ConfigEnv); path != "" {
 			cfg, err := eden.Load(path)
 			if err != nil {
 				return err
+			}
+			profile := cfg.GuestProfile
+			if profile.Version != 0 {
+				identity.Hostname = profile.Hostname
 			}
 			if template == "template:debian-13" {
 				images, err := edenDebianImages(tmpl.Config.Images)
@@ -350,8 +349,13 @@ func (l *Lima) Create(ctx context.Context, name, template string, s Settings, lo
 			}
 			tz, _ := json.Marshal(cfg.Timezone)
 			e = append(e, ".propagateProxyEnv = false", `.env = {"http_proxy":"","https_proxy":"","ftp_proxy":"","no_proxy":"","HTTP_PROXY":"","HTTPS_PROXY":"","FTP_PROXY":"","NO_PROXY":"","ALL_PROXY":"","all_proxy":""}`, ".timezone = "+string(tz))
-			e = append(e, `.user.name = "developer"`, `.user.comment = "Development user"`, `.user.home = "/home/developer"`, ".user.uid = 1000", `.user.shell = "/bin/bash"`, ".user.passwordlessSudo = true")
+			e = append(e, `.user.name = `+strconv.Quote(profile.WorkUser()), `.user.comment = "Development user"`, `.user.home = `+strconv.Quote(profile.WorkHomePath()), ".user.uid = 1000", `.user.shell = "/bin/bash"`, ".user.passwordlessSudo = true")
 		}
+		data, err := json.Marshal(identity)
+		if err != nil {
+			return err
+		}
+		e = append(e, ".guestIdentity = "+string(data))
 		if len(e) > 0 {
 			if tmpl.Bytes, err = yqutil.EvaluateExpression(ctx, yqutil.Join(e), tmpl.Bytes); err != nil {
 				return err
@@ -401,7 +405,20 @@ func (l *Lima) Clone(ctx context.Context, from, to string) error {
 	if sock := filepath.Join(dir, paths.SSHControlSocketMaxName); len(sock) >= paths.UnixSocketPathMax {
 		return fmt.Errorf("%w: its sockets in %s would need %d characters, at most %d", ErrNameTooLong, filepath.Dir(dir), len(sock), paths.UnixSocketPathMax-1)
 	}
-	_, err = instance.CloneOrRename(ctx, inst, to, false)
+	identity, err := guestidentity.New()
+	if err != nil {
+		return err
+	}
+	if path := os.Getenv(eden.ConfigEnv); path != "" {
+		cfg, err := eden.Load(path)
+		if err != nil {
+			return err
+		}
+		if cfg.GuestProfile.Version != 0 {
+			identity.Hostname = cfg.GuestProfile.Hostname
+		}
+	}
+	_, err = instance.CloneWithIdentity(ctx, inst, to, identity)
 	return err
 }
 
@@ -575,6 +592,9 @@ func (l *Lima) Start(ctx context.Context, name string, log io.Writer) error {
 			return err
 		}
 		started := time.Now()
+		if os.Getenv(eden.ConfigEnv) != "" {
+			ctx = instance.WithWatchHostAgentTimeout(ctx, 0)
+		}
 		return vmStartError(instance.StartWithPaths(ctx, inst, false, false, "", guestAgent), inst.Dir, started)
 	})
 }
@@ -585,7 +605,9 @@ func (l *Lima) Stop(ctx context.Context, name string) error {
 		return err
 	}
 	switch {
-	case inst.Status == limatype.StatusRunning:
+	// Windows can observe the driver exit before the notified hostagent has
+	// finished cleanup. Its private stop event still owns that transition.
+	case inst.Status == limatype.StatusRunning || runtime.GOOS == "windows" && inst.HostAgentPID > 0:
 		return withLog(io.Discard, func() error {
 			return errors.Join(stopInstance(ctx, inst), reconcile.Reconcile(ctx, ""))
 		})
@@ -608,7 +630,7 @@ func (l *Lima) Delete(ctx context.Context, name string) error {
 		return err
 	}
 	return withLog(io.Discard, func() error {
-		if inst.Status == limatype.StatusRunning {
+		if inst.Status == limatype.StatusRunning || runtime.GOOS == "windows" && inst.HostAgentPID > 0 {
 			if err := stopInstance(ctx, inst); err != nil {
 				return err
 			}

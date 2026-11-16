@@ -14,10 +14,15 @@ func TestStopWindowsCoreForgetsReusedPID(t *testing.T) {
 		t.Fatal(err)
 	}
 	core := filepath.Join(filepath.Dir(exe), "mihomo.exe")
-	if err := os.WriteFile(core, []byte("placeholder"), 0700); err != nil {
+	f, err := os.OpenFile(core, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0700)
+	if err == nil {
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Remove(core) })
+	} else if !os.IsExist(err) {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Remove(core) })
 	for name, pid := range map[string]uint32{"same user": uint32(os.Getpid()), "system": 4} {
 		t.Run(name, func(t *testing.T) {
 			profile := t.TempDir()

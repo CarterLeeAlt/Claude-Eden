@@ -91,6 +91,7 @@ type resolverObservation struct {
 	Confined *bool `json:"confined"`
 }
 type browserObservation struct {
+	Device           *deviceObservation `json:"device,omitempty"`
 	Timezone         string             `json:"timezone"`
 	ExpectedTimezone string             `json:"expected_timezone"`
 	Language         string             `json:"language"`
@@ -722,7 +723,7 @@ func (s *Server) runSafetyCheck() (returned error) {
 	shares, networkLayout := s.inspectVMLayout()
 	private, err := os.CreateTemp(s.profile, ".eden-private-probe-*")
 	if err != nil {
-		return usererror.Wrap("创建私有目录检查文件", err, "请检查 Eden 配置目录的写入权限和磁盘剩余空间，然后重新检测。外网保持关闭。")
+		return usererror.Wrap("创建私有目录检查文件", err, "请检查 Claude Eden 配置目录的写入权限和磁盘剩余空间，然后重新检测。外网保持关闭。")
 	}
 	defer os.Remove(private.Name())
 	defer private.Close()
@@ -771,7 +772,7 @@ func (s *Server) runSafetyCheck() (returned error) {
 		if filesystemBoundaryVerified(shares, boundary, string(sharedData), challenge) {
 			set("filesystem_boundary", eden.CheckPassed, "共享读写探针往返成功；宿主私有目录探针不可读；环境基础共享目录与明确打开的项目使用受目录约束的传输，项目内允许 Git 读写", "")
 		} else {
-			set("filesystem_boundary", eden.CheckFailed, "共享读写、私有目录探针或挂载范围未符合预期", "检查共享目录；不要共享主目录或 Eden 配置目录")
+			set("filesystem_boundary", eden.CheckFailed, "共享读写、私有目录探针或挂载范围未符合预期", "检查共享目录；不要共享主目录或 Claude Eden 配置目录")
 		}
 		if after.PolicyVerified && networkLayout && after.Configuration == cfg.Fingerprint() && !boundary.PublicConnected && after.Counters.TCPDenied > state.Counters.TCPDenied {
 			set("egress_policy", eden.CheckPassed, "运行中策略检查符合预期；未配置额外网卡；检查期间的公网 TCP 请求被 环境外网络层拒绝", "")
@@ -899,7 +900,7 @@ func (s *Server) runSafetyCheck() (returned error) {
 		}
 	}
 	set("exit_consistency", result, message, "选择非中国大陆出口，并核对静态 IP 或允许地区；静态 IP 和不限地区均须确认出口国家，已有基准不会随重检改变")
-	report.Checks = append(report.Checks, eden.SafetyCheck{ID: "third_party_reputation", Title: "第三方 IP 信誉", State: eden.CheckUnknown, CheckedAt: time.Now(), Evidence: "未自动获取社区评分。可在 Eden 浏览器中打开补充检查；结果不替代底层隔离证据。"})
+	report.Checks = append(report.Checks, eden.SafetyCheck{ID: "third_party_reputation", Title: "第三方 IP 信誉", State: eden.CheckUnknown, CheckedAt: time.Now(), Evidence: "未自动获取社区评分。可在 Claude Eden 浏览器中打开补充检查；结果不替代底层隔离证据。"})
 	s.mu.Lock()
 	autoLanguage, location := s.preferences.AutoLanguage, s.location
 	s.mu.Unlock()
@@ -1036,7 +1037,7 @@ func (s *Server) monitorSafetyWithProbe(probe func(context.Context, eden.Config)
 				timing.result = "exit_timeout_retry"
 				return
 			}
-			issue = "宿主出口采样失败，外网已暂停：" + diagnostics.Redact(usererror.Display("读取宿主出口", err, "请重新检测。").Error())
+			issue = "宿主出口采样失败：" + diagnostics.Redact(usererror.Display("读取宿主出口", err, "请重新检测。").Error())
 			recoverable = true
 		} else {
 			result, message := s.checkExitPolicy(ctx, cfg, ip)
@@ -1134,6 +1135,11 @@ func (s *Server) finishSafetyObservation(ctx context.Context, client *eden.GateC
 			if recoverable {
 				s.scheduleNetworkRecovery(closed)
 			}
+		} else {
+			s.mu.Lock()
+			s.safety.Gate = nil
+			s.mu.Unlock()
+			issue += "；未能确认外网已关闭：" + e.Error()
 		}
 		s.mu.Lock()
 		s.safety.Error = issue

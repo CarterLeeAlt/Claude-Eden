@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
+import { setTimeout as delay } from 'node:timers/promises';
 import { createPrivacyController } from './browser-privacy-fixture.mjs';
 
-const fixture = await createPrivacyController();
+const fixture = await createPrivacyController({ headless: process.env.EDEN_TEST_BROWSER_HEADED !== '1' });
 const { api, cdp, waitFor, origin } = fixture;
 const events = [];
 const stream = new AbortController();
@@ -28,6 +29,11 @@ try {
     assert.equal(state.active, '');
     await waitFor(() => events.at(-1)?.tabs.length === 0, 'empty browser event');
     assert.equal(events.at(-1).active, '', 'empty snapshot must not reference a destroyed tab');
+    // The last-window shutdown is asynchronous. An empty controller must stay
+    // available beyond target destruction, before another user opens a tab.
+    await delay(2000);
+    assert.deepEqual((await api('/tabs')).tabs, []);
+    await cdp('', 'Browser.getVersion');
   };
   await api('/close', { id: (await api('/tabs')).active });
   await assertEmpty();

@@ -3,9 +3,11 @@
 package reversesshfs
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -42,6 +44,9 @@ func setupRootedHandlers(t *testing.T, readonly bool) (*sftp.Client, string, *ro
 	}
 	for _, f := range []string{filepath.Join(root, ".git", "config"), filepath.Join(root, "src", "main.go"), filepath.Join(tmp, "outside", "secret")} {
 		if err := os.WriteFile(f, []byte("orig"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(f, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -291,10 +296,17 @@ func TestRootedFstatFsetstatAfterRename(t *testing.T) {
 	if _, err := f.Write([]byte("hello")); err != nil {
 		t.Fatal(err)
 	}
+	// Both inodes start at 0644, so the handle chmod must change only the original.
+	if err := os.Chmod(p("src/a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := c.PosixRename(p("src/a"), p("src/b")); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(p("src/a"), []byte("other file"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(p("src/a"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if fi, err := f.Stat(); err != nil || fi.Size() != 5 {
@@ -443,6 +455,32 @@ func TestReverseSSHFSCloseNotStarted(t *testing.T) {
 func TestRootedOpenMode(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("mode bits other than the owner write bit are not supported on Windows")
+	}
+	if runtime.GOOS == "linux" && os.Getenv("REVERSESSHFS_TEST_OPEN_MODE_CHILD") != "1" {
+		// Set the creation mask before the child starts; never change the parent's mask.
+		executable, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(time.Minute)
+		if parentDeadline, ok := t.Deadline(); ok && parentDeadline.Add(-2*time.Second).Before(deadline) {
+			deadline = parentDeadline.Add(-2 * time.Second)
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatal("insufficient time to run and reap the open mode child")
+		}
+		ctx, cancel := context.WithDeadline(t.Context(), deadline)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "sh", "-c", `umask 022 && exec "$@"`, "rooted-open-mode",
+			executable, "-test.run=^TestRootedOpenMode$", "-test.count=1", "-test.timeout=45s", "-test.v")
+		cmd.Env = append(os.Environ(), "REVERSESSHFS_TEST_OPEN_MODE_CHILD=1")
+		cmd.WaitDelay = time.Second
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("open mode child: %v (context: %v)\n%s", err, ctx.Err(), output)
+		}
+		t.Logf("open mode child:\n%s", output)
+		return
 	}
 	_, root, h := setupRootedHandlers(t, false)
 	const write, appendFlag, creat = 0x2, 0x4, 0x8

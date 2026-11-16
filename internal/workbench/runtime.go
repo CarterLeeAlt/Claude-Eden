@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -104,20 +105,24 @@ func (s *Server) guestControl(ctx context.Context, script, diagnosticSource stri
 	return data, nil
 }
 func (s *Server) attach() error {
+	return s.attachContext(s.lifetimeContext())
+}
+
+func (s *Server) attachContext(parent context.Context) error {
 	if err := s.requireStorageReady(); err != nil {
 		return err
 	}
 	if err := s.requireCurrentLinuxTransferMount(); err != nil {
 		return err
 	}
-	ctx, cancel := s.controlContext()
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	if !s.vmRunning() {
 		return errors.New("环境尚未启动")
 	}
 	b, err := s.guest(ctx, guestConnectionSnapshot)
 	if err != nil {
-		return errors.New("环境尚未准备好")
+		return fmt.Errorf("读取环境连接信息失败：%w", errors.Join(ctx.Err(), err))
 	}
 	credentials, manifest, err := parseGuestConnection(b)
 	s.mu.Lock()
@@ -147,6 +152,7 @@ func (s *Server) attach() error {
 	s.mu.Lock()
 	s.credentials = credentials
 	s.ready = true
+	s.environmentGeneration++
 	s.mu.Unlock()
 	s.restoreProjectShares()
 	s.desktopViews.background(s.changeDesktopVisibility)
@@ -159,33 +165,43 @@ func (s *Server) monitor(ctx context.Context) {
 	skipped := 0
 	for ctx.Err() == nil {
 		timing := s.startMonitorTiming()
-		if s.op.TryLock() {
-			skipped = 0
-			if !s.busy() {
+		s.mu.Lock()
+		ready, closing, token, generation := s.ready, s.closing, s.credentials.Token, s.environmentGeneration
+		s.mu.Unlock()
+		if closing {
+			timing.result = "closing"
+		} else if s.busy() {
+			timing.result = "job_running"
+		} else if ready {
+			// A read-only sample must not reject interactive work. Reattachment
+			// changes the generation, so a late failure cannot invalidate it.
+			probe, cancel := s.controlContext()
+			_, err := s.guestAPI(probe, token, "GET", "/health", nil)
+			cancel()
+			if err != nil {
 				s.mu.Lock()
-				ready := s.ready
-				token := s.credentials.Token
-				s.mu.Unlock()
-				if !ready {
-					_ = s.attach()
-				} else {
-					ctx, cancel := s.controlContext()
-					_, err := s.guestAPI(ctx, token, "GET", "/health", nil)
-					cancel()
-					if err != nil {
-						s.mu.Lock()
-						s.ready = false
-						s.mu.Unlock()
-					}
+				if !s.closing && s.ready && generation == s.environmentGeneration && !s.busy() {
+					s.ready = false
 				}
+				s.mu.Unlock()
+			}
+			timing.stage("environment_health")
+		} else if s.op.TryLock() {
+			s.mu.Lock()
+			attach := !s.ready && !s.closing
+			s.mu.Unlock()
+			if attach && !s.busy() {
+				_ = s.attach()
 				timing.stage("environment_health")
-			} else {
-				timing.result = "job_running"
 			}
 			s.op.Unlock()
 		} else {
-			skipped++
 			timing.result = "operation_lock_busy"
+		}
+		if timing.result == "operation_lock_busy" {
+			skipped++
+		} else {
+			skipped = 0
 		}
 		timing.stages = append(timing.stages, fmt.Sprintf("consecutive_lock_skips=%d", skipped))
 		s.recordMonitorTiming("environment", timing)
@@ -394,16 +410,41 @@ func (s *Server) startEnvironment(syncTimezone bool) error {
 	if err = s.runEden("up"); err != nil {
 		return err
 	}
-	for i := 0; i < 8; i++ {
-		if s.operationContext().Err() != nil {
-			return s.operationContext().Err()
+	ctx := s.operationContext()
+	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
-		if err = s.attach(); err == nil {
+		if err = s.attachContext(ctx); err == nil {
 			return s.checkNetworkIfWanted()
 		}
-		time.Sleep(time.Second)
+		if !startupConnectionPending(err) {
+			return err
+		}
+		// Transport retries cannot conceal a process that has really stopped.
+		if !s.vmRunning() {
+			return errors.New("环境进程在连接就绪前退出，请查看操作详情")
+		}
+		probe, cancel := context.WithTimeout(ctx, 5*time.Second)
+		output, serviceErr := s.guest(probe, "sudo python3 /usr/local/lib/workbench-wait-services.py --check 2>&1")
+		probeErr := probe.Err()
+		cancel()
+		if serviceErr != nil && !startupConnectionPending(errors.Join(probeErr, serviceErr)) {
+			return fmt.Errorf("环境服务启动失败：%s：%w", strings.TrimSpace(string(output)), serviceErr)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
 	}
-	return errors.New("环境已启动，但浏览器连接尚未就绪。请重试连接或查看操作详情。")
+}
+
+func startupConnectionPending(err error) bool {
+	var networkError net.Error
+	var sshExit *exec.ExitError
+	return errors.Is(err, errBrowserStarting) || errors.Is(err, context.DeadlineExceeded) ||
+		errors.As(err, &networkError) || errors.As(err, &sshExit) && sshExit.ExitCode() == 255
 }
 func (s *Server) stopEnvironment() (returned error) {
 	s.desktopStatus.invalidate()
@@ -414,7 +455,7 @@ func (s *Server) stopEnvironment() (returned error) {
 			returned = managedproxy.Stop(s.profile)
 		}
 	}()
-	s.setMessage("正在停止 Eden 环境…")
+	s.setMessage("正在停止 Claude Eden 环境…")
 	if (explicitStop || s.jobs.snapshot().Kind == "storage") && eden.InstanceJobID(filepath.Join(s.profile, "state"), "base-building") != "" {
 		if err := s.runEden("stop", "--keep-proxy", "base-building"); err != nil {
 			return err
@@ -434,8 +475,8 @@ func (s *Server) stopEnvironment() (returned error) {
 	s.safety.Error = ""
 	s.mu.Unlock()
 	s.terminals.closeAll()
-	s.closeProjectShares()
 	if _, err := os.Stat(filepath.Join(s.instanceDir(), "lima.yaml")); os.IsNotExist(err) {
+		s.closeProjectShares()
 		return nil
 	}
 	// Internal restarts keep the already validated core alive. Explicit stop
@@ -443,6 +484,9 @@ func (s *Server) stopEnvironment() (returned error) {
 	if err := s.runEden("stop", "--keep-proxy"); err != nil {
 		return err
 	}
+	// Guest applications may flush shared files during their shutdown. Keep
+	// SFTP alive through VM exit, and preserve it if stopping fails.
+	s.closeProjectShares()
 	return nil
 }
 func (s *Server) apply(v savedProfile, validate bool) error {
@@ -557,7 +601,7 @@ func (s *Server) monitorNetworkTick() {
 	s.monitorSafety()
 	timing.stage("safety")
 	// Sampling runs independently of interactive operations. Only admission of
-	// a recovery or subscription job needs the environment mutation lock.
+	// a recovery job needs the environment mutation lock.
 	if !s.op.TryLock() {
 		timing.result = "operation_lock_busy"
 		return
@@ -565,8 +609,6 @@ func (s *Server) monitorNetworkTick() {
 	defer s.op.Unlock()
 	s.recoverNetwork()
 	timing.stage("recovery")
-	s.refreshProxySubscriptions()
-	timing.stage("subscriptions")
 }
 
 func (s *Server) monitorNetwork(ctx context.Context) {

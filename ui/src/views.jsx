@@ -37,14 +37,21 @@ export const RemoteView = forwardRef(function RemoteView(
   const box = useRef(),
     rfb = useRef(),
     input = useRef(),
+    displayVisibility = useRef(),
     current = useRef({ visible, keyboard, onStatus, onFallback }),
     displayResize = useRef();
-  current.current = { visible: screenVisible && focused, keyboard, systemClipboard, tabId, onStatus, onFallback, zoom };
+  current.current = { visible: screenVisible && focused, screenVisible, keyboard, systemClipboard, tabId, onStatus, onFallback, zoom };
   const failures = useRef(0);
   const [connection, setConnection] = useState("connecting"),
+    [opened, setOpened] = useState(false),
     [attempt, setAttempt] = useState(0),
     [sizeError, setSizeError] = useState(false);
   useEffect(() => { displayResize.current?.update(); }, [zoom]);
+  useEffect(() => {
+    if (screenVisible) setOpened(true);
+    displayVisibility.current?.(screenVisible);
+    if (screenVisible && connection === "disconnected") setAttempt(value => value + 1);
+  }, [screenVisible]);
   useEffect(() => { input.current?.cancelCopy(); }, [copyScope]);
   useImperativeHandle(ref, () => ({
     focus: () => rfb.current?.focus(),
@@ -60,7 +67,7 @@ export const RemoteView = forwardRef(function RemoteView(
       onFallback(input.current?.text() || "", "可在此使用本机复制、粘贴。"),
   }));
   useEffect(() => {
-    if (!screenVisible) return;
+    if (!opened || !current.current.screenVisible) return;
     const container = box.current;
     if (!container) return;
     let disposed = false,
@@ -76,6 +83,7 @@ export const RemoteView = forwardRef(function RemoteView(
       if (disposed) return;
       setConnection("disconnected");
       clearTimeout(reconnectTimer);
+      if (!current.current.screenVisible) return;
       reconnectTimer = setTimeout(
         () => setAttempt((v) => v + 1),
         Math.min(1000 * 2 ** failures.current++, 5000),
@@ -134,6 +142,15 @@ export const RemoteView = forwardRef(function RemoteView(
           resizeObserver.observe(container);
           unwatchDensity = watchPixelRatio(resize);
           resize();
+          displayVisibility.current = (show) => {
+            client.workbenchSetVisible(show);
+            if (!show) {
+              input.current?.suspend();
+              client.blur();
+              keys.stop();
+            }
+            if (show) resize();
+          };
           const preparePaste = () => {
             const id = current.current.tabId;
             return prepareClipboardPaste(desktop ? "desktop" : "browser", id, {
@@ -225,6 +242,7 @@ export const RemoteView = forwardRef(function RemoteView(
             onStatus: (t) => current.current.onStatus(t),
             onFallback: (...args) => current.current.onFallback(...args),
           });
+          displayVisibility.current(current.current.screenVisible);
           if (current.current.visible && !document.activeElement?.closest(".chrome")) client.focus();
         });
         client.addEventListener("disconnect", () => {
@@ -236,6 +254,7 @@ export const RemoteView = forwardRef(function RemoteView(
           resizeObserver?.disconnect();
           unwatchDensity?.();
           displayResize.current = null;
+          displayVisibility.current = null;
           retry();
         });
         client.addEventListener("securityfailure", () => {
@@ -249,6 +268,7 @@ export const RemoteView = forwardRef(function RemoteView(
       disposed = true;
       sizeSync?.dispose();
       displayResize.current = null;
+      displayVisibility.current = null;
       clearTimeout(reconnectTimer);
       resizeObserver?.disconnect();
       unwatchDensity?.();
@@ -258,7 +278,7 @@ export const RemoteView = forwardRef(function RemoteView(
       client?.disconnect();
       rfb.current = null;
     };
-  }, [attempt, screenVisible, desktop]);
+  }, [attempt, opened, desktop]);
   useEffect(() => {
     if (focused && screenVisible && connection === "connected") {
       const t = setTimeout(() => { if (!document.activeElement?.closest(".chrome")) rfb.current?.focus(); }, 80);
@@ -451,7 +471,7 @@ export function TerminalView({ session, visible, focused = true, onStatus, onCon
         // Honor xterm's bracketed-paste mode without enqueuing behind this job.
         emittingPaste = true;
         try { terminal.paste(text); } finally { emittingPaste = false; }
-        onStatus(value.png || value.files || value.fileSelection ? "附件已保存到 Eden，路径已插入终端" : "已粘贴");
+        onStatus(value.png || value.files || value.fileSelection ? "附件已保存到 Claude Eden，路径已插入终端" : "已粘贴");
       }).catch((error) => { if (!disposed) onStatus(error.message); });
     };
     const host = box.current;

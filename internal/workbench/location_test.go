@@ -326,8 +326,7 @@ func isolatedLocationProxy(t *testing.T, configPath, core string, cfg eden.Confi
 		t.Fatal("cannot load test proxy source")
 	}
 	if node, ok := store.Find(store.Selected); ok {
-		server, _ := node.Config["server"].(string)
-		t.Logf("Selected test node requires domain bootstrap: %t", net.ParseIP(server) == nil)
+		t.Logf("Selected test node requires domain bootstrap: %t", net.ParseIP(node.Server) == nil)
 	}
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {

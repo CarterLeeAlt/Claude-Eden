@@ -1,6 +1,7 @@
 package sshocker
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -60,10 +61,10 @@ func (x *Sshocker) Run() error {
 				Readonly:                m.Readonly,
 				SSHFSAdditionalArgs:     x.SSHFSAdditionalArgs,
 			}
-			if err := rsf.Prepare(); err != nil {
+			if err := rsf.Prepare(context.Background()); err != nil {
 				return fmt.Errorf("failed to prepare mounting %q (local) onto %q (remote): %w", rsf.LocalPath, rsf.RemotePath, err)
 			}
-			if err := rsf.Start(); err != nil {
+			if err := rsf.Start(context.Background()); err != nil {
 				return fmt.Errorf("failed to mount %q (local) onto %q (remote): %w", rsf.LocalPath, rsf.RemotePath, err)
 			}
 			defer func() {
@@ -79,7 +80,7 @@ func (x *Sshocker) Run() error {
 	}
 	defer func() {
 		if x.SSHConfig.Persist {
-			if emErr := ssh.ExitMaster(x.Host, x.Port, x.SSHConfig); emErr != nil {
+			if emErr := ssh.ExitMaster(context.Background(), x.Host, x.Port, x.SSHConfig); emErr != nil {
 				logrus.WithError(emErr).Error("failed to exit the master")
 			}
 		}

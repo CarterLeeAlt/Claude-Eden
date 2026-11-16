@@ -10,7 +10,7 @@
 
 **[프로젝트](https://github.com/CarterLeeAlt/Claude-Eden) · [릴리스](https://github.com/CarterLeeAlt/Claude-Eden/releases) · [시작하기](docs/getting-started.md) · [FAQ](docs/troubleshooting.md) · [사용 문서 (중국어)](docs/guide/index.md)**
 
-[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [Русский](README.ru.md) · [العربية](README.ar.md) · [فارسی](README.fa.md) · [한국어](README.ko.md) · [Español](README.es.md) · [မြန်မာဘာသာ](README.my.md) · [Беларуская](README.be.md) · [پښتو](README.ps.md) · [دری](README.prs.md) · [አማርኛ](README.am.md) · [Soomaali](README.so.md) · [ትግርኛ](README.ti.md) · [Français](README.fr.md)
+[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Deutsch](README.de.md) · [Français](README.fr.md)
 
 </div>
 
@@ -30,10 +30,12 @@ Claude Eden은 Windows 10에서 로컬 Debian 13 게스트를 관리하며 터�
 - **단일 창에서 작업합니다.** 터미널에서 Claude Code를 실행하고, 편집기에서 변경 사항을 검토하고, Workbench 브라우저로 서비스를 미리 보고 로그인하세요.
 - **독립된 Linux 환경에서 개발하세요.** 로컬 Debian 13에서 Linux 도구를 사용하며 명시적으로 허용한 프로젝트만 공유하세요. [Debian 13 게스트](docs/guide/guest-systems.md)
 - **공유하는 내용을 제어하세요.** 기본 작업공간과 명시적으로 열린 프로젝트 폴더만 공유됩니다. 호스트의 Claude 로그인 상태, 브라우저 프로필 및 SSH 키는 자동으로 가져오지 않습니다.
-- **네트워크 상태를 확인하세요.** 내장된 네트워크 프록시 관리를 통해 구독을 가져오고, 엔드포인트를 선택하고, 종료 IP를 확인할 수 있습니다. 중요한 검사가 통과될 때까지 환경은 오프라인 상태로 유지됩니다. 네트워크 프록시를 사용할 수 없는 경우 직접 연결로 대체할 수 없습니다.
+- **네트워크 상태를 확인하세요.** HTTP CONNECT, SOCKS5 또는 SSH 노드를 수동으로 등록하고 하나를 선택해 출구 IP를 확인합니다. 필수 검사를 통과하기 전까지 환경은 오프라인으로 유지되며, 프록시에 장애가 발생해도 게스트는 절대 직접 연결하지 않습니다.
 - **다음에 계속하세요.** 도구, 파일 및 로그인 상태는 가상 디스크에 유지됩니다. 창을 닫아도 백그라운드 작업이 계속 실행될 수 있습니다.
 - **Claude Code 계정을 여러 개 관리하세요.** 사용 한도를 확인하고 새 세션에 계정을 배정하며, 명시적으로 허용한 뒤 계정을 바꾸어 대화 기록을 이어가세요. [Claude Code](docs/guide/accounts.md)
 - **사설망으로 연결하세요.** Claude Eden 안에서 Tailscale에 로그인해 호스트와 환경 사이에 양방향 SSH 연결을 사용하세요. [Tailscale / SSH](docs/guide/tailscale.md)
+
+게스트 언어는 중국어 간체·번체, 영어, 일본어, 한국어, 독일어, 프랑스어를 지원합니다. 출구 지역에 맞는 지원 언어를 추천하며, 추천이 없으면 선택한 언어를 유지합니다. 워크벤치 화면과 상세 사용 문서는 중국어로 제공됩니다.
 
 ## 빠른 시작
 
@@ -65,7 +67,7 @@ Claude Eden의 데스크톱 호스트는 Windows 10 x64이며 로컬 게스트�
 
 ### 1. 네트워크 프록시를 선택하세요
 
-홈페이지에서 '네트워크 및 프록시 구성'을 클릭한 다음 '소스 추가'를 클릭하세요. Clash/Mihomo YAML 구독 또는 로컬 YAML 파일을 가져오고 '노드'에서 엔드포인트를 선택합니다. 네트워크 프록시를 사용할 수 없는 경우 '호스트 네트워크를 통해 이 구독 다운로드'를 명시적으로 선택하거나 로컬 파일을 직접 가져올 수 있습니다. 나중에 '설정 → 네트워크 및 프록시'에서 엔드포인트를 관리하세요.
+‘설정 → 네트워크 및 프록시’에서 ‘노드 추가’를 클릭합니다. HTTP CONNECT, SOCKS5 또는 SSH를 선택하고 서버, 포트, 인증 정보를 입력합니다. 저장 및 검증 후 노드 하나를 선택하고 ‘프록시 적용’을 클릭합니다. 여러 노드를 저장해 수동으로 전환할 수 있으며 한 번에 하나만 사용합니다. Claude Eden에는 Mihomo 코어가 포함되어 있습니다.
 
 ### 2. 환경 시작
 
@@ -101,7 +103,7 @@ Claude Eden의 데스크톱 호스트는 Windows 10 x64이며 로컬 게스트�
 
 ## 원산지 및 라이선스
 
-Claude Eden은 [Claude-Cage](https://github.com/Lee-xeo/Claude-Cage)와 [agent-vm](https://github.com/sylvinus/agent-vm)을 기반으로 하며 원래 출처와 라이선스를 보존합니다.
+Claude Eden의 원래 출처, 기여자 및 저작권 고지는 [NOTICE](NOTICE)에, 라이선스 조건은 [LICENSE](LICENSE)에 있습니다.
 
 프로젝트의 기본 라이센스는 다음과 같습니다. [MIT](LICENSE). 번들 구성 요소는 해당 라이센스를 유지합니다. Mihomo는 GPL-3.0에 따라 별도의 실행 파일로 배포됩니다. 또한 참조하십시오 [NOTICE](NOTICE) · [타사 라이선스](THIRD_PARTY_LICENSES) · [noVNC](ui/vendor/novnc/LICENSE.txt)。
 

@@ -21,40 +21,57 @@ import (
 	"github.com/lima-vm/lima/v2/pkg/sshutil"
 )
 
-func (a *HostAgent) waitForRequirements(label string, requirements []requirement) error {
-	const (
-		retries       = 200
-		sleepDuration = 3 * time.Second
-	)
-	var errs []error
-
+func (a *HostAgent) waitForRequirements(ctx context.Context, label string, requirements []requirement) error {
 	fn := a.waitForRequirement
 	if *a.instConfig.OS == limatype.WINDOWS {
 		fn = a.waitForWinRequirement
 	}
+	return waitForRequirements(ctx, label, requirements, fn)
+}
 
+func waitForRequirements(ctx context.Context, label string, requirements []requirement, probe func(context.Context, requirement) error) error {
 	for i, req := range requirements {
 		logrus.Infof("Waiting for the %s requirement %d of %d: %#q", label, i+1, len(requirements), req.description)
-	retryLoop:
-		for j := range retries {
-			err := fn(req)
+		for {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			err := probe(ctx, req)
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			if err == nil {
 				logrus.Infof("The %s requirement %d of %d is satisfied", label, i+1, len(requirements))
-				break retryLoop
+				break
 			}
-			if req.fatal {
+			var exitErr *exec.ExitError
+			// Exit 1 means not ready and 255 means SSH is not reachable yet.
+			// Invalid commands, local execution errors and explicit boot failures
+			// are failures, rather than reasons to wait indefinitely.
+			retryable := errors.As(err, &exitErr) && (exitErr.ExitCode() == 1 || exitErr.ExitCode() == 255)
+			if retryable && exitErr.ExitCode() == 255 {
+				message := strings.ToLower(err.Error())
+				for _, failure := range []string{"permission denied (", "host key verification failed", "bad configuration option", "bad owner or permissions"} {
+					if strings.Contains(message, failure) {
+						retryable = false
+						break
+					}
+				}
+			}
+			if req.fatal || !retryable {
 				logrus.Infof("No further %s requirements will be checked", label)
-				errs = append(errs, fmt.Errorf("failed to satisfy the %s requirement %d of %d %#q: %s; skipping further checks: %w", label, i+1, len(requirements), req.description, req.debugHint, err))
-				return errors.Join(errs...)
+				return fmt.Errorf("failed to satisfy the %s requirement %d of %d %#q: %s: %w", label, i+1, len(requirements), req.description, req.debugHint, err)
 			}
-			if j == retries-1 {
-				errs = append(errs, fmt.Errorf("failed to satisfy the %s requirement %d of %d %#q: %s: %w", label, i+1, len(requirements), req.description, req.debugHint, err))
-				break retryLoop
+			timer := time.NewTimer(3 * time.Second)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
 			}
-			time.Sleep(sleepDuration)
 		}
 	}
-	return errors.Join(errs...)
+	return nil
 }
 
 // prefixExportParam will modify a script to be executed by ssh.ExecuteScript so that it exports
@@ -88,7 +105,7 @@ func (a *HostAgent) waitForRequirements(label string, requirements []requirement
 //
 // An earlier implementation used $'…' for quoting, but that isn't supported if the
 // user switched the default shell to fish.
-func prefixExportParam(script string, guestOS *limatype.OS) (string, error) {
+func prefixExportParam(script string, guestOS *limatype.OS, iid string) (string, error) {
 	interpreter, err := ssh.ParseScriptInterpreter(script)
 	if err != nil {
 		return "", err
@@ -105,6 +122,10 @@ func prefixExportParam(script string, guestOS *limatype.OS) (string, error) {
 	}
 	exportParam := `param_env="$(` + sudo + ` cat ` + cidata + `/param.env)"; while read -r line; do [ -n "$line" ] && export "$line"; done<<EOF\n${param_env}\nEOF\n`
 
+	if guestOS != nil && *guestOS == limatype.LINUX {
+		// The check runs in the shell wrapper, even for non-shell probes.
+		exportParam += fmt.Sprintf(`if [ "$(cat /run/lima-boot-failed 2>/dev/null)" = %q ]; then echo 'Lima boot scripts failed; see /var/log/cloud-init-output.log' >&2; exit 125; fi\n`, iid)
+	}
 	// double up all '%' characters so we can pass them through unchanged in the format string of printf
 	interpreter = strings.ReplaceAll(interpreter, "%", "%%")
 	exportParam = strings.ReplaceAll(exportParam, "%", "%%")
@@ -118,13 +139,13 @@ func (a *HostAgent) bashAvailable() bool {
 	return *a.instConfig.OS != limatype.FREEBSD && *a.instConfig.OS != limatype.WINDOWS
 }
 
-func (a *HostAgent) waitForRequirement(r requirement) error {
+func (a *HostAgent) waitForRequirement(ctx context.Context, r requirement) error {
 	logrus.Debugf("executing script %#q", r.description)
 	script := r.script
 	if a.bashAvailable() {
 		var err error
 		// FIXME: prefixExportParam depends on bash
-		script, err = prefixExportParam(r.script, a.instConfig.OS)
+		script, err = prefixExportParam(script, a.instConfig.OS, a.iid)
 		if err != nil {
 			return err
 		}
@@ -148,7 +169,7 @@ func (a *HostAgent) waitForRequirement(r requirement) error {
 			AdditionalArgs: sshutil.DisableControlMasterOptsFromSSHArgs(sshConfig.AdditionalArgs),
 		}
 	}
-	stdout, stderr, err := ssh.ExecuteScript(a.instSSHAddress, a.sshLocalPort, sshConfig, script, r.description)
+	stdout, stderr, err := ssh.ExecuteScript(ctx, a.instSSHAddress, a.sshLocalPort, sshConfig, script, r.description)
 	logrus.Debugf("stdout=%#q, stderr=%#q, err=%v", stdout, stderr, err)
 	if err != nil {
 		return fmt.Errorf("stdout=%#q, stderr=%#q: %w", stdout, stderr, err)
@@ -159,7 +180,7 @@ func (a *HostAgent) waitForRequirement(r requirement) error {
 // This function is copied from sshocker's ExecuteScript, because
 // the function doesn't support Windows commands.
 // TODO: Support Windows on sshocker, and replace this function.
-func (a *HostAgent) waitForWinRequirement(r requirement) error {
+func (a *HostAgent) waitForWinRequirement(ctx context.Context, r requirement) error {
 	logrus.Debugf("executing script for windows %q", r.description)
 	script := r.script
 	sshConfig := a.sshConfig
@@ -190,7 +211,8 @@ func (a *HostAgent) waitForWinRequirement(r requirement) error {
 		sshArgs = append(sshArgs, "-p", strconv.Itoa(a.sshLocalPort))
 	}
 	sshArgs = append(sshArgs, a.instSSHAddress, "--", script)
-	sshCmd := exec.CommandContext(context.Background(), sshBinary, sshArgs...)
+	sshCmd := exec.CommandContext(ctx, sshBinary, sshArgs...)
+	sshCmd.WaitDelay = time.Second
 	sshCmd.Stdin = strings.NewReader(script)
 	var stderr bytes.Buffer
 	sshCmd.Stderr = &stderr

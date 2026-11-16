@@ -2,6 +2,7 @@ package reversesshfs
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"html/template"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/lima-vm/sshocker/pkg/ssh"
 	"github.com/lima-vm/sshocker/pkg/util"
@@ -38,6 +40,9 @@ type ReverseSSHFS struct {
 	RemotePath              string
 	Readonly                bool
 	sshCmd                  *exec.Cmd
+	sshDone                 chan struct{}
+	sshErr                  error
+	serverDone              chan struct{}
 	opensshSftpServerCmd    *exec.Cmd
 	SSHFSAdditionalArgs     []string
 
@@ -61,7 +66,7 @@ func (rsf *ReverseSSHFS) ExpectRemove(hostPath string) bool {
 	return h.expectRemove(hostPath)
 }
 
-func (rsf *ReverseSSHFS) Prepare() error {
+func (rsf *ReverseSSHFS) Prepare(ctx context.Context) error {
 	sshBinary := rsf.SSHConfig.Binary()
 	sshArgs := rsf.SSHConfig.Args()
 	if !path.IsAbs(rsf.RemotePath) {
@@ -72,11 +77,12 @@ func (rsf *ReverseSSHFS) Prepare() error {
 	}
 	sshArgs = append(sshArgs, rsf.Host, "--")
 	sshArgs = append(sshArgs, "mkdir", "-p", addQuotes(rsf.RemotePath))
-	sshCmd := exec.Command(sshBinary, sshArgs...)
+	sshCmd := exec.CommandContext(ctx, sshBinary, sshArgs...)
+	sshCmd.WaitDelay = time.Second
 	logrus.Debugf("executing ssh for preparing sshfs: %s %v", sshCmd.Path, sshCmd.Args)
 	out, err := sshCmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to mkdir %q (remote): %q: %w", rsf.RemotePath, string(out), err)
+		return fmt.Errorf("failed to mkdir %q (remote): %q: %w", rsf.RemotePath, string(out), errors.Join(ctx.Err(), err))
 	}
 	return nil
 }
@@ -144,7 +150,11 @@ func DetectDriver(explicitOpensshSftpServerBinary string) (Driver, string, error
 	return DriverBuiltin, "", nil
 }
 
-func (rsf *ReverseSSHFS) Start() error {
+// Start uses ctx for mount readiness; an established mount lives until Close.
+func (rsf *ReverseSSHFS) Start(ctx context.Context) (err error) {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	sshBinary := rsf.SSHConfig.Binary()
 	sshArgs := rsf.SSHConfig.Args()
 	if !filepath.IsAbs(rsf.LocalPath) && !path.IsAbs(rsf.LocalPath) {
@@ -255,10 +265,22 @@ func (rsf *ReverseSSHFS) Start() error {
 		}
 		return err
 	}
+	rsf.sshDone = make(chan struct{})
+	go func() {
+		rsf.sshErr = rsf.sshCmd.Wait()
+		close(rsf.sshDone)
+	}()
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, rsf.Close())
+		}
+	}()
 	logrus.Debugf("starting sftp server for %v", rsf.LocalPath)
 	switch driver {
 	case DriverBuiltin:
+		rsf.serverDone = make(chan struct{})
 		go func() {
+			defer close(rsf.serverDone)
 			if rooted != nil {
 				defer rooted.Close()
 			}
@@ -277,9 +299,8 @@ func (rsf *ReverseSSHFS) Start() error {
 		}
 	}
 	logrus.Debugf("waiting for remote ready")
-	if err := rsf.waitForRemoteReady(); err != nil {
-		// not a fatal error
-		logrus.WithError(err).Warnf("failed to confirm whether %v [remote] is successfully mounted", rsf.RemotePath)
+	if err := rsf.waitForRemoteReady(ctx); err != nil {
+		return fmt.Errorf("failed to confirm mount %q: %w", rsf.RemotePath, err)
 	}
 	return nil
 }
@@ -296,30 +317,27 @@ func addQuotes(input string) string {
 	return input
 }
 
-func (rsf *ReverseSSHFS) waitForRemoteReady() error {
+func (rsf *ReverseSSHFS) waitForRemoteReady(ctx context.Context) error {
+	ctx, cancel := context.WithCancelCause(ctx)
+	watchDone := make(chan struct{})
+	go func() {
+		defer close(watchDone)
+		select {
+		case <-rsf.sshDone:
+			cancel(fmt.Errorf("sshfs transport exited before mount readiness: %w", errors.Join(io.ErrUnexpectedEOF, rsf.sshErr)))
+		case <-ctx.Done():
+		}
+	}()
+	defer func() { cancel(nil); <-watchDone }()
 	scriptName := "wait-for-remote-ready"
 	scriptTemplate := `#!/bin/sh
 set -eu
 dir="{{.Dir}}"
-max_trial="{{.MaxTrial}}"
 LANG=C
 LC_ALL=C
 export LANG LC_ALL
-i=0
-while : ; do
-  # FIXME: not really robust
-  # spaces in file names are encoded as '\040' in the mount table
-  if mount | sed 's/\\040/ /g' | grep "on ${dir}" | egrep -qw "fuse.sshfs|osxfuse"; then
-    echo '{"return":{}}'
-    exit 0
-  fi
-  sleep 1
-  if [ $i -ge ${max_trial} ]; then
-    echo >&2 "sshfs does not seem to be mounted on ${dir}"
-    exit 1
-  fi
-  i=$((i + 1))
-done
+# Spaces in file names are encoded as '\040' in the mount table.
+mount | sed 's/\\040/ /g' | grep "on ${dir}" | grep -Eqw "fuse.sshfs|osxfuse"
 `
 	t, err := template.New(scriptName).Parse(scriptTemplate)
 	if err != nil {
@@ -327,8 +345,7 @@ done
 	}
 	m := map[string]string{
 		// rsf.RemotePath should have been verified during rsf.Prepare()
-		"Dir":      rsf.RemotePath,
-		"MaxTrial": "30",
+		"Dir": rsf.RemotePath,
 	}
 	var b bytes.Buffer
 	if err := t.Execute(&b, m); err != nil {
@@ -336,28 +353,52 @@ done
 	}
 	script := b.String()
 	logrus.Debugf("generated script %q with map %v: %q", scriptName, m, script)
-	stdout, stderr, err := ssh.ExecuteScript(rsf.Host, rsf.Port, rsf.SSHConfig, script, scriptName)
-	logrus.Debugf("executed script %q, stdout=%q, stderr=%q, err=%v", scriptName, stdout, stderr, err)
-	return err
+	for {
+		stdout, stderr, err := ssh.ExecuteScript(ctx, rsf.Host, rsf.Port, rsf.SSHConfig, script, scriptName)
+		logrus.Debugf("executed script %q, stdout=%q, stderr=%q, err=%v", scriptName, stdout, stderr, err)
+		if ctx.Err() != nil {
+			return context.Cause(ctx)
+		}
+		if err == nil {
+			return nil
+		}
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+			return err
+		}
+		timer := time.NewTimer(time.Second)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return context.Cause(ctx)
+		case <-timer.C:
+		}
+	}
 }
 
 func (rsf *ReverseSSHFS) Close() error {
 	if rsf.sshCmd != nil {
 		logrus.Debugf("killing processes for remote sshfs: %s %v", rsf.sshCmd.Path, rsf.sshCmd.Args)
 	}
-	var errors []error
+	var errs []error
 	for _, cmd := range []*exec.Cmd{rsf.sshCmd, rsf.opensshSftpServerCmd} {
 		if cmd == nil || cmd.Process == nil {
 			continue
 		}
-		if err := cmd.Process.Kill(); err != nil {
-			errors = append(errors, err)
+		if err := cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			errs = append(errs, err)
 		}
-		// Reap it, and close its pipes. The error is the kill itself, or a second Close.
-		_ = cmd.Wait()
+		if cmd == rsf.sshCmd && rsf.sshDone != nil {
+			<-rsf.sshDone
+		} else {
+			_ = cmd.Wait()
+		}
 	}
-	if len(errors) > 0 {
-		return fmt.Errorf("%v", errors)
+	if rsf.serverDone != nil {
+		<-rsf.serverDone
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("errors closing reverse sshfs: %w", errors.Join(errs...))
 	}
 	return nil
 }

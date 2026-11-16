@@ -4,8 +4,9 @@ import { createHash } from "node:crypto";
 // A bounded RFB display over real browser WebSockets. Playwright's WebSocket
 // replacement lacks the prototype properties checked by the shipped noVNC.
 export async function startDisplay(upstream, { frameInterval = 50, sharedClipboard = false } = {}) {
-  const stats = { connections: 0, closed: 0, frames: 0, clipboardConnections: 0, clipboardUpdates: [], keys: [] };
+  const stats = { connections: 0, closed: 0, frames: 0, visibility: [], streams: [], clipboardConnections: 0, clipboardUpdates: [], keys: [] };
   const sockets = new Set();
+  const displaySockets = new Set();
   const displays = new Set();
   const clipboardWriters = new Set();
   const sharedWriters = new Set(), sharedSockets = new Set();
@@ -28,6 +29,8 @@ export async function startDisplay(upstream, { frameInterval = 50, sharedClipboa
     if (!shared && !terminal && !["/api/vnc", "/api/claude-desktop/vnc"].includes(new URL(req.url, upstream).pathname)) { socket.destroy(); return; }
     sockets.add(socket);
     stats.connections++;
+    const stream = !shared && !terminal ? { path: new URL(req.url, upstream).pathname, frames: 0, requests: 0, visibility: [], closed: false } : null;
+    if (stream) { stats.streams.push(stream); displaySockets.add(socket); }
     const key = createHash("sha1").update(req.headers["sec-websocket-key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
     socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${key}\r\n\r\n`);
     const send = (payload, opcode = 2) => {
@@ -54,7 +57,7 @@ export async function startDisplay(upstream, { frameInterval = 50, sharedClipboa
       bytes.copy(message, 8);
       send(message);
     };
-    let wire = Buffer.alloc(0), rfb = Buffer.alloc(0), phase = 0, timer, frame;
+    let wire = Buffer.alloc(0), rfb = Buffer.alloc(0), phase = 0, timer, frame, requested = false;
     const makeFrame = () => {
       frame = Buffer.alloc(16 + width * height * 4);
       frame.writeUInt16BE(1, 2); frame.writeUInt16BE(width, 8); frame.writeUInt16BE(height, 10);
@@ -88,9 +91,12 @@ export async function startDisplay(upstream, { frameInterval = 50, sharedClipboa
         displays.add(resize);
         clipboardWriters.add(clipboard);
         timer = setInterval(() => {
-          if (framesPaused || socket.writableLength > frame.length * 2) return;
+          // Visibility controls report host demand. The RFB peer still answers
+          // requests, proving that the client itself suspends frame traffic.
+          if (!requested || framesPaused || socket.writableLength > frame.length * 2) return;
+          requested = false;
           frame.fill(stats.frames % 255, 16);
-          send(frame); stats.frames++;
+          send(frame); stats.frames++; stream.frames++;
         }, frameInterval);
       }
       while (phase === 3 && rfb.length) {
@@ -109,6 +115,7 @@ export async function startDisplay(upstream, { frameInterval = 50, sharedClipboa
         if (!length) { socket.destroy(); return; }
         if (rfb.length < length) return;
         if (type === 5) stats.pointer = { x: rfb.readUInt16BE(2), y: rfb.readUInt16BE(4) };
+        if (type === 3) { requested = true; stream.requests++; }
         if (type === 4) stats.keys.push({ down: Boolean(rfb[1]), symbol: rfb.readUInt32BE(4) });
         if (type === 248 && (rfb.readUInt32BE(4) & 0x80000000)) {
           const response = Buffer.from(rfb.subarray(0, length));
@@ -137,11 +144,15 @@ export async function startDisplay(upstream, { frameInterval = 50, sharedClipboa
           const value = JSON.parse(payload.toString());
           stats.clipboardUpdates.push(value);
           sharedWrite({ ack: value.serial });
-        } else if (!terminal && (opcode === 1 || opcode === 2)) consume(payload);
+        } else if (!terminal && opcode === 1) {
+          const control = JSON.parse(payload.toString());
+          if (control.type !== 'visibility' || typeof control.visible !== 'boolean') { socket.destroy(); return; }
+          stats.visibility.push(control.visible); stream.visibility.push(control.visible);
+        } else if (!terminal && opcode === 2) consume(payload);
       }
     });
     socket.on("error", () => {});
-    socket.on("close", () => { clearInterval(timer); displays.delete(resize); clipboardWriters.delete(clipboard); sharedWriters.delete(sharedWrite); terminalWriters.delete(terminalWrite); sharedSockets.delete(socket); sockets.delete(socket); stats.closed++; });
+    socket.on("close", () => { clearInterval(timer); displays.delete(resize); clipboardWriters.delete(clipboard); sharedWriters.delete(sharedWrite); terminalWriters.delete(terminalWrite); sharedSockets.delete(socket); displaySockets.delete(socket); sockets.delete(socket); stats.closed++; if (stream) stream.closed = true; });
     if (terminal) terminalWrite("Terminal clipboard ready\r\n$ ");
     else if (!shared) send(Buffer.from("RFB 003.008\n"));
   });
@@ -154,6 +165,7 @@ export async function startDisplay(upstream, { frameInterval = 50, sharedClipboa
     sharedClipboard(value) { for (const write of sharedWriters) write(value); },
     terminalOutput(text) { for (const write of terminalWriters) write(text); },
     disconnectClipboard() { for (const socket of sharedSockets) socket.destroy(); },
+    disconnectDisplays() { for (const socket of displaySockets) socket.destroy(); },
     resize(size) { width = size.width; height = size.height; for (const resize of displays) resize(); },
     close: async () => {
       for (const socket of sockets) socket.destroy();

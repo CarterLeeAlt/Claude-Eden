@@ -2,7 +2,6 @@ package workbench
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	_ "embed"
@@ -15,6 +14,7 @@ import (
 
 	"al.essio.dev/pkg/shellescape"
 	"github.com/google/uuid"
+	"github.com/klauspost/compress/gzip"
 	"github.com/sylvinus/agent-vm/internal/diagnostics"
 )
 

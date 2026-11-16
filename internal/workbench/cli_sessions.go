@@ -11,7 +11,7 @@ var cliCCSProfile = regexp.MustCompile("^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 
 type cliEpochKey struct{}
 
-var errCLILocked = errors.New("Eden 已锁定，请重新解锁后操作")
+var errCLILocked = errors.New("Claude Eden 已锁定，请重新解锁后操作")
 
 // Caller holds the account mutex. A request from an earlier unlock cannot gain
 // authority from a later unlock of the same account.

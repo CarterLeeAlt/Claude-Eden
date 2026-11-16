@@ -77,7 +77,7 @@ func (s *Server) handoffWithVMOwnerLocked(w http.ResponseWriter, permittedOwner 
 	if s.closing {
 		s.mu.Unlock()
 		s.op.Unlock()
-		http.Error(w, "后台正在更新，请重新打开 Eden。", http.StatusServiceUnavailable)
+		http.Error(w, "后台正在更新，请重新打开 Claude Eden。", http.StatusServiceUnavailable)
 		return
 	}
 	busy := s.jobs.snapshot().Running || vmBusy

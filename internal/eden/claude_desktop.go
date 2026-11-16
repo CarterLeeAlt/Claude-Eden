@@ -62,6 +62,8 @@ WORKBENCH_CLAUDE_WINDOWS
 sudo tee /etc/systemd/system/workbench-claude-desktop.service >/dev/null <<'WORKBENCH_CLAUDE_UNIT'
 [Unit]
 Description=Claude Desktop session
+Wants=workbench-audio.service
+After=workbench-audio.service systemd-journald@workbench.service
 [Service]
 Type=notify
 NotifyAccess=all
@@ -73,8 +75,8 @@ RuntimeDirectory=workbench-desktop
 RuntimeDirectoryMode=0700
 ExecStart=/usr/local/bin/workbench-log-run /usr/local/bin/workbench-claude-session
 LogNamespace=workbench
-KillMode=control-group
-TimeoutStartSec=45
+KillMode=mixed
+TimeoutStartSec=infinity
 TimeoutStopSec=20
 WORKBENCH_CLAUDE_UNIT
 sudo systemctl daemon-reload

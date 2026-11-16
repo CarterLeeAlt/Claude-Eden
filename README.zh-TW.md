@@ -10,7 +10,7 @@
 
 **[專案主頁](https://github.com/CarterLeeAlt/Claude-Eden) · [發行版本](https://github.com/CarterLeeAlt/Claude-Eden/releases) · [開始使用](docs/getting-started.md) · [常見問題](docs/troubleshooting.md) · [使用文件（簡體中文）](docs/guide/index.md)**
 
-[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [Русский](README.ru.md) · [العربية](README.ar.md) · [فارسی](README.fa.md) · [한국어](README.ko.md) · [Español](README.es.md) · [မြန်မာဘာသာ](README.my.md) · [Беларуская](README.be.md) · [پښتو](README.ps.md) · [دری](README.prs.md) · [አማርኛ](README.am.md) · [Soomaali](README.so.md) · [ትግርኛ](README.ti.md) · [Français](README.fr.md)
+[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Deutsch](README.de.md) · [Français](README.fr.md)
 
 </div>
 
@@ -30,10 +30,12 @@ Claude Eden 在 Windows 10 桌面上管理獨立的本機 Debian 13 客機。終
 - **在一個視窗裡完成工作。** 用終端執行 Claude Code，用編輯器檢視改動，用 Workbench 瀏覽器預覽服務和完成登入。
 - **在獨立 Linux 環境中開發。** 在本機 Debian 13 使用 Linux 工具，只共享明確授權的專案。 [Debian 13 客機](docs/guide/guest-systems.md)
 - **控制共享範圍。** 只共享預設工作區和明確開啟的專案資料夾；主機的 Claude 登入、瀏覽器配置和 SSH 金鑰不會自動匯入。
-- **看清網路狀態。** 內建代理管理支援匯入訂閱、選擇節點和檢查出口。關鍵檢查未透過時，環境保持離線；代理不可用時沒有直連回退。
+- **看清網路狀態。** 手動管理 HTTP CONNECT、SOCKS5、SSH 節點，選擇單一出口並完成檢查。關鍵檢查未通過時，環境保持離線；代理故障時客機絕不直連。
 - **下次繼續使用。** 工具、檔案和登入狀態儲存在虛擬磁碟裡，關閉視窗可以保留後臺任務。
 - **管理多個 Claude Code 帳號。** 查看額度、為新會話分配帳號，並在明確授權後切換帳號接續歷史。 [Claude Code](docs/guide/accounts.md)
 - **透過私網連接。** 在 Claude Eden 內登入 Tailscale，讓本機與環境透過 SSH 雙向連接。 [Tailscale / SSH](docs/guide/tailscale.md)
+
+客機語言支援簡體中文、繁體中文、英語、日語、韓語、德語和法語；依出口地區推薦支援的語言，沒有對應建議時保留已選語言。工作台介面與詳細使用文件採用簡體中文。
 
 ## 快速開始
 
@@ -65,7 +67,7 @@ Claude Eden 的桌面宿主為 Windows 10 x64，本機客機固定為 Debian 13�
 
 ### 1. 選擇代理
 
-點選首頁“配置網路與代理”，再點選“新增來源”，匯入 Clash/Mihomo YAML 訂閱或本地 YAML 檔案，在“節點”中選擇一個節點。沒有可用代理時，可以明確勾選“透過主機網路下載這份訂閱”，或直接匯入本地檔案。後續可從“設定 → 網路與代理”管理節點。
+在「設定 → 網路與代理」點選「新增節點」，選擇 HTTP CONNECT、SOCKS5 或 SSH，填寫伺服器、連接埠與認證資訊。儲存並驗證後，選擇一個節點並點選「套用代理」。可儲存多個節點供手動切換，每次只使用一個。Claude Eden 隨附 Mihomo 核心。
 
 ### 2. 啟動環境
 
@@ -101,7 +103,7 @@ Claude Eden 的桌面宿主為 Windows 10 x64，本機客機固定為 Debian 13�
 
 ## 來源與許可
 
-Claude Eden 基於 [Claude-Cage](https://github.com/Lee-xeo/Claude-Cage) 與 [agent-vm](https://github.com/sylvinus/agent-vm) 二次開發，保留原始來源與許可。
+Claude Eden 的上游來源、原作者與版權聲明見 [NOTICE](NOTICE)，授權條款見 [LICENSE](LICENSE)。
 
 專案主許可為 [MIT](LICENSE)。隨附元件保留各自許可，Mihomo 作為獨立可執行檔案按 GPL-3.0 分發；請同時參閱 [NOTICE](NOTICE) · [第三方許可](THIRD_PARTY_LICENSES) · [noVNC](ui/vendor/novnc/LICENSE.txt)。
 

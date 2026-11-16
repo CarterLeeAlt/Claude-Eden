@@ -14,19 +14,24 @@ export IBUS_ADDRESS="unix:path=$bus_socket"
 export GTK_IM_MODULE=ibus QT_IM_MODULE=ibus XMODIFIERS=@im=ibus
 bus_pid='' bridge_pid='' app_pid='' session_pid=''
 cleanup() {
+  trap '' TERM INT HUP
   if [ -n "$app_pid" ]; then
     kill -TERM "$app_pid" 2>/dev/null || true
     # Let Node close Chromium and flush its profile before closing the buses.
     wait "$app_pid" 2>/dev/null || true
   fi
   for pid in "$bridge_pid" "$bus_pid" "$session_pid"; do
-    if [ -n "$pid" ]; then kill -TERM "$pid" 2>/dev/null || true; fi
+    if [ -n "$pid" ]; then
+      kill -TERM "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+    fi
   done
   rm -f "$input_root/ready" "$input_root/input.sock"
 }
 trap cleanup EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
+trap 'exit 129' HUP
 # GTK's IBus portal needs a shared session bus. For the browser, allow only
 # that service to activate, preserving its existing absence of a desktop
 # keyring/portal session. Desktop keeps its already-owned keyring bus.
@@ -44,30 +49,37 @@ CONFIG
   rm -f "$input_root/session-bus"
   dbus-daemon --nofork --config-file="$input_root/session.conf" >/dev/null 2>&1 &
   session_pid=$!
-  for i in $(seq 1 100); do
+  while [ ! -S "$input_root/session-bus" ]; do
     kill -0 "$session_pid"
-    if [ -S "$input_root/session-bus" ]; then break; fi
     sleep .05
   done
-  test -S "$input_root/session-bus"
   export DBUS_SESSION_BUS_ADDRESS="unix:path=$input_root/session-bus"
 fi
 rm -f "$input_root/ready" "$bus_socket" "$input_root/input.sock"
 ibus-daemon --single --panel=disable --config=disable --emoji-extension=disable --cache=none --address="$IBUS_ADDRESS" &
 bus_pid=$!
-for i in $(seq 1 100); do
+while [ ! -S "$bus_socket" ]; do
   kill -0 "$bus_pid"
-  if [ -S "$bus_socket" ]; then break; fi
+  if [ -n "$session_pid" ]; then kill -0 "$session_pid"; fi
   sleep .05
 done
 /usr/local/bin/workbench-native-input &
 bridge_pid=$!
-for i in $(seq 1 100); do
+while [ ! -f "$input_root/ready" ]; do
   kill -0 "$bridge_pid"
-  if [ -f "$input_root/ready" ]; then break; fi
+  kill -0 "$bus_pid"
+  if [ -n "$session_pid" ]; then kill -0 "$session_pid"; fi
   sleep .05
 done
-test -f "$input_root/ready"
 "$@" &
 app_pid=$!
-wait "$app_pid"
+session_pids=("$app_pid" "$bridge_pid" "$bus_pid")
+if [ -n "$session_pid" ]; then session_pids+=("$session_pid"); fi
+status=0
+exited=''
+wait -n -p exited "${session_pids[@]}" || status=$?
+if [ "$exited" != "$app_pid" ]; then
+  echo 'An input session dependency stopped.' >&2
+  if [ "$status" = 0 ]; then status=1; fi
+fi
+exit "$status"

@@ -53,6 +53,9 @@ func (a *HostAgent) setupMounts(ctx context.Context) ([]*mount, error) {
 		errs []error
 	)
 	for _, f := range a.instConfig.Mounts {
+		if ctx.Err() != nil {
+			return res, errors.Join(append(errs, ctx.Err())...)
+		}
 		m, err := a.setupMount(ctx, f)
 		if err != nil {
 			errs = append(errs, err)
@@ -110,15 +113,18 @@ func (a *HostAgent) setupMount(ctx context.Context, m limatype.Mount) (*mount, e
 		// so it is necessary to remove them to avoid overrides above `Persist=false`.
 		rsf.SSHConfig.AdditionalArgs = sshutil.DisableControlMasterOptsFromSSHArgs(rsf.SSHConfig.AdditionalArgs)
 	}
-	if err := rsf.Prepare(); err != nil {
+	if err := rsf.Prepare(ctx); err != nil {
 		return nil, fmt.Errorf("failed to prepare reverse sshfs for %#q on %#q: %w", resolvedLocation, *m.MountPoint, err)
 	}
-	if err := rsf.Start(); err != nil {
+	if err := rsf.Start(ctx); err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		logrus.WithError(err).Warnf("failed to mount reverse sshfs for %#q on %#q, retrying with `-o nonempty`", resolvedLocation, *m.MountPoint)
 		// NOTE: nonempty is not supported for libfuse3: https://github.com/canonical/multipass/issues/1381
 		// Added to the options, not in their place: they include cache=no.
 		rsf.SSHFSAdditionalArgs = append(rsf.SSHFSAdditionalArgs, "-o", "nonempty")
-		if err := rsf.Start(); err != nil {
+		if err := rsf.Start(ctx); err != nil {
 			return nil, fmt.Errorf("failed to mount reverse sshfs for %#q on %#q: %w", resolvedLocation, *m.MountPoint, err)
 		}
 	}

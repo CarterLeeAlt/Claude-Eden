@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-var errClaudeAccessLost = errors.New("Eden 已锁定，请先解锁")
+var errClaudeAccessLost = errors.New("Claude Eden 已锁定，请先解锁")
 
 type claudeAccountInput struct {
 	Action       string            `json:"action"`

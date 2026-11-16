@@ -292,7 +292,9 @@ func run() int {
 				return fail(fmt.Errorf("unknown desktop option: %s", argument))
 			}
 		}
-		entry, err := workbench.DesktopEntry(path, options)
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		entry, err := workbench.DesktopEntry(ctx, path, options)
 		if err != nil {
 			if returnJSON {
 				diagnostics.Log("error", "command", err.Error())
@@ -463,7 +465,7 @@ func run() int {
 		if err = os.MkdirAll(state, 0700); err != nil {
 			return fail(err)
 		}
-		if err = os.WriteFile(filepath.Join(state, "setup.sh"), []byte(eden.GuestSetup), 0600); err != nil {
+		if err = os.WriteFile(filepath.Join(state, "setup.sh"), []byte(cfg.SetupScript()), 0600); err != nil {
 			return fail(err)
 		}
 		memory, cpus, resourceErr := eden.ConfiguredResourceLimits(path)

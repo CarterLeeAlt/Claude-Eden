@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"os"
@@ -32,7 +33,7 @@ func DesktopHelperConfig(fullConfig, connection string) string {
 	return fullConfig
 }
 
-func DesktopEntry(fullConfig string, opts DesktopOptions) (DesktopResult, error) {
+func DesktopEntry(ctx context.Context, fullConfig string, opts DesktopOptions) (DesktopResult, error) {
 	// Explicit legacy recovery opens its own already-authenticated UI so the
 	// user can save active work before switching backend versions.
 	if opts.UseExisting {
@@ -64,22 +65,19 @@ func DesktopEntry(fullConfig string, opts DesktopOptions) (DesktopResult, error)
 			return DesktopResult{}, errors.New("桌面窗口进程标识无效")
 		}
 	}
-	result, err := desktopLaunch(profile, true, opts, func() error {
+	result, err := desktopLaunch(ctx, profile, true, opts, func() (<-chan error, error) {
 		if err := host.EnsurePrivateDir(profile); err != nil {
-			return err
+			return nil, err
 		}
 		exe, err := os.Executable()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		cmd := exec.Command(exe, "serve-desktop")
 		cmd.Dir = profile
 		cmd.Env = append(os.Environ(), eden.ConfigEnv+"="+fullConfig)
 		detachController(cmd)
-		if err := cmd.Start(); err != nil {
-			return err
-		}
-		return cmd.Process.Release()
+		return startControllerCommand(cmd)
 	})
 	if err != nil || owner == 0 || result.URL == "" {
 		return result, err

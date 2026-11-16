@@ -40,7 +40,6 @@ if [ ! -s "$HOME/.config/workbench/browser-password" ]; then
 fi
 sudo install -d -o browser -g browser -m 0700 /home/browser/.vnc
 cat "$HOME/.config/workbench/browser-password" | sudo -u browser sh -c 'umask 077; tigervncpasswd -f > "$HOME/.vnc/passwd"'
-sudo systemctl stop workbench-browser || true
 # Publish per-VM control credentials for the browser process and SSH owner only.
 sudo env WORKBENCH_DISPLAY_SCALE="${WORKBENCH_DISPLAY_SCALE:-2}" WORKBENCH_WORKSPACE="$PWD" WORKBENCH_USER_HOME="$HOME" python3 - <<'PYCONTROL'
 import json, os, secrets, grp
@@ -74,9 +73,6 @@ d["credentials_enable_service"] = False
 d.setdefault("profile", {})["password_manager_enabled"] = False
 p.write_text(json.dumps(d))
 PYCODE
-sudo systemctl reset-failed workbench-display workbench-window-manager workbench-browser workbench-webvnc 2>/dev/null || true
-sudo systemctl reset-failed workbench-display-governor 2>/dev/null || true
-sudo systemctl restart workbench-display workbench-window-manager workbench-browser workbench-webvnc
 # Seed only appearance settings for a new editor profile. Existing preferences stay intact.
 python3 - <<'PYEDITOR'
 import shutil
@@ -91,5 +87,10 @@ PYEDITOR
 if ! systemctl is-active --quiet workbench-editor.service; then
   sudo systemctl start workbench-editor.service
 fi
+# The editor unit waits for HTTP readiness; browser ordering also covers direct
+# systemctl starts and keeps the editor available while Chromium closes.
+sudo systemctl reset-failed workbench-display workbench-window-manager workbench-browser workbench-webvnc 2>/dev/null || true
+sudo systemctl reset-failed workbench-display-governor 2>/dev/null || true
+sudo systemctl restart workbench-display workbench-window-manager workbench-browser workbench-webvnc
 sudo python3 /usr/local/lib/workbench-wait-services.py
 printf 'Workbench services ready. Timezone=%s Locale=%s Browser=%s\n' "$WORKBENCH_TZ" "$WORKBENCH_LOCALE" "$WORKBENCH_LANGUAGE"

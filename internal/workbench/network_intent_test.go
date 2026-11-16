@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sylvinus/agent-vm/internal/host"
+	"github.com/sylvinus/agent-vm/internal/managedproxy"
 
 	"github.com/sylvinus/agent-vm/internal/eden"
 )
@@ -19,7 +20,7 @@ func reloadedIntentServer(t *testing.T, previous *Server) *Server {
 	return reloaded
 }
 
-func TestReloadedManualPauseSurvivesAutomaticSubscriptionRefresh(t *testing.T) {
+func TestReloadedManualPauseSurvivesProxyRecovery(t *testing.T) {
 	for _, record := range []string{"saved", "corrupt", "missing"} {
 		t.Run(record, func(t *testing.T) {
 			original, gate, started, finish := pendingProxyApply(t)
@@ -55,16 +56,27 @@ func TestReloadedManualPauseSurvivesAutomaticSubscriptionRefresh(t *testing.T) {
 					t.Fatal("pause generation was lost")
 				}
 			}
-			reloaded.op.Lock()
-			reloaded.refreshProxySubscriptions()
-			reloaded.op.Unlock()
+			_, err = reloaded.submitJob("proxy-network", func() error {
+				p, err := managedproxy.Load(reloaded.profile)
+				if err != nil {
+					return err
+				}
+				cfg, err := loadConfig(reloaded.configPath)
+				if err != nil {
+					return err
+				}
+				return reloaded.activateProxy(p, cfg)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
 			awaitProxyStart(t, started)
 			finish()
 			assertProxyStayedPaused(t, reloaded, gate)
 			again := reloadedIntentServer(t, reloaded)
 			_ = again.restoreNetworkIntent()
 			if !again.networkPaused {
-				t.Fatal("automatic refresh persisted a resume")
+				t.Fatal("automatic proxy recovery persisted a resume")
 			}
 		})
 	}

@@ -235,7 +235,7 @@ export function AccountGate({ children }) {
       </div>
       <section
         className="account-entry"
-        aria-label={creating ? "创建本地账户" : "解锁 Eden"}
+        aria-label={creating ? "创建本地账户" : "解锁 Claude Eden"}
       >
         {creating ? (
           <img className="account-welcome-logo" src={logo} alt="" />
@@ -244,10 +244,10 @@ export function AccountGate({ children }) {
         )}
         <h1>
           {creating
-            ? "注册 Eden 账户"
+            ? "注册 Claude Eden 账户"
             : account
               ? `欢迎回来，${account.username}`
-              : "正在连接 Eden"}
+              : "正在连接 Claude Eden"}
         </h1>
         <p className="account-entry-intro">
           {creating
@@ -314,7 +314,7 @@ export function AccountGate({ children }) {
                 className="primary account-submit"
                 disabled={busy || !password || (creating && !username.trim())}
               >
-                {busy ? "正在解锁…" : creating ? "创建本地账户" : "解锁 Eden"}
+                {busy ? "正在解锁…" : creating ? "创建本地账户" : "解锁 Claude Eden"}
               </button>
               {!creating && <button type="button" className="text-button" onClick={() => { setPassword(""); setError(""); setRecovering(true); }}>忘记密码？</button>}
             </fieldset>
@@ -343,7 +343,7 @@ export function AccountGate({ children }) {
           className="text-button account-exit-app"
           onClick={() => native("quitNow").catch((e) => setError(e.message))}
         >
-          {account?.background_running ? "退出应用，后台继续运行" : "退出 Eden"}
+          {account?.background_running ? "退出应用，后台继续运行" : "退出 Claude Eden"}
         </button>
       )}
     </main>
@@ -378,9 +378,9 @@ function RecoveryKeyScreen() {
         }}>下载密钥文件</button>
       </div>
       {notice && <p className="field-help" role="status">{notice}</p>}
-      <p className="field-help">完整密钥仅在此处显示。关闭或刷新后，可验证账户密码重新生成；重新生成后旧密钥失效。{recovery.reset && "原来的资料和 Claude 登录状态已保留，Eden 的记住我已关闭，请用新密码登录后重新设置。"}</p>
+      <p className="field-help">完整密钥仅在此处显示。关闭或刷新后，可验证账户密码重新生成；重新生成后旧密钥失效。{recovery.reset && "原来的资料和 Claude 登录状态已保留，Claude Eden 的记住我已关闭，请用新密码登录后重新设置。"}</p>
       <label className="account-device-option check-line"><input type="checkbox" checked={saved} onChange={(event) => setSaved(event.target.checked)} /><span>我已安全保存完整恢复密钥</span></label>
-      <button className="primary account-submit" disabled={!saved} onClick={dismissRecovery}>{recovery.reset ? "返回登录" : "继续使用 Eden"}</button>
+      <button className="primary account-submit" disabled={!saved} onClick={dismissRecovery}>{recovery.reset ? "返回登录" : "继续使用 Claude Eden"}</button>
     </section>
   </main>;
 }
@@ -408,7 +408,7 @@ function AccountRecovery({ onBack, onReset }) {
         <label className="account-field">已保存的恢复密钥<textarea aria-label="已保存的恢复密钥" autoFocus required value={code} onChange={(event) => setCode(event.target.value)} rows={4} maxLength={256} autoComplete="off" spellCheck={false} /></label>
         <PasswordField label="新密码" value={password} onChange={setPassword} autoComplete="new-password" />
         <PasswordField label="确认新密码" value={confirmation} onChange={setConfirmation} autoComplete="new-password" />
-        <p className="field-help">重置后会换发恢复密钥，旧密钥失效。Eden 的记住我会关闭。</p>
+        <p className="field-help">重置后会换发恢复密钥，旧密钥失效。Claude Eden 的记住我会关闭。</p>
         {error && <p className="account-error" role="alert">{error}</p>}
         <button className="primary account-submit" disabled={!code.trim() || !password || !confirmation}>{busy ? "正在重置…" : "重置密码"}</button>
       </fieldset></form> : <p className="field-help" role="status">此账户尚未设置恢复密钥。请使用原密码或已开启的快捷登录进入，再到「设置 → 账户」补设。若所有解锁方式均不可用，当前无法恢复加密资料；现有数据会保留。</p>}
@@ -474,7 +474,7 @@ export function AccountMenu({ onSettings, onConfirm, onStatus, busy }) {
       action === "logout" &&
       !(await onConfirm({
         title: "退出本地账户？",
-        body: "这会停止 Eden 环境与后台任务，并锁定登录凭据。请先保存文件。",
+        body: "这会停止 Claude Eden 环境与后台任务，并锁定登录凭据。请先保存文件。",
         confirm: "停止环境并退出账户",
       }))
     )
@@ -511,7 +511,7 @@ export function AccountMenu({ onSettings, onConfirm, onStatus, busy }) {
             items[(items.indexOf(event.target) + step + items.length) % items.length].focus();
           }}
         >
-          <div className="account-menu-label">你的 Eden</div>
+          <div className="account-menu-label">你的 Claude Eden</div>
           <button
             role="menuitem"
             onClick={() => {
@@ -528,7 +528,7 @@ export function AccountMenu({ onSettings, onConfirm, onStatus, busy }) {
           <div className="account-menu-divider" />
           <button role="menuitem" onClick={() => perform("lock")}>
             <LockKeyhole size={16} />
-            锁定 Eden<small>任务继续运行</small>
+            锁定 Claude Eden<small>任务继续运行</small>
           </button>
           <button
             role="menuitem"
@@ -599,7 +599,7 @@ export function AccountSettings({ busy: environmentBusy, onDirty }) {
         await trustedLogin("protect", password);
         await refresh();
         setPassword(""); setConfirmation("");
-        setMessage("已设置密码，下次打开 Eden 时使用密码登录。");
+        setMessage("已设置密码，下次打开 Claude Eden 时使用密码登录。");
         return;
       }
       const value = await act(

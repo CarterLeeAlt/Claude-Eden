@@ -119,7 +119,7 @@ function fixture(native = false, browserComposition = false, options = {}) {
       copyText: options.copyText,
       onStatus: (t) => statuses.push(t),
       onFallback() {},
-      isActive: () => true,
+      isActive: options.isActive || (() => true),
       setCopyContext: async (context, valid) => { if (valid()) copyContexts.push(context); },
       insertText: async (text) => {
         texts.push(text);
@@ -380,6 +380,33 @@ test("browser composition is forwarded as preedit, then committed separately", a
   } finally {
     f.controller.dispose();
   }
+});
+
+test("suspending a retained display cancels composition and ignores its late commit", async () => {
+  let active = true;
+  const f = fixture(false, true, { isActive: () => active });
+  try {
+    await new Promise(resolve => setTimeout(resolve, 5));
+    f.rfb.focus();
+    inputEvent(f, "compositionstart");
+    f.target.value = "nihao";
+    inputEvent(f, "input", { inputType: "insertCompositionText", isComposing: true });
+    active = false;
+    f.controller.suspend();
+    inputEvent(f, "compositionend", { data: "你好" });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(f.compositions.map(value => value.mode), ["begin", "update", "cancel"]);
+    assert.deepEqual(f.texts, []);
+    assert.equal(f.target.value, "");
+    active = true;
+    f.rfb.focus();
+    inputEvent(f, "compositionstart");
+    inputEvent(f, "compositionend", { data: "恢复" });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.compositions.at(-1).mode, "commit");
+    assert.equal(f.compositions.at(-1).text, "恢复");
+    assert.notEqual(f.compositions.at(-1).session, f.compositions[0].session);
+  } finally { f.controller.dispose(); }
 });
 
 // Timers and the clock advance together, one due timer at a time.

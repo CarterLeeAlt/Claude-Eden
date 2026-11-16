@@ -2,7 +2,6 @@ package workbench
 
 import (
 	"context"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -13,30 +12,16 @@ import (
 	"github.com/sylvinus/agent-vm/internal/managedproxy"
 )
 
-// Keep the real request, job, source persistence and gate-control paths. Only
-// external subscription traffic and the installed proxy process are replaced.
+// Keep the real request, job, node persistence and gate-control paths. Only
+// validation and startup of the installed proxy process are replaced.
 func pendingProxyApply(t *testing.T) (*Server, *eden.EgressGate, <-chan struct{}, func()) {
 	t.Helper()
 	s, gate := interfaceMonitorServer(t)
-	p, err := managedproxy.Load(s.profile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p.Sources[0].URL = "https://subscription.example/nodes"
-	p.Sources[0].Interval = 1
-	p.Sources[0].Updated = time.Now().Add(-2 * time.Hour)
-	p.Sources[0].Attempted = p.Sources[0].Updated
-	if err := p.Save(s.profile); err != nil {
-		t.Fatal(err)
-	}
-	validate, start, fetch := validateProxyCore, startProxyCore, fetchProxySource
-	t.Cleanup(func() { validateProxyCore, startProxyCore, fetchProxySource = validate, start, fetch })
+	validate, start := validateProxyCore, startProxyCore
+	t.Cleanup(func() { validateProxyCore, startProxyCore = validate, start })
 	validateProxyCore = func(_ context.Context, profile string, candidate managedproxy.Store) error {
 		_, err := candidate.Runtime(profile)
 		return err
-	}
-	fetchProxySource = func(_ context.Context, _ *http.Client, _ string) ([]byte, string, error) {
-		return []byte(`proxies: [{name: qa, type: socks5, server: 127.0.0.1, port: 1, password: updated-test-value}]`), "", nil
 	}
 	started, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
@@ -93,29 +78,31 @@ func assertProxyStayedPaused(t *testing.T, s *Server, gate *eden.EgressGate) {
 	}
 }
 
-func TestAutomaticSubscriptionUpdatePreservesManualPause(t *testing.T) {
+func TestActiveNodeEditPreservesManualPause(t *testing.T) {
 	for _, pauseBefore := range []bool{true, false} {
-		name := "paused before automatic refresh"
+		name := "paused before editing"
 		if !pauseBefore {
-			name = "paused while automatic refresh applies"
+			name = "paused while edit applies"
 		}
 		t.Run(name, func(t *testing.T) {
 			s, gate, started, finish := pendingProxyApply(t)
 			if pauseBefore {
 				pauseProxyNetwork(t, s)
 			}
-			s.op.Lock()
-			s.refreshProxySubscriptions()
-			s.op.Unlock()
+			p, _ := managedproxy.Load(s.profile)
+			body := `{"node_id":"` + p.Selected + `","node":{"name":"qa","type":"socks5","server":"127.0.0.1","port":1,"username":"qa","password":"updated-test-value"}}`
+			if w := request(s, "POST", "/api/proxy/edit", s.origin, body, true); w.Code != 200 {
+				t.Fatalf("edit rejected: %d %s", w.Code, w.Body.String())
+			}
 			awaitProxyStart(t, started)
 			if !pauseBefore {
 				pauseProxyNetwork(t, s)
 			}
 			finish()
 			assertProxyStayedPaused(t, s, gate)
-			p, _ := managedproxy.Load(s.profile)
-			if p.Sources[0].Nodes[0].Config["password"] != "updated-test-value" {
-				t.Fatal("automatic refresh did not consume the new subscription")
+			p, _ = managedproxy.Load(s.profile)
+			if p.Nodes[0].Password != "updated-test-value" {
+				t.Fatal("active node edit did not persist new credentials")
 			}
 		})
 	}

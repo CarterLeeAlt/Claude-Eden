@@ -11,8 +11,51 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 )
+
+func TestEditorRestartWaitsForReadinessAndRemainsCancellable(t *testing.T) {
+	for _, mode := range []string{"ready", "request-cancel", "client-close"} {
+		t.Run(mode, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				client := newBrowserClient(t.Context())
+				defer client.close()
+				client.http.Transport = browserTransport(func(r *http.Request) (*http.Response, error) {
+					timer := time.NewTimer(35 * time.Second)
+					defer timer.Stop()
+					select {
+					case <-r.Context().Done():
+						return nil, r.Context().Err()
+					case <-timer.C:
+						return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"id":"editor"}`)), Header: make(http.Header)}, nil
+					}
+				})
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				if mode != "ready" {
+					go func() {
+						time.Sleep(10 * time.Second)
+						if mode == "client-close" {
+							client.close()
+						} else {
+							cancel()
+						}
+					}()
+				}
+				started := time.Now()
+				result, err := client.request(ctx, "token", http.MethodPost, "/editor-restart", []byte(`{}`))
+				if mode == "ready" {
+					if err != nil || string(result) != `{"id":"editor"}` || time.Since(started) < 35*time.Second {
+						t.Fatalf("slow editor restart rejected: %s %v", result, err)
+					}
+				} else if !errors.Is(err, context.Canceled) || time.Since(started) != 10*time.Second {
+					t.Fatalf("restart did not cancel: elapsed=%s err=%v", time.Since(started), err)
+				}
+			})
+		})
+	}
+}
 
 func browserClientForTest(t *testing.T, s *Server, transport http.RoundTripper) *browserClient {
 	t.Helper()

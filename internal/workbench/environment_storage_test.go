@@ -3,10 +3,15 @@ package workbench
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/sylvinus/agent-vm/internal/eden"
 )
@@ -106,6 +111,44 @@ func TestStorageChangeRequiresUnlockedSession(t *testing.T) {
 	s.account.lock()
 	if r := request(s, "POST", endpoint, s.origin, "{}", true); r.Code != http.StatusLocked {
 		t.Fatal("locked user could change storage", r.Code)
+	}
+}
+
+func TestStorageRecoveryAllowsAuthenticatedDesktopHandshake(t *testing.T) {
+	s := testServer(t)
+	s.instanceID = randomToken()
+	s.failStorageRecovery(errors.New("environment storage is disconnected"))
+	s.account.lock()
+	server := httptest.NewUnstartedServer(s.handler())
+	port := server.Listener.Addr().(*net.TCPAddr).Port
+	s.origin = "http://localhost:" + strconv.Itoa(port)
+	server.Start()
+	defer server.Close()
+	if err := writePrivate(filepath.Join(s.profile, "control.json"), controlFile{Port: port, PID: os.Getpid(), Token: s.token}); err != nil {
+		t.Fatal(err)
+	}
+	client, err := openController(s.profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.close()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	local := &desktopLocal{profile: s.profile}
+	session, err := local.localSession(ctx, ctx, client, desktopLocalReply{Identity: s.identity, InstanceID: s.instanceID})
+	if err != nil {
+		t.Fatal("recovery blocked the desktop handshake", err)
+	}
+	defer session.Close()
+	if response := request(s, "GET", "/api/controller/manifest", s.origin, "", false); response.Code != http.StatusUnauthorized {
+		t.Fatal("recovery bypassed session authentication", response.Code)
+	}
+	if storageRecoveryRoute(httptest.NewRequest("POST", s.origin+"/api/controller/manifest", nil)) {
+		t.Fatal("manifest mutation admitted during recovery")
+	}
+	s.account.setKey(make([]byte, 32))
+	if response := request(s, "POST", "/api/start", s.origin, "{}", true); response.Code != http.StatusConflict {
+		t.Fatal("recovery admitted a workload start", response.Code)
 	}
 }
 

@@ -23,7 +23,7 @@ const (
 	DiagnosticAddress = "198.18.0.254:80"
 )
 
-var ErrGateClosed = errors.New("Eden 外网未放行，请在工作台完成关键检查")
+var ErrGateClosed = errors.New("Claude Eden 外网未放行，请在工作台完成关键检查")
 
 type GateCounters struct {
 	TCPDenied     uint64 `json:"tcp_denied"`

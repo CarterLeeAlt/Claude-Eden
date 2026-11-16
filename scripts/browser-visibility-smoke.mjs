@@ -11,7 +11,7 @@ try {
   const original = (await api("/tabs")).active;
   await waitFor(() => evaluate(original, "document.readyState === 'complete'"), "initial page");
   await evaluate(original, "document.querySelector('input').value='未保存输入🙂';window.framesSeen=0;window.heartbeats=0;requestAnimationFrame(function tick(){framesSeen++;requestAnimationFrame(tick)});setInterval(()=>heartbeats++,200)");
-  await api("/visibility", { visible: false });
+  await api("/visibility", { visible: false, managed_connections: 0 });
   await waitFor(() => evaluate(original, "document.hidden"), "background visibility");
   const frames = await evaluate(original, "framesSeen");
   const heartbeat = await evaluate(original, "heartbeats");
@@ -21,11 +21,11 @@ try {
   await waitFor(() => evaluate(created.id, "document.hidden"), "new background tab");
   await api("/close", { id: created.id });
   for (let cycle = 0; cycle < 12; cycle++) {
-    await api("/visibility", { visible: true });
+    await api("/visibility", { visible: true, managed_connections: 0 });
     await waitFor(() => evaluate(original, "!document.hidden"), "restore viewing");
     assert.equal(await evaluate(original, "document.querySelector('input').value"), "未保存输入🙂");
     assert.equal((await cdp(original, "Browser.getWindowForTarget", { targetId: original })).bounds.windowState, "fullscreen");
-    await api("/visibility", { visible: false });
+    await api("/visibility", { visible: false, managed_connections: 0 });
     await waitFor(() => evaluate(original, "document.hidden"), "hide viewing");
   }
   listener = net.createServer(socket => { accepted = socket; });
@@ -39,6 +39,6 @@ try {
   console.log(JSON.stringify({ passed: true, cycles: 12, checks: ["background rendering pauses", "background JavaScript continues", "new background tab stays hidden", "fullscreen and unsaved input restored", "legacy VNC viewer respected"] }));
 } finally {
   legacy?.destroy(); accepted?.destroy(); listener?.close();
-  await api("/visibility", { visible: true }).catch(() => {});
+  await api("/visibility", { visible: true, managed_connections: 0 }).catch(() => {});
   await fixture.close();
 }

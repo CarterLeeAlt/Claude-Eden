@@ -110,9 +110,7 @@ func (d *desktopLocal) Connect(ctx context.Context) (_ *localsession.Session, re
 		return nil, errors.New("此安装缺少本机运行组件")
 	}
 	if !st.Known && st.ServiceRunning && st.ControllerID == "" {
-		wait, cancel := context.WithTimeout(ctx, 12*time.Second)
-		c, waitErr := waitControllerReady(wait, d.profile)
-		cancel()
+		c, waitErr := waitControllerReady(ctx, d.profile)
 		if c != nil {
 			c.close()
 		}
@@ -136,19 +134,24 @@ func (d *desktopLocal) Connect(ctx context.Context) (_ *localsession.Session, re
 		return nil, err
 	}
 	var launchID string
+	var exited <-chan error
 	if !st.ServiceRunning {
 		launchID = randomToken()
-		if err = startControllerExecutable(d.config, d.executable, "EDEN_DESKTOP_START_ID="+launchID); err != nil {
+		if exited, err = startControllerExecutable(d.config, d.executable, "EDEN_DESKTOP_START_ID="+launchID); err != nil {
 			return nil, err
 		}
 		defer func() {
 			if returned != nil {
+				select {
+				case <-exited:
+					return
+				default:
+				}
 				d.releaseFailedLaunch(launchID)
 			}
 		}()
 	}
-	bootstrap, cancel := context.WithTimeout(ctx, localBootstrapTimeout)
-	defer cancel()
+	bootstrap := ctx
 	for {
 		c, err := openController(d.profile)
 		if err == nil {
@@ -166,15 +169,21 @@ func (d *desktopLocal) Connect(ctx context.Context) (_ *localsession.Session, re
 				return session, err
 			}
 			c.close()
-			if launchID == "" {
+			var networkError *url.Error
+			if !errors.As(probeErr, &networkError) {
 				return nil, probeErr
 			}
-		} else if launchID == "" && !errors.Is(err, errControllerUnavailable) {
+		} else if !errors.Is(err, errControllerUnavailable) {
 			return nil, err
+		}
+		if launchID == "" && controllerLockFree(d.profile) {
+			return nil, errors.New("本机后台已退出，请重新连接")
 		}
 		select {
 		case <-bootstrap.Done():
-			return nil, errors.New("无法连接本机控制服务，请检查本机状态")
+			return nil, bootstrap.Err()
+		case err := <-exited:
+			return nil, errors.Join(errors.New("本机后台在连接就绪前退出，请查看 control.log"), err)
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
@@ -213,7 +222,7 @@ func (d *desktopLocal) ReleaseUnused(ctx context.Context, session *localsession.
 // The process started for a cancelled handshake may publish its record after
 // cancellation. Only hand off a controller bearing this launcher's own nonce.
 func (d *desktopLocal) releaseFailedLaunch(id string) {
-	ctx, cancel := context.WithTimeout(context.Background(), localBootstrapTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), localReleaseTimeout)
 	defer cancel()
 	for ctx.Err() == nil {
 		c, err := openController(d.profile)

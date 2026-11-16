@@ -10,8 +10,7 @@ const menu = readme.split('\n').find(line => line.includes('(README.md)') && lin
 assert.ok(menu, 'README language navigation is missing');
 const codes = [...menu.matchAll(/\]\(README(?:\.([\w-]+))?\.md\)/g)].map(m => m[1] || 'zh');
 // README.md has no dot before the base name's extension in the optional group.
-assert.equal(codes[0], 'zh');
-assert.ok(!codes.includes('en'));
+assert.deepEqual(codes, ['zh', 'zh-TW', 'en', 'ja', 'ko', 'de', 'fr']);
 const dist = path.join(root,'www/dist');
 const measurementId = process.env.PUBLIC_GA_MEASUREMENT_ID?.trim();
 const htmlFiles = fs.readdirSync(dist, { recursive: true }).filter(file => file.endsWith('.html'));
@@ -50,9 +49,8 @@ for (const code of codes) {
   assert.deepEqual(options, codes.map(locale => `/${locale === 'zh' ? '' : locale + '/'}`), `${code}: incorrect language destinations`);
   assert.equal([...picker.matchAll(/aria-current="page"/g)].length, 1, `${code}: current language must be marked once`);
   assert.ok(!html.includes('<select'), `${code}: system popup selector remains`);
-  assert.ok(!options.some(url=>url.endsWith('/en/')), `${code}: unexpected English route`);
   assert.ok(html.includes('id="site-language"'), `${code}: missing language selector`);
-  assert.ok(html.includes(`dir="${['ar','fa','ps','prs'].includes(code)?'rtl':'ltr'}"`), `${code}: incorrect reading direction`);
+  assert.ok(html.includes('dir="ltr"'), `${code}: incorrect reading direction`);
   for (const match of html.matchAll(/(?:src|href)="(\/[^"#]+)"/g)) {
     const relative = decodeURIComponent(match[1].slice(1));
     const target = path.join(dist,relative.endsWith('/') ? relative+'index.html' : relative);
@@ -84,7 +82,8 @@ for (const code of codes) {
     assert.ok(article?.includes(`href="${entry.releaseURL}"`), `${code}: ${name} notes must match its package`);
   }
 }
-assert.ok(!fs.existsSync(path.join(dist,'en/index.html')), 'Old English page still present');
+const localeRoutes = fs.readdirSync(dist, { withFileTypes: true }).filter(entry => entry.isDirectory() && fs.existsSync(path.join(dist, entry.name, 'index.html')) && !['docs', 'privacy'].includes(entry.name)).map(entry => entry.name).sort();
+assert.deepEqual(localeRoutes, codes.slice(1).sort(), 'Unexpected language pages remain');
 console.log(`Verified ${codes.length} README languages, dropdowns, directions and local assets.`);
 
 // Check actual guide pages and every cross-page anchor, including project bases.

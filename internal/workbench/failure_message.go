@@ -22,16 +22,16 @@ func executionFailure(action string, err error, output string) error {
 	}{
 		{[]string{"base vm not found"}, "基础模板缺失，无法创建或重置环境", "请先完成环境安装；已有环境的磁盘应保留，不要删除或重置个人数据。"},
 		{[]string{"base vm setup did not complete"}, "基础模板尚未安装完成", "请继续环境安装后重试；已有环境的磁盘应保留，不要删除或重置个人数据。"},
-		{[]string{"desktop file service state=failed"}, "Claude Desktop 的文件服务已经退出", "请从 Eden 重新打开 Claude Desktop；若应用反复退出，请在设置中查看资源用量并导出诊断包。"},
+		{[]string{"desktop file service state=failed"}, "Claude Desktop 的文件服务已经退出", "请从 Claude Eden 重新打开 Claude Desktop；若应用反复退出，请在设置中查看资源用量并导出诊断包。"},
 		{[]string{"curl: (7)", "connection refused"}, "目标服务没有接受连接", "请确认环境及所选代理已启动；文件传递时请重新打开接收文件的应用，再重试。"},
-		{[]string{"no space left on device", "not enough space on the disk"}, "磁盘空间不足，无法继续写入", "请释放环境所在磁盘的空间后继续；不要删除 Eden 的个人数据目录。"},
+		{[]string{"no space left on device", "not enough space on the disk"}, "磁盘空间不足，无法继续写入", "请释放环境所在磁盘的空间后继续；不要删除 Claude Eden 的个人数据目录。"},
 		{[]string{"could not get lock", "unable to acquire the dpkg", "another process using it"}, "环境中已有另一个软件安装或更新进程", "请等待当前安装结束后再继续；不要手动删除安装锁文件。"},
 		{[]string{"temporary failure resolving", "could not resolve host", "curl: (6)"}, "下载服务器的域名解析失败", "请在网络与代理设置中检查所选节点和 DNS，再继续安装。"},
 		{[]string{"curl: (28)", "connection timed out", "operation timed out"}, "下载或环境连接等待超时", "请检查所选代理是否可用，再继续；已保存的下载会尝试续传。"},
 		{[]string{"curl: (60)", "certificate verify failed", "certificate verification failed"}, "下载服务器的证书验证未通过", "请检查电脑时间和所选代理；仍失败时导出诊断包，不要关闭证书验证。"},
-		{[]string{"407 proxy authentication", "proxy authentication required"}, "代理服务器拒绝了当前登录凭据", "请在网络与代理设置中更新代理账号或订阅，再应用节点。"},
-		{[]string{"permission denied", "access is denied"}, "系统拒绝访问安装所需的文件或程序", "请检查应用及环境目录的权限；若安全软件拦截了 Eden，请先核实其拦截记录。"},
-		{[]string{"tried to start delayed item"}, "环境的软件包下载程序反复重试，未能完成安装", "请使用包含 APT 修复的 Eden 构建后继续安装；仍失败时导出诊断包。"},
+		{[]string{"407 proxy authentication", "proxy authentication required"}, "代理服务器拒绝了当前登录凭据", "请在网络与代理设置中更新节点的认证信息，再应用节点。"},
+		{[]string{"permission denied", "access is denied"}, "系统拒绝访问安装所需的文件或程序", "请检查应用及环境目录的权限；若安全软件拦截了 Claude Eden，请先核实其拦截记录。"},
+		{[]string{"tried to start delayed item"}, "环境的软件包下载程序反复重试，未能完成安装", "请使用包含 APT 修复的 Claude Eden 构建后继续安装；仍失败时导出诊断包。"},
 	} {
 		for _, pattern := range rule.patterns {
 			if strings.Contains(lower, pattern) {
@@ -69,7 +69,7 @@ func fileServiceFailure(status int, data []byte) error {
 		"原文件窗口已关闭":                "原文件窗口已关闭。请在接收文件的应用中重新打开文件窗口。",
 		"请先完成已打开的文件窗口":            "另一个文件窗口尚未处理。请先完成或关闭该窗口，再重新选择文件。",
 		"每个文件不能超过 2 GB":           "单个文件超过 2 GB 上限。请缩小文件后重新上传。",
-		"项目文件夹尚未连接，请重新打开项目":       "项目文件夹尚未连接。请先在 Eden 中重新打开该项目，再选择目录。",
+		"项目文件夹尚未连接，请重新打开项目":       "项目文件夹尚未连接。请先在 Claude Eden 中重新打开该项目，再选择目录。",
 		"目标没有接收文件，请点击支持附件的输入框后重试": "目标没有接收文件。请先点击应用内支持附件的输入框，再重新选择文件。",
 		"上传已取消":       "上传已被取消。需要继续时，请重新选择文件。",
 		"当前窗口没有请求文件夹": "当前窗口需要选择文件，不能接收文件夹。请按应用的窗口提示重新选择。",
@@ -77,7 +77,7 @@ func fileServiceFailure(status int, data []byte) error {
 		"文件位置无法读取":    "接收文件的应用无法读取该位置。请确认项目目录已连接，并重新选择。",
 		"下载服务不可用":     "环境内的下载服务尚未就绪。请重新打开应用；旧环境请先更新环境组件。",
 		"文件请求过大":      "这次文件请求超过服务允许的大小。请减少一次传递的文件数量。",
-		"请选择项目文件夹":    "当前操作需要一个已连接的项目文件夹。请先在 Eden 中打开项目，再重新选择目录。",
+		"请选择项目文件夹":    "当前操作需要一个已连接的项目文件夹。请先在 Claude Eden 中打开项目，再重新选择目录。",
 	}
 	if reason := known[strings.TrimSpace(string(data))]; reason != "" {
 		return fmt.Errorf("传递文件失败：%s", reason)

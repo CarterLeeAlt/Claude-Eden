@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -22,12 +23,12 @@ func (s *Server) vnc(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "环境尚未就绪", 409)
 		return
 	}
-	release, err := s.browserViews.acquire(s.changeBrowserVisibility)
+	view, err := s.browserViews.connect(s.changeBrowserVisibility)
 	if err != nil {
 		requestError(w, err)
 		return
 	}
-	defer release()
+	defer view.close()
 	address := "127.0.0.1:15900"
 	remote, e := (&net.Dialer{Timeout: 3 * time.Second}).DialContext(r.Context(), "tcp", address)
 	if e != nil {
@@ -35,10 +36,10 @@ func (s *Server) vnc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer remote.Close()
-	s.streamVNC(w, r, remote, remote, func() { _ = remote.Close() })
+	s.streamVNC(w, r, remote, remote, func() { _ = remote.Close() }, view.setVisible)
 }
 
-func (s *Server) streamVNC(w http.ResponseWriter, r *http.Request, reader io.Reader, writer io.Writer, closeTransport func()) {
+func (s *Server) streamVNC(w http.ResponseWriter, r *http.Request, reader io.Reader, writer io.Writer, closeTransport func(), setVisible func(bool) error) {
 	var once sync.Once
 	closeRemote := func() { once.Do(closeTransport) }
 	defer closeRemote()
@@ -98,6 +99,21 @@ func (s *Server) streamVNC(w http.ResponseWriter, r *http.Request, reader io.Rea
 		kind, b, e := ws.ReadMessage()
 		if e != nil {
 			return
+		}
+		if kind == websocket.TextMessage {
+			var control struct {
+				Type    string `json:"type"`
+				Visible *bool  `json:"visible"`
+			}
+			if len(b) > 256 || json.Unmarshal(b, &control) != nil || control.Type != "visibility" || control.Visible == nil {
+				return
+			}
+			// Read controls and subsequent RFB requests in wire order: a resumed
+			// display must be restored before its next input reaches the guest.
+			if setVisible(*control.Visible) != nil {
+				return
+			}
+			continue
 		}
 		if kind == websocket.BinaryMessage {
 			if queuedBytes.Add(int64(len(b))) > 8<<20 {

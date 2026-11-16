@@ -1,68 +1,115 @@
 package workbench
 
 import (
-	"net"
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/sylvinus/agent-vm/internal/managedproxy"
 )
 
-func TestFailedSubscriptionRefreshKeepsWorkingNodesAndSecretsPrivate(t *testing.T) {
+func TestFailedNodeEditKeepsWorkingNodeAndSecretsPrivate(t *testing.T) {
 	s := testServer(t)
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer listener.Close()
-	go func() {
-		for {
-			conn, e := listener.Accept()
-			if e != nil {
-				return
-			}
-			conn.Close()
-		}
-	}()
-	cfg, err := loadConfig(s.configPath)
-	if err != nil {
-		t.Fatal(err)
-	}
 	p, _ := managedproxy.Load(s.profile)
-	p.Port = listener.Addr().(*net.TCPAddr).Port
-	cfg.ProxyURL = p.Endpoint()
-	if err = writePrivate(s.configPath, cfg); err != nil {
+	p.Nodes[0].Username, p.Nodes[0].Password = "qa", "private-node-password"
+	if err := p.Save(s.profile); err != nil {
 		t.Fatal(err)
 	}
-	if err = p.Import("source", "https://example.com/sub?token=private-subscription", []byte(`proxies: [{name: qa, type: socks5, server: 127.0.0.1, port: 1080, password: private-node-password}]`), "source", 24, ""); err != nil {
-		t.Fatal(err)
+	file := filepath.Join(s.profile, "proxy", "nodes.json")
+	before, _ := os.ReadFile(file)
+	validate := validateProxyCore
+	t.Cleanup(func() { validateProxyCore = validate })
+	validateProxyCore = func(context.Context, string, managedproxy.Store) error { return errors.New("fixture rejected node") }
+	body := `{"node_id":"` + p.Selected + `","node":{"name":"new","type":"socks5","server":"127.0.0.1","port":1080,"username":"qa","password":"new-private-password"}}`
+	if w := request(s, "POST", "/api/proxy/edit", s.origin, body, true); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
 	}
-	p.Selected = p.Sources[0].Nodes[0].ID
-	if err = p.Save(s.profile); err != nil {
-		t.Fatal(err)
+	if job := awaitJobIdle(t, &s.jobs); job.Error == "" {
+		t.Fatal("failed validation was not reported")
 	}
-	before := p.Sources[0]
-	if err = s.changeProxy("refresh", proxyInput{ID: "source"}, nil); err == nil {
-		t.Fatal("broken subscription accepted")
-	}
-	after, err := managedproxy.Load(s.profile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if after.Sources[0].Nodes[0].ID != before.Nodes[0].ID || after.Selected != p.Selected || !after.Sources[0].Updated.Equal(before.Updated) || after.Sources[0].Error == "" {
-		t.Fatal("failed refresh replaced last good data")
+	if after, _ := os.ReadFile(file); string(after) != string(before) {
+		t.Fatal("failed edit replaced working data")
 	}
 	w := request(s, "GET", "/api/proxy", s.origin, "", true)
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	for _, secret := range []string{"private-subscription", "private-node-password", p.Auth} {
+	for _, secret := range []string{"private-node-password", "new-private-password", p.Auth} {
 		if strings.Contains(w.Body.String(), secret) {
 			t.Fatal("status leaked proxy credentials")
 		}
 	}
 	if w = request(s, "POST", "/api/proxy/stop", s.origin, `{}`, false); w.Code != 401 {
 		t.Fatal("proxy mutation accepted without authentication")
+	}
+}
+
+func TestManualNodeAPIAndRemovedEntries(t *testing.T) {
+	s := testServer(t)
+	validate, start := validateProxyCore, startProxyCore
+	t.Cleanup(func() { validateProxyCore, startProxyCore = validate, start })
+	validateProxyCore = func(_ context.Context, profile string, p managedproxy.Store) error {
+		_, err := p.Runtime(profile)
+		return err
+	}
+	startProxyCore = func(context.Context, string, managedproxy.Store) error { return nil }
+	for _, action := range []string{"import", "refresh", "route"} {
+		if w := request(s, "POST", "/api/proxy/"+action, s.origin, `{}`, true); w.Code != 404 {
+			t.Fatal("removed proxy entry accepted", action, w.Code)
+		}
+	}
+	for _, body := range []string{
+		`{"node":{"name":"bad","type":"http","server":"example.com","port":80,"dialer-proxy":"DIRECT"}}`,
+		`{"node":{"name":"bad","type":"http","server":"example.com","port":80},"content":"proxies: []"}`,
+		`{"node":{"name":"bad","type":"http","server":"example.com","port":80},"node_ids":["one","two"]}`,
+	} {
+		if w := request(s, "POST", "/api/proxy/add", s.origin, body, true); w.Code != 400 {
+			t.Fatal("extra core configuration accepted", w.Code)
+		}
+	}
+	call := func(action, body string) {
+		t.Helper()
+		if w := request(s, "POST", "/api/proxy/"+action, s.origin, body, true); w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		if job := awaitJobIdle(t, &s.jobs); job.Error != "" {
+			t.Fatal(job.Error)
+		}
+	}
+	before, _ := managedproxy.Load(s.profile)
+	call("add", `{"node":{"name":"manual","type":"http","server":"127.0.0.1","port":1080,"username":"qa","password":"secret-http-password"}}`)
+	p, _ := managedproxy.Load(s.profile)
+	if len(p.Nodes) != 2 || p.Selected != before.Selected || p.Revision != before.Revision {
+		t.Fatal("saving a node silently changed the active proxy")
+	}
+	id := p.Nodes[1].ID
+	call("edit", `{"node_id":"`+id+`","node":{"name":"renamed","type":"http","server":"127.0.0.1","port":1081,"username":"qa"}}`)
+	p, _ = managedproxy.Load(s.profile)
+	if p.Nodes[1].Password != "secret-http-password" || p.Nodes[1].Name != "renamed" {
+		t.Fatal("edit lost omitted credentials")
+	}
+	w := request(s, "GET", "/api/proxy", s.origin, "", true)
+	var view struct{ Nodes []map[string]any }
+	if err := json.Unmarshal(w.Body.Bytes(), &view); err != nil || len(view.Nodes) != 2 || view.Nodes[1]["has_password"] != true || strings.Contains(w.Body.String(), "secret-http-password") {
+		t.Fatal("node editor metadata leaked or lost credentials", err)
+	}
+	call("select", `{"node_id":"`+id+`"}`)
+	p, _ = managedproxy.Load(s.profile)
+	if p.Selected != id || p.Revision == before.Revision {
+		t.Fatal("explicit selection was not applied")
+	}
+	call("delete", `{"node_id":"`+id+`"}`)
+	p, _ = managedproxy.Load(s.profile)
+	if p.Selected != "" || len(p.Nodes) != 1 {
+		t.Fatal("deleting active node selected an unapproved replacement")
+	}
+	cfg, _ := loadConfig(s.configPath)
+	if cfg.RequireManagedProxy(s.profile) == nil {
+		t.Fatal("deleting active node retained network authorization")
 	}
 }
 

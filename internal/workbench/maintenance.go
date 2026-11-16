@@ -196,7 +196,7 @@ func StartGuestServices(ctx context.Context, configPath string, cfg eden.Config,
 	if prefs.BalancedDisplay {
 		scale = "1.5"
 	}
-	return RunMaintenanceScript(ctx, configPath, "export WORKBENCH_DISPLAY_SCALE="+scale+"\n"+cfg.StartScript(), stdout, stderr)
+	return runMaintenanceScript(ctx, configPath, cfg, "export WORKBENCH_DISPLAY_SCALE="+scale+"\n"+cfg.StartScript(), stdout, stderr)
 }
 
 func RunMaintenanceScript(ctx context.Context, configPath, script string, stdout, stderr io.Writer) error {
@@ -204,8 +204,12 @@ func RunMaintenanceScript(ctx context.Context, configPath, script string, stdout
 	if err != nil {
 		return err
 	}
+	return runMaintenanceScript(ctx, configPath, cfg, cfg.GuestProfile.Linux(script), stdout, stderr)
+}
+
+func runMaintenanceScript(ctx context.Context, configPath string, cfg eden.Config, script string, stdout, stderr io.Writer) error {
 	profile := filepath.Dir(configPath)
-	if err = cfg.RequireManagedProxy(profile); err != nil {
+	if err := cfg.RequireManagedProxy(profile); err != nil {
 		return err
 	}
 	egress, err := eden.NewEgress(cfg)
@@ -230,7 +234,7 @@ func RunMaintenanceScript(ctx context.Context, configPath, script string, stdout
 	defer stop()
 	s := &Server{profile: profile}
 	forward := fmt.Sprintf("127.0.0.1:%d:%s", maintenancePort, listener.Addr().String())
-	command := "sudo systemd-run --quiet --pipe --wait --collect --unit=workbench-maintenance-operation --property=User=developer --property=RuntimeMaxSec=infinity --property=KillMode=control-group --setenv=HOME=/home/developer --working-directory=" + shellescape.Quote(guestPath(s.environmentDir())) + " /bin/bash -se"
+	command := cfg.GuestProfile.Linux("sudo systemd-run --quiet --pipe --wait --collect --unit=workbench-maintenance-operation --property=User=developer --property=RuntimeMaxSec=infinity --property=KillMode=control-group --setenv=HOME=/home/developer ") + "--working-directory=" + shellescape.Quote(guestPath(s.environmentDir())) + " /bin/bash -se"
 	cmd := s.sshCommandWithForwarding(ctx, "-o", "ExitOnForwardFailure=yes", "-R", forward, "-T", s.sshTarget(), "--", command)
 	cmd.Stdin = strings.NewReader(maintenanceScript(eden.DebianPrepareScript+"\n"+script, proxy.token))
 	var output failureOutput

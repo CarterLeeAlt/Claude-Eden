@@ -251,6 +251,11 @@ export default class Websock {
         this.attach(new WebSocket(uri, protocols));
     }
 
+    workbenchControl(value) {
+        this.flush();
+        this._websocket.send(JSON.stringify(value));
+    }
+
     attach(rawChannel) {
         this.init();
 

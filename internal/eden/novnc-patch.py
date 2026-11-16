@@ -55,7 +55,11 @@ replace_once('''    focus(options) {
 replace_once('    clipboardPasteFrom(text) {', '''    // Serialize the clipboard notification, data transfer and paste.
     // A server fence confirms it has processed the provided clipboard data.
     _workbenchQueueInput(action) {
-        const result = (this._workbenchInputChain || Promise.resolve()).then(action);
+        const generation = this._workbenchInputGeneration || 0;
+        const result = (this._workbenchInputChain || Promise.resolve()).then(() => {
+            if (generation !== (this._workbenchInputGeneration || 0)) throw new Error('Input target changed');
+            return action();
+        });
         this._workbenchInputChain = result;
         const clear = () => {
             if (this._workbenchInputChain === result) this._workbenchInputChain = null;
@@ -66,6 +70,19 @@ replace_once('    clipboardPasteFrom(text) {', '''    // Serialize the clipboard
         return result;
     }
 
+    workbenchSuspendInput() {
+        this._workbenchInputGeneration = (this._workbenchInputGeneration || 0) + 1;
+        this._workbenchInputChain = null;
+        for (const name of ['_workbenchInputFence', '_workbenchPasteJob']) {
+            const pending = this[name];
+            this[name] = null;
+            if (pending) {
+                clearTimeout(pending.timer);
+                pending.reject(new Error('Input target changed'));
+            }
+        }
+    }
+
     workbenchRunInput(action) {
         return this._workbenchQueueInput(() => this._workbenchRunInput(action));
     }
@@ -73,6 +90,7 @@ replace_once('    clipboardPasteFrom(text) {', '''    // Serialize the clipboard
     async _workbenchRunInput(action) {
         if (this._rfbConnectionState !== 'connected' || this._viewOnly || !this._supportsFence)
             throw new Error('Input transport is not ready');
+        const generation = this._workbenchInputGeneration || 0;
         // Flush preceding VNC clicks/keys before a browser text insertion.
         await new Promise((resolve, reject) => {
             const id = 'workbench-input-' + (this._workbenchInputSequence = (this._workbenchInputSequence || 0) + 1);
@@ -80,10 +98,10 @@ replace_once('    clipboardPasteFrom(text) {', '''    // Serialize the clipboard
                 this._workbenchInputFence = null;
                 reject(new Error('Input fence timed out'));
             }, 4000);
-            this._workbenchInputFence = { id, timer, resolve };
+            this._workbenchInputFence = { id, timer, resolve, reject };
             RFB.messages.clientFence(this._sock, (1 << 31) | 1, id);
         });
-        if (this._rfbConnectionState !== 'connected') throw new Error('Input disconnected');
+        if (generation !== (this._workbenchInputGeneration || 0) || this._rfbConnectionState !== 'connected') throw new Error('Input target changed');
         return action((...key) => this._workbenchSendKey(...key));
     }
 
@@ -91,10 +109,11 @@ replace_once('    clipboardPasteFrom(text) {', '''    // Serialize the clipboard
         // Reserve the queue before asynchronous host clipboard/image decoding.
         // Keep a rejection handler attached even if an earlier input fails.
         const pending = Promise.resolve(content).then(value => ({value}), error => ({error}));
+        const generation = this._workbenchInputGeneration || 0;
         return this._workbenchQueueInput(async () => {
             const {value, error} = await pending;
             if (error) throw error;
-            if (!valid()) throw new Error('Input target changed');
+            if (generation !== (this._workbenchInputGeneration || 0) || !valid()) throw new Error('Input target changed');
             if (value.png || value.files || value.fileSelection) return this._workbenchRunInput(() => pasteImage(value));
             if (pasteText) return this._workbenchRunInput(() => pasteText(value.text || ''));
             return this._workbenchPasteText(value.text || '');
@@ -119,7 +138,7 @@ replace_once('    clipboardPasteFrom(text) {', '''    // Serialize the clipboard
                 if (this._workbenchPasteJob?.id === id) this._workbenchPasteJob = null;
                 reject(new Error('Remote application did not accept the paste'));
             }, 4000);
-            this._workbenchPasteJob = {id, timer, resolve, phase: 'data'};
+            this._workbenchPasteJob = {id, timer, resolve, reject, phase: 'data'};
             this.clipboardPasteFrom(text);
         });
     }

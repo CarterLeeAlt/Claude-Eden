@@ -113,4 +113,12 @@ func TestBrowserIMERequiresSessionAndValidSelection(t *testing.T) {
 	if requests[3]["target"] != "desktop" || requests[4]["context"] != "abcdef0123456789abcdef0123456789" || requests[4]["sequence"] != float64(0) || requests[5]["sequence"] != float64(1) || requests[5]["selectionEnd"] != float64(3) {
 		t.Fatal("Desktop session or UTF-16 selection changed")
 	}
+	s.browserControl = browserClientForTest(t, s, browserTransport(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusBadRequest, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"error":"Input session expired"}`))}, nil
+	}))
+	lateCommit := `{"target":"browser","session":"0123456789abcdef0123456789abcdef","id":"tab-1","mode":"commit","text":"迟到输入","sequence":2}`
+	response := request(s, "POST", path, s.origin, lateCommit, true)
+	if response.Code != http.StatusBadGateway || !strings.Contains(response.Body.String(), "输入法会话已结束") || strings.Contains(response.Body.String(), "迟到输入") {
+		t.Fatalf("expired composition lost its fixed reason or exposed input text: %d %s", response.Code, response.Body.String())
+	}
 }

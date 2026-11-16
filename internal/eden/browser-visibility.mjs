@@ -1,10 +1,11 @@
 // Chromium must observe a minimized window to throttle its hidden pages.
 // Withdrawing an X window alone leaves document.visibilityState visible.
 export class BrowserVisibility {
-  constructor(cdp, targets, canHide = async () => true) {
+  constructor(cdp, targets, canHide = async () => true, isStarting = () => false) {
     this.cdp = cdp;
     this.targets = targets;
     this.canHide = canHide;
+    this.isStarting = isStarting;
     this.visible = true;
     this.saved = new Map();
     this.queue = Promise.resolve();
@@ -35,12 +36,20 @@ export class BrowserVisibility {
   }
 
   async setBounds(windowId, bounds) {
+    let leavingFullscreen = bounds.windowState === "normal" &&
+      (await this.cdp("Browser.getWindowBounds", { windowId })).bounds.windowState === "fullscreen";
     await this.cdp("Browser.setWindowBounds", { windowId, bounds });
     // The CDP reply can precede the window manager's state transition.
     // Fullscreen/minimized changes must observe the intermediate normal state.
-    for (let attempt = 0; attempt < 40; attempt++) {
+    for (let attempt = 0; this.isStarting() || attempt < 40; attempt++) {
       const current = await this.cdp("Browser.getWindowBounds", { windowId });
       if (current.bounds.windowState === bounds.windowState) return;
+      // Exiting fullscreen restores the prior maximized state. Restore that
+      // separate state before asking the window manager to minimize it.
+      if (leavingFullscreen && current.bounds.windowState === "maximized") {
+        leavingFullscreen = false;
+        await this.cdp("Browser.setWindowBounds", { windowId, bounds });
+      }
       await new Promise(resolve => setTimeout(resolve, 25));
     }
     throw new Error("Browser window did not change state");

@@ -6,6 +6,7 @@
   height: 100%;
   min-height: 0;
 }
+.claude-desktop-view[hidden] { display: none; }
 .desktop-toolbar-reveal {
   position: absolute;
   top: 0;

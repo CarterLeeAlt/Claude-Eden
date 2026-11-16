@@ -99,10 +99,10 @@ export function createAgentNativeConsumer({ api, native, nativeAvailable, getCon
   const registerWindow = async () => {
     const entry = await native("refreshSession");
     let url;
-    try { url = new URL(entry?.url); } catch { throw new Error("无法验证原生窗口入口，请重新连接 Eden。"); }
-    if (url.origin !== getOrigin() || !url.hash.slice(1)) throw new Error("原生窗口入口已改变；未把验证票据发送到其他地址，请重新连接 Eden。");
+    try { url = new URL(entry?.url); } catch { throw new Error("无法验证原生窗口入口，请重新连接 Claude Eden。"); }
+    if (url.origin !== getOrigin() || !url.hash.slice(1)) throw new Error("原生窗口入口已改变；未把验证票据发送到其他地址，请重新连接 Claude Eden。");
     const value = await api("/agent/native/window", { ticket: url.hash.slice(1) });
-    if (typeof value?.window_proof !== "string" || !value.window_proof) throw new Error("原生窗口认证未完成，请重新连接 Eden。");
+    if (typeof value?.window_proof !== "string" || !value.window_proof) throw new Error("原生窗口认证未完成，请重新连接 Claude Eden。");
     proof = value.window_proof;
   };
   const poll = async () => {

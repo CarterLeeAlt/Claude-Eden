@@ -229,6 +229,10 @@ func (s *Server) guestImage(ctx context.Context, target string, data []byte) (ma
 	if target == "desktop" {
 		script = "systemctl is-active --quiet workbench-claude-desktop.service && sudo -H -u developer env DISPLAY=:78 XAUTHORITY=/run/workbench-desktop/Xauthority /usr/local/bin/workbench-image-input paste"
 	}
+	script, err := s.linuxTemplate(script)
+	if err != nil {
+		return nil, err
+	}
 	cmd := s.sshCommand(ctx, "-T", s.sshTarget(), "--", script)
 	cmd.Stdin = bytes.NewReader(data)
 	pipe, err := cmd.StdoutPipe()
@@ -236,7 +240,7 @@ func (s *Server) guestImage(ctx context.Context, target string, data []byte) (ma
 		return nil, err
 	}
 	if err = cmd.Start(); err != nil {
-		return nil, errors.New("无法连接 Eden 环境")
+		return nil, errors.New("无法连接 Claude Eden 环境")
 	}
 	output, readErr := io.ReadAll(io.LimitReader(pipe, 4097))
 	if readErr != nil || len(output) > 4096 {
@@ -245,7 +249,7 @@ func (s *Server) guestImage(ctx context.Context, target string, data []byte) (ma
 		return nil, errors.New("图片传递响应无效")
 	}
 	if err = cmd.Wait(); err != nil {
-		return nil, errors.New("图片未能传入 Eden，请确认目标已打开并支持图片；环境组件过旧时请先更新环境")
+		return nil, errors.New("图片未能传入 Claude Eden，请确认目标已打开并支持图片；环境组件过旧时请先更新环境")
 	}
 	var result map[string]any
 	if json.Unmarshal(output, &result) != nil {
@@ -253,7 +257,7 @@ func (s *Server) guestImage(ctx context.Context, target string, data []byte) (ma
 	}
 	if target == "terminal" {
 		path, ok := result["path"].(string)
-		if !ok || !strings.HasPrefix(path, "/home/developer/.local/share/workbench/attachments/image-") || strings.ContainsAny(path, "'\r\n\x00") {
+		if !ok || !s.linuxPathHasPrefix(path, "/home/developer/.local/share/workbench/attachments/image-") || strings.ContainsAny(path, "'\r\n\x00") {
 			return nil, errors.New("图片保存路径无效")
 		}
 	}

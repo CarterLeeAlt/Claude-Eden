@@ -68,10 +68,10 @@ func TestLinuxBundledProxyLifecycle(t *testing.T) {
 	}))
 	defer upstream.Close()
 	upstreamPort := upstream.Listener.Addr().(*net.TCPAddr).Port
-	if err := s.Import("local smoke node", "", []byte(fmt.Sprintf("proxies:\n - {name: smoke, type: http, server: 127.0.0.1, port: %d}\n", upstreamPort)), "smoke", 0, ""); err != nil {
+	if err := s.SetNode(Node{ID: Token()[:24], Name: "smoke", Type: "http", Server: "127.0.0.1", Port: upstreamPort}); err != nil {
 		t.Fatal(err)
 	}
-	s.Selected = s.Sources[0].Nodes[0].ID
+	s.Selected = s.Nodes[0].ID
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	t.Cleanup(func() {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -41,7 +42,7 @@ WORKBENCH_DESKTOP_STATE`
 
 func (s *Server) claudeDesktopStatus(w http.ResponseWriter, r *http.Request) {
 	if !s.vmRunning() {
-		http.Error(w, "请先启动 Eden 环境", 409)
+		http.Error(w, "请先启动 Claude Eden 环境", 409)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
@@ -75,7 +76,7 @@ func (s *Server) claudeDesktopAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.vmRunning() {
-		http.Error(w, "请先启动 Eden 环境", 409)
+		http.Error(w, "请先启动 Claude Eden 环境", 409)
 		return
 	}
 	s.launch(w, "claude-desktop-"+action, func() error {
@@ -140,28 +141,46 @@ func (s *Server) startClaudeDesktop() error {
 	defer clear(key)
 	script := `test "$(dpkg-query -W -f='${Status}' claude-desktop 2>/dev/null)" = 'install ok installed' || { echo '请先安装 Claude Desktop。'; exit 1; }
 ` + eden.ClaudeDesktopProvisionScript()
-	if err = s.runDesktopScript(script, 20*time.Second); err != nil {
+	if err = s.runDesktopScript(script, 0); err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(s.operationContext(), 55*time.Second)
-	defer cancel()
-	cmd := s.sshCommand(ctx, "-T", s.sshTarget(), "--", "/usr/local/bin/workbench-claude-start")
-	cmd.Stdin = bytes.NewReader(key)
-	cmd.Stdout, cmd.Stderr = s.jobs.execution(), s.jobs.execution()
-	if err = cmd.Run(); err != nil {
-		return executionFailure("打开 Claude Desktop", errors.Join(ctx.Err(), err), s.jobs.snapshot().Log)
+	if err = s.runDesktopOperation("/usr/local/bin/workbench-claude-start", bytes.NewReader(key), 0); err != nil {
+		// Cancellation owns the pending session as well as the SSH request.
+		cleanup, finish := context.WithTimeout(context.Background(), 30*time.Second)
+		defer finish()
+		_, stopErr := s.guest(cleanup, "sudo systemctl stop workbench-claude-desktop.service")
+		return errors.Join(err, stopErr)
 	}
 	return nil
 }
 
 func (s *Server) runDesktopScript(script string, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(s.operationContext(), timeout)
+	script, err := s.linuxTemplate(script)
+	if err != nil {
+		return err
+	}
+	return s.runDesktopOperation("/bin/bash -se", strings.NewReader(script), timeout)
+}
+
+func (s *Server) runDesktopOperation(program string, input io.Reader, timeout time.Duration) error {
+	ctx, cancel := context.WithCancel(s.operationContext())
 	defer cancel()
+	runtimeLimit := "infinity"
+	if timeout > 0 {
+		var finish context.CancelFunc
+		ctx, finish = context.WithTimeout(ctx, timeout)
+		defer finish()
+		runtimeLimit = strconv.FormatInt(int64(timeout.Seconds()), 10)
+	}
 	// A guest cgroup owns apt and all descendants, including across SSH loss.
 	// The application's persistent service is separate from this operation.
-	command := fmt.Sprintf("sudo systemd-run --quiet --pipe --wait --collect --unit=workbench-desktop-operation --property=User=developer --property=RuntimeMaxSec=%d --property=KillMode=control-group --setenv=HOME=/home/developer --working-directory=/home/developer /bin/bash -se", int(timeout.Seconds()))
+	command := fmt.Sprintf("sudo systemd-run --quiet --pipe --wait --collect --unit=workbench-desktop-operation --property=User=developer --property=RuntimeMaxSec=%s --property=KillMode=control-group --setenv=HOME=/home/developer --working-directory=/home/developer %s", runtimeLimit, program)
+	command, err := s.linuxTemplate(command)
+	if err != nil {
+		return err
+	}
 	cmd := s.sshCommand(ctx, "-T", s.sshTarget(), "--", command)
-	cmd.Stdin = strings.NewReader(script)
+	cmd.Stdin = input
 	cmd.Stdout, cmd.Stderr = s.jobs.execution(), s.jobs.execution()
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {
@@ -170,7 +189,7 @@ func (s *Server) runDesktopScript(script string, timeout time.Duration) error {
 			_, _ = s.guest(cleanup, "sudo systemctl stop workbench-desktop-operation.service")
 			return ctx.Err()
 		}
-		return executionFailure("准备或关闭 Claude Desktop", err, s.jobs.snapshot().Log)
+		return executionFailure("执行 Claude Desktop 操作", err, s.jobs.snapshot().Log)
 	}
 	return nil
 }
@@ -180,7 +199,7 @@ func (s *Server) claudeDesktopCredentials(w http.ResponseWriter, r *http.Request
 	defer cancel()
 	b, err := s.guestQuick(ctx, `set -eu
 systemctl is-active --quiet workbench-claude-desktop.service
-password=$(cat /home/developer/.config/workbench/desktop-password)
+password=$(cat "$HOME/.config/workbench/desktop-password")
 printf '%s\n' "$password"
 if test -f /run/workbench-desktop/base-display-scale; then cat /run/workbench-desktop/base-display-scale
 elif test -f /run/workbench-desktop/display-scale; then cat /run/workbench-desktop/display-scale
@@ -283,12 +302,12 @@ func (s *Server) claudeDesktopVNC(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "环境尚未启动", 409)
 		return
 	}
-	release, err := s.acquireDesktopView()
+	view, err := s.desktopViews.connect(s.changeDesktopVisibility)
 	if err != nil {
 		http.Error(w, "无法恢复 Claude Desktop 画面，请重新连接", http.StatusBadGateway)
 		return
 	}
-	defer release()
+	defer view.close()
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	// No extra localhost port or public VNC listener on the host. SSH is bound
@@ -312,5 +331,5 @@ func (s *Server) claudeDesktopVNC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { cancel(); writer.Close(); reader.Close(); _ = cmd.Wait() }()
-	s.streamVNC(w, r, reader, writer, func() { cancel(); _ = writer.Close(); _ = reader.Close() })
+	s.streamVNC(w, r, reader, writer, func() { cancel(); _ = writer.Close(); _ = reader.Close() }, view.setVisible)
 }

@@ -9,7 +9,7 @@ import (
 
 // Status and handoff include the bounded Linux container state probe.
 func TestControllerVMRequestsOutlastStateProbe(t *testing.T) {
-	if controllerVMRequestTimeout <= 3*time.Second || controllerReleaseRequestTimeout <= 6*time.Second || localBootstrapTimeout <= controllerVMRequestTimeout {
+	if controllerVMRequestTimeout <= 3*time.Second || controllerReleaseRequestTimeout <= 6*time.Second || localReleaseTimeout <= controllerVMRequestTimeout {
 		t.Fatal("controller budgets do not cover the container state probe")
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

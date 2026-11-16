@@ -10,13 +10,21 @@ const expected = Object.fromEntries(Object.entries({ Windows: 'windows' })
   .filter(([, key]) => release.platforms[key]).map(([name, key]) => [name, release.platforms[key]]));
 assert.ok(Object.keys(release.platforms).every(platform => platform === 'windows'), 'Retired release metadata remains');
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, executablePath: process.env.EDEN_TEST_BROWSER_PATH });
 try {
-  for (const { route, width, height } of [{ route: '', width: 1280, height: 900 }, { route: '', width: 390, height: 844 }, { route: 'fr/', width: 1280, height: 900 }, { route: 'ar/', width: 390, height: 844 }]) {
+  for (const route of ['', 'zh-TW/', 'en/', 'ja/', 'ko/', 'de/', 'fr/']) {
+  for (const { width, height } of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
     const page = await browser.newPage({ viewport: { width, height } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(new URL(route, origin).href);
+    const picker = page.locator('#site-language');
+    await picker.locator('summary').click();
+    assert.deepEqual(await picker.locator('a').evaluateAll(links => links.map(link => link.getAttribute('href'))), ['/', '/zh-TW/', '/en/', '/ja/', '/ko/', '/de/', '/fr/']);
+    await picker.locator('a[aria-current="page"]').click();
+    await page.locator('h1').waitFor();
+    assert.equal(await page.locator('body').evaluate(body => body.scrollWidth <= innerWidth + 1), true, `${route} ${width}: homepage overflows`);
+    await page.screenshot({ path: `${output}/${route.replaceAll('/', '') || 'zh'}-${width}-home.png` });
     await page.locator('[data-download-open]').first().click();
     const dialog = page.getByRole('dialog');
     await dialog.waitFor({ state: 'visible' });
@@ -50,6 +58,7 @@ try {
     assert.deepEqual(errors, []);
     await page.close();
   }
+  }
   const context = await browser.newContext({ javaScriptEnabled: false });
   const page = await context.newPage(); await page.goto(origin);
   for (const entry of Object.values(expected)) {
@@ -58,5 +67,5 @@ try {
     assert.ok((await link.textContent()).includes(`v${entry.version}`), 'No-JavaScript download must show the package version');
   }
   await context.close();
-  console.log('PASS: per-platform public installer links and versions, unsigned Windows label, desktop/mobile/RTL layout, modal open/close, deep link and no-JavaScript downloads');
+  console.log('PASS: seven language routes and menus, installer links and versions, unsigned Windows label, desktop/mobile layout, modal open/close, deep link and no-JavaScript downloads');
 } finally { await browser.close(); }

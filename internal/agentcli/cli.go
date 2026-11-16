@@ -360,7 +360,7 @@ func agentDoctor(ctx context.Context, path string) map[string]any {
 	} else {
 		add("config_valid", "ok", "")
 	}
-	for _, name := range []string{"account.json", "proxy/sources.json"} {
+	for _, name := range []string{"account.json", "proxy/nodes.json"} {
 		if err := host.CheckPrivateFile(filepath.Join(filepath.Dir(path), filepath.FromSlash(name))); err != nil && !os.IsNotExist(err) {
 			add("private_file_permissions", "blocked", "repair_profile_permissions")
 		}
@@ -390,12 +390,12 @@ func agentDoctor(ctx context.Context, path string) map[string]any {
 				var view struct {
 					Active  bool  `json:"active"`
 					Running bool  `json:"running"`
-					Sources []any `json:"sources"`
+					Nodes   []any `json:"nodes"`
 				}
 				_ = json.Unmarshal(proxy, &view)
 				switch {
-				case len(view.Sources) == 0:
-					add("proxy_missing", "blocked", "proxy.import")
+				case len(view.Nodes) == 0:
+					add("proxy_missing", "blocked", "proxy.add")
 				case !view.Active:
 					add("proxy_unapplied", "blocked", "proxy.select")
 				case !view.Running:

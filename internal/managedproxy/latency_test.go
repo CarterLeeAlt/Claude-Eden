@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -69,10 +70,22 @@ func TestCoreLatencyExcludesProxyHandshake(t *testing.T) {
 	}
 	address := strings.TrimPrefix(upstream.URL, "http://")
 	_, port, _ := net.SplitHostPort(address)
-	if err := s.Import("local", "", []byte("proxies: [{name: local, type: http, server: 127.0.0.1, port: "+port+"}]"), "local", 0, ""); err != nil {
+	upstreamPort, err := strconv.Atoi(port)
+	if err != nil {
 		t.Fatal(err)
 	}
-	s.Selected, s.Port = s.Sources[0].Nodes[0].ID, 0
+	if err := s.SetNode(Node{ID: Token()[:24], Name: "local", Type: "http", Server: "127.0.0.1", Port: upstreamPort}); err != nil {
+		t.Fatal(err)
+	}
+	s.Selected = s.Nodes[0].ID
+	reserved, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Port = reserved.Addr().(*net.TCPAddr).Port
+	if err := reserved.Close(); err != nil {
+		t.Fatal(err)
+	}
 	data, err := s.Runtime(profile)
 	if err != nil {
 		t.Fatal(err)

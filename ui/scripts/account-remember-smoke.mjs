@@ -44,7 +44,7 @@ for (const platform of ["windows"]) {
   const login = async (password = "fixture-password") => {
     await page.getByLabel("账户密码", { exact: true }).fill(password);
     const saved = password === "fixture-password" ? trustReply() : null;
-    await page.getByRole("button", { name: "解锁 Eden", exact: true }).click();
+    await page.getByRole("button", { name: "解锁 Claude Eden", exact: true }).click();
     if (saved) await (await saved).finished();
   };
   const settings = async () => {
@@ -69,8 +69,8 @@ for (const platform of ["windows"]) {
     assert.equal(actions.filter(a => a === "resume").length, 1);
 
     await menu().click();
-    await page.getByRole("menuitem", { name: /锁定 Eden/ }).click();
-    await page.getByRole("region", { name: "解锁 Eden", exact: true }).waitFor();
+    await page.getByRole("menuitem", { name: /锁定 Claude Eden/ }).click();
+    await page.getByRole("region", { name: "解锁 Claude Eden", exact: true }).waitFor();
     await page.reload();
     await remember().waitFor();
     assert.equal(await remember().isChecked(), true);
@@ -105,7 +105,7 @@ for (const platform of ["windows"]) {
 
     Object.assign(state.account, { exists: false, unlocked: false, username: "", devices: {}, require_authentication: false });
     await page.reload();
-    await page.getByRole("heading", { name: "注册 Eden 账户", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "注册 Claude Eden 账户", exact: true }).waitFor();
     await remember().waitFor();
     assert.equal(await remember().isChecked(), true);
     await page.getByLabel("用户名", { exact: true }).fill("测试工作区");

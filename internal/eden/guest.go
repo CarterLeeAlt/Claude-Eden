@@ -72,6 +72,9 @@ var browserVault string
 //go:embed browser-agent.mjs
 var browserAgent string
 
+//go:embed browser-editor.mjs
+var browserEditor string
+
 //go:embed browser-visibility.mjs
 var browserVisibility string
 
@@ -130,6 +133,13 @@ func browserClipboardScript() string {
 //go:embed browser-audit.mjs
 var browserAudit string
 
+//go:embed device-observation.mjs
+var deviceObservation string
+
+func deviceObservationScript() string {
+	return "sudo tee /usr/local/lib/device-observation.mjs >/dev/null <<'WORKBENCH_DEVICE_OBSERVATION'\n" + deviceObservation + "\nWORKBENCH_DEVICE_OBSERVATION\n"
+}
+
 //go:embed browser-downloads.mjs
 var browserDownloads string
 
@@ -179,12 +189,13 @@ func imageInputScript() string {
 }
 
 func browserServices() string {
-	return "sudo tee /usr/local/lib/workbench-wait-services.py >/dev/null <<'WORKBENCH_WAIT_SERVICES'\n" + guestWaitServices + "\nWORKBENCH_WAIT_SERVICES\n" + toolInstallFunctions() + "\n" + tailnetClientScript() +
+	return deviceObservationScript() + "sudo tee /usr/local/lib/workbench-wait-services.py >/dev/null <<'WORKBENCH_WAIT_SERVICES'\n" + guestWaitServices + "\nWORKBENCH_WAIT_SERVICES\n" + toolInstallFunctions() + "\n" + tailnetClientScript() +
 		"sudo tee /usr/local/lib/browser-visibility.mjs >/dev/null <<'WORKBENCH_BROWSER_VISIBILITY'\n" + browserVisibility + "\nWORKBENCH_BROWSER_VISIBILITY\nsudo tee /usr/local/lib/browser-wheel.mjs >/dev/null <<'WORKBENCH_BROWSER_WHEEL'\n" + browserWheel + "\nWORKBENCH_BROWSER_WHEEL\nsudo tee /usr/local/lib/display-density.mjs >/dev/null <<'WORKBENCH_DISPLAY_DENSITY'\n" + displayDensity + "\nWORKBENCH_DISPLAY_DENSITY\n" + displayGovernorScript() +
 		"\nsudo tee /usr/local/lib/browser-extensions.mjs >/dev/null <<'WORKBENCH_BROWSER_EXTENSIONS'\n" + browserExtensions + "\nWORKBENCH_BROWSER_EXTENSIONS\n" + "\nsudo tee /usr/local/lib/browser-extension-archive.py >/dev/null <<'WORKBENCH_EXTENSION_ARCHIVE'\n" + browserExtensionArchive + "\nWORKBENCH_EXTENSION_ARCHIVE\n" +
 		"\nsudo tee /usr/local/lib/browser-private.mjs >/dev/null <<'WORKBENCH_BROWSER_PRIVATE'\n" + browserPrivate + "\nWORKBENCH_BROWSER_PRIVATE\n" + "\nsudo tee /usr/local/lib/browser-cookies.mjs >/dev/null <<'WORKBENCH_BROWSER_COOKIES'\n" + browserCookies + "\nWORKBENCH_BROWSER_COOKIES\n" + "\nsudo tee /usr/local/lib/browser-vault.mjs >/dev/null <<'WORKBENCH_BROWSER_VAULT'\n" + browserVault + "\nWORKBENCH_BROWSER_VAULT\n" +
 		guestMemory + "\n" + guestDiagnostics() + guestAudio + "\n" + guestOpenScript() + splitExtensionScript() + browserClipboardScript() + imageInputScript() +
 		"\nsudo tee /usr/local/lib/browser-uploads.mjs >/dev/null <<'WORKBENCH_BROWSER_UPLOADS'\n" + browserUploads + "\nWORKBENCH_BROWSER_UPLOADS\n" + guestServices + "\nsudo tee /usr/local/lib/browser-downloads.mjs >/dev/null <<'WORKBENCH_BROWSER_DOWNLOADS'\n" + browserDownloads + "\nWORKBENCH_BROWSER_DOWNLOADS\n" +
+		"\nsudo tee /usr/local/lib/browser-editor.mjs >/dev/null <<'WORKBENCH_BROWSER_EDITOR'\n" + browserEditor + "\nWORKBENCH_BROWSER_EDITOR\n" +
 		"\nsudo tee /usr/local/lib/browser-audit.mjs >/dev/null <<'WORKBENCH_BROWSER_AUDIT'\n" + browserAudit + "\nWORKBENCH_BROWSER_AUDIT\n" + "\nsudo tee /usr/local/lib/workbench-browser-agent.mjs >/dev/null <<'WORKBENCH_BROWSER_AGENT'\n" + browserAgent + "\nWORKBENCH_BROWSER_AGENT\n" +
 		"sudo tee /usr/local/bin/workbench-save-download >/dev/null <<'WORKBENCH_DOWNLOAD_HELPER'\n" + saveDownload + "\nWORKBENCH_DOWNLOAD_HELPER\nsudo chmod 0755 /usr/local/bin/workbench-save-download\nprintf 'browser ALL=(root) NOPASSWD: /usr/local/bin/workbench-save-download *\\n' | sudo tee /etc/sudoers.d/workbench-download >/dev/null\nsudo chmod 0440 /etc/sudoers.d/workbench-download\n" +
 		"\nsudo python3 - \"$workbench_novnc_root\" <<'WORKBENCH_NOVNC_PATCH'\n" + novncPatch + "\nWORKBENCH_NOVNC_PATCH\n" + "\nsudo tee \"$workbench_novnc_root/workbench-clipboard.js\" >/dev/null <<'WORKBENCH_CLIPBOARD_JS'\n" + clipboardJS + "\nWORKBENCH_CLIPBOARD_JS\n" + `sudo python3 - "$workbench_novnc_root" <<'PYCODE'
@@ -305,11 +316,20 @@ func (c Config) EnvironmentScript() string {
 
 func (c Config) StartScript() string {
 	body := c.EnvironmentScript() + "\n" + componentStartScript()
-	return markGuestStart(body)
+	return c.GuestProfile.Linux(markGuestStart(body))
 }
 
+func (c Config) SetupScript() string { return c.GuestProfile.Linux(GuestSetup) }
+
 func componentStartScript() string {
-	return APTBootstrapScript + "\n" + claudeAccountScript() + browserServices() + "\nsudo tee /etc/workbench/editor-theme.json >/dev/null <<'WORKBENCH_EDITOR_THEME'\n" + editorTheme + "\nWORKBENCH_EDITOR_THEME\nif systemctl is-active --quiet workbench-editor.service; then sudo systemctl stop workbench-editor.service; fi\n" + guestStart
+	// Drain Chromium while its editor and logging dependencies are still alive,
+	// before replacing scripts or restarting the editor and audio services.
+	return `for service in workbench-browser workbench-editor; do
+  if [ -f "/etc/systemd/system/$service.service" ]; then
+    sudo systemctl stop "$service.service"
+  fi
+done
+` + APTBootstrapScript + "\n" + claudeAccountScript() + browserServices() + "\nsudo tee /etc/workbench/editor-theme.json >/dev/null <<'WORKBENCH_EDITOR_THEME'\n" + editorTheme + "\nWORKBENCH_EDITOR_THEME\n" + guestStart
 }
 
 func markGuestStart(body string) string {

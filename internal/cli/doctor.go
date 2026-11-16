@@ -103,7 +103,7 @@ func (e *app) doctorCmd(ctx context.Context, args []string) int {
 	}
 	protects := !writableGitOptOut(false)
 	if edenWritableGit() {
-		d.line("info", "Eden projects allow Git writes within the shared directories")
+		d.line("info", "Claude Eden projects allow Git writes within the shared directories")
 	} else if protects {
 		d.line("ok", "every .git is read-only for the VMs (sshfs.readonlyNames)")
 	} else {
@@ -297,7 +297,7 @@ func (d *doctor) directory(ctx context.Context, dir string, protects bool, getVM
 		current := unprotected(inst, names) == ""
 		switch {
 		case edenWritableGit() && !protected:
-			d.line("info", "its shares allow Git writes in Eden projects")
+			d.line("info", "its shares allow Git writes in Claude Eden projects")
 		case protected && !current:
 			d.line("warn", "its shares keep .git read-only, but not all of "+strings.Join(names, ", "),
 				"The next start (after '"+Command+" stop' if it runs) fixes that.")

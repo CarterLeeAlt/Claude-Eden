@@ -1,17 +1,22 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import path from 'node:path';
+import { assertWorkspacePath } from '../../scripts/run-in-workspace.mjs';
 import { createWorkbench, chooseInline } from './workbench-fixture.mjs';
 
 const engine = process.env.EDEN_TEST_BROWSER || 'chromium';
-const output = new URL(`../../docs/test-reports/2026-11-07-browser-close/${engine}/`, import.meta.url);
+const output = process.env.EDEN_TEST_CAPTURE
+  ? pathToFileURL(path.resolve(process.env.EDEN_TEST_CAPTURE) + path.sep)
+  : new URL(`../../.tmp/ui-browser-close/${engine}/`, import.meta.url);
+assertWorkspacePath(fileURLToPath(new URL('../../', import.meta.url)), fileURLToPath(output));
 await mkdir(output, { recursive: true });
 const { browser, page, state, errors } = await createWorkbench();
 page.setDefaultTimeout(10000);
 const checks = [];
 const close = page.getByRole('button', { name: '关闭浏览器', exact: true });
 const open = page.getByRole('button', { name: '打开浏览器', exact: true });
-const home = page.getByRole('heading', { name: 'Eden 环境已就绪', exact: true });
+const home = page.getByRole('heading', { name: 'Claude Eden 环境已就绪', exact: true });
 const shot = name => page.screenshot({ path: fileURLToPath(new URL(name + '.png', output)) });
 try {
   await page.addInitScript(() => {
@@ -50,11 +55,11 @@ try {
   await shot('horizontal-close');
   await close.focus(); await page.keyboard.press('Enter');
   await home.waitFor();
-  assert.equal(await page.locator('.browser-lane').count(), 0);
+  assert.equal(await page.locator('.browser-lane:visible').count(), 0);
   assert.equal(state.tabs.length, 2);
   await send({ focus: true });
   await home.waitFor();
-  assert.equal(await page.locator('.browser-lane').count(), 0);
+  assert.equal(await page.locator('.browser-lane:visible').count(), 0);
   checks.push('top-right X works by keyboard and with tab search expanded; returns to home; tabs retained; late focus does not reopen browser');
 
   await page.getByRole('tab', { name: '工作终端一', exact: true }).click();
@@ -150,7 +155,7 @@ try {
 
   await page.getByRole('tab', { name: '工作终端一', exact: true }).click();
   await singlePage();
-  await page.keyboard.press('Meta+w');
+  await page.keyboard.press('Control+w');
   await page.locator('.terminal-lane:not([hidden])').waitFor();
   assert.equal(await page.getByRole('tab', { name: '工作终端一', exact: true }).getAttribute('aria-selected'), 'true');
   assert.equal(state.tabs.length, 0);
@@ -176,7 +181,7 @@ try {
   checks.push('last-tab keyboard close restores the terminal; a destruction event before the close response restores Claude Desktop');
 
   await singlePage();
-  await page.route('**/api/browser/close', route => route.fulfill({ status: 400, body: '标签尚未关闭，请重试' }));
+  await page.route('**/api/browser/close', route => route.fulfill({ status: 400, contentType: 'text/plain; charset=utf-8', body: '标签尚未关闭，请重试' }));
   await page.getByRole('button', { name: '关闭 最后一页', exact: true }).click();
   await page.getByText('标签尚未关闭，请重试', { exact: true }).waitFor();
   assert.equal(await close.count(), 1, 'failed close preserves the browser');
@@ -206,6 +211,7 @@ try {
   await writeFile(new URL('result.json', output), JSON.stringify({ passed: true, engine, checks }, null, 2) + '\n');
   console.log(JSON.stringify({ passed: true, engine, checks }, null, 2));
 } catch (error) {
+  console.error(JSON.stringify({ errors, visible: await page.locator('body').innerText(), requests: state.requests.slice(-12) }));
   await shot('failure');
   throw error;
 } finally { await browser.close(); }

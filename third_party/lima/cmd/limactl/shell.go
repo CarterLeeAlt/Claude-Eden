@@ -187,7 +187,7 @@ func shellAction(cmd *cobra.Command, args []string) error {
 			AdditionalArgs: []string{},
 		}
 
-		if err := ssh.ExitMaster(inst.Hostname, inst.SSHLocalPort, sshConfig); err != nil {
+		if err := ssh.ExitMaster(cmd.Context(), inst.Hostname, inst.SSHLocalPort, sshConfig); err != nil {
 			// `ssh -O exit` fails when the control socket file exists but the
 			// master process is already dead (unclean hostagent exit: kill -9,
 			// OOM, host crash). That stale state is exactly what --reconnect is

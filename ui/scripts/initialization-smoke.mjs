@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, defaultGuestProfile } from "./workbench-fixture.mjs";
 
 const evidence = process.env.EDEN_INITIALIZATION_EVIDENCE;
 if (evidence) await fs.mkdir(evidence, { recursive: true });
@@ -29,7 +29,8 @@ for (const system of ["debian-13"]) {
       await page.route("**/api/start", route => {
         starts++;
         const submitted = route.request().postDataJSON();
-        assert.deepEqual(submitted, { guest_system: system });
+        assert.deepEqual(submitted, { guest_system: system, ...(starts === 1 ? { guest_profile: { ...defaultGuestProfile, hostname: "Test-PC" } } : {}) });
+        if (starts === 1) state.guestProfile = { version: 1, ...submitted.guest_profile, extension_suffix: "" };
         state.status.job = { id: "install-" + starts, running: true, kind: "guest-install", setup_progress: { system, phase: "image", operation: "download", label: "正在下载系统镜像", received: 25 * 1048576, total: 100 * 1048576, bytes_per_second: 1048576 }, log: "镜像下载已开始" };
         return route.fulfill({ json: state.status.job });
       });
@@ -49,7 +50,7 @@ for (const system of ["debian-13"]) {
     const storage = page.getByRole("region", { name: "环境存储目录" });
     await storage.getByLabel("存储目录", { exact: true }).waitFor();
     assert.equal(await storage.getByLabel("存储目录", { exact: true }).inputValue(), initialDirectory);
-    await storage.getByText("这是 Eden 的环境数据目录。更新、重装或卸载应用会保留这里的数据；请勿手动删除。").waitFor();
+    await storage.getByText("这是 Claude Eden 的环境数据目录。更新、重装或卸载应用会保留这里的数据；请勿手动删除。").waitFor();
     assert.equal(await storage.getByText("当前环境目录", { exact: true }).count(), 0);
     assert.equal(await storage.getByText("新存储位置", { exact: true }).count(), 0);
     await page.locator(".initialization-content").evaluate(async element => {
@@ -108,9 +109,9 @@ for (const system of ["debian-13"]) {
     await page.reload();
     await page.getByRole("complementary", { name: "项目与终端" }).waitFor();
     await page.evaluate(() => window.edenNativeAction("quit"));
-    const quitDialog = page.getByRole("dialog", { name: "退出 Eden", exact: true });
+    const quitDialog = page.getByRole("dialog", { name: "退出 Claude Eden", exact: true });
     await quitDialog.getByRole("button", { name: "取消", exact: true }).click();
-    assert.equal(await page.getByRole("heading", { name: "为 Eden 准备独立环境" }).count(), 0);
+    assert.equal(await page.getByRole("heading", { name: "为 Claude Eden 准备独立环境" }).count(), 0);
     assert.deepEqual(errors, []);
     console.log(`PASS ${platform}/${system}: fixed guest, back navigation, progress, refresh, retry, completion gate and reopen`);
   } finally { await browser.close(); }
@@ -224,13 +225,13 @@ for (const system of ["debian-13"]) {
 }
 
 {
-  let imported = false, applied = false;
+  let saved = false, applied = false;
   const f = await createWorkbench({ initialization: { required: true, tracked: true }, beforeNavigate: async (page, state) => {
     state.status.local_vm_storage = true;
     await page.route("**/api/environment/storage", route => route.fulfill({ json: { directory: "C:/preview/eden-state", has_environment: false } }));
-    await page.route("**/api/proxy", route => route.fulfill({ json: { active: applied, selected: applied ? "node" : "", sources: imported ? [{ id: "source", name: "自有节点", nodes: [{ id: "node", name: "本机测试代理", type: "socks5" }] }] : [], port: 17896, core_available: true } }));
-    for (const action of ["import", "route"]) await page.route(`**/api/proxy/${action}`, route => {
-      if (action === "import") imported = true;
+    await page.route("**/api/proxy", route => route.fulfill({ json: { active: applied, selected: applied ? "node" : "", nodes: saved ? [{ id: "node", name: "本机测试代理", type: "socks5", server: "127.0.0.1", port: 1080 }] : [], port: 17896, core_available: true } }));
+    for (const action of ["add", "select"]) await page.route(`**/api/proxy/${action}`, route => {
+      if (action === "add") saved = true;
       else applied = true;
       state.status.job = { id: action, kind: "proxy", running: false, message: "已完成" };
       return route.fulfill({ json: state.status.job });
@@ -241,18 +242,16 @@ for (const system of ["debian-13"]) {
     await page.getByRole("button", { name: "下一步：配置代理" }).click();
     const start = page.getByRole("button", { name: "开始安装", exact: true });
     assert.ok(await start.isDisabled());
-    await page.getByRole("button", { name: "添加来源", exact: true }).click();
-    await page.getByRole("button", { name: "手动节点", exact: true }).click();
-    await page.getByLabel("来源名称", { exact: true }).fill("自有节点");
+    await page.getByRole("button", { name: "添加节点", exact: true }).click();
     await page.getByLabel("节点名称", { exact: true }).fill("本机测试代理");
     await page.getByLabel("服务器", { exact: true }).fill("127.0.0.1");
-    await page.getByRole("button", { name: "导入并验证", exact: true }).click();
+    await page.getByRole("button", { name: "保存并验证", exact: true }).click();
     await page.getByRole("tab", { name: "节点", exact: true }).click();
     await page.getByRole("button", { name: "选择节点 本机测试代理", exact: true }).click();
     await page.getByRole("button", { name: "应用代理", exact: true }).click();
     await page.getByText("已完成", { exact: true }).waitFor();
     await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent === '开始安装' && !button.disabled));
     assert.deepEqual(f.errors, []);
-    console.log("PASS first proxy: manual import, node selection and explicit apply unlock installation inside initialization");
+    console.log("PASS first proxy: manual node creation, selection and explicit apply unlock installation inside initialization");
   } finally { await f.browser.close(); }
 }

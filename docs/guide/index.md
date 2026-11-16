@@ -25,7 +25,7 @@ Claude Eden 在 Windows 10 桌面管理本地 Debian 13 客机，将终端、浏
 | 把安装、配置与排障交给自己的 Agent | [让 Agent 配置 Claude Eden](agent.md) |
 | 安装应用、换盘、准备本机虚拟化 | [安装与首次启动](installation.md) |
 | 准备 Debian 13 Linux 开发环境 | [Debian 13 客机](guest-systems.md) |
-| 导入订阅、连接住宅代理、设置出口规则 | [网络与代理](network.md) |
+| 添加代理节点、切换单个出口、设置出口规则 | [网络与代理](network.md) |
 | 打开项目、启动 Claude 终端、传文件与截图 | [项目、终端与文件](workbench.md) |
 | 添加多个订阅、查看额度、分配或接续会话 | [多账号与额度](accounts.md) |
 | 收藏网页、无痕浏览、清理 Cookie、安装扩展 | [浏览器与网站数据](browser.md) |

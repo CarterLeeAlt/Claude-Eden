@@ -13,4 +13,4 @@ Linux 客机普通账户为 `developer`，客机辅助工具采用 `Workbench` /
 - 环境不能联网：在工作台确认有效代理和网络检查；宿主浏览器联网不代表客机外网已放行。
 - 本机 Linux 客机不能启动：按 [Windows 指南](windows.md)核对虚拟化及 WHPX 条件。
 
-反馈时提供 Claude Eden 版本、Windows 版本、CPU 架构、失败步骤和错误原文，避免附带代理密码、订阅链接、账户文件和带会话信息的地址。
+反馈时提供 Claude Eden 版本、Windows 版本、CPU 架构、失败步骤和错误原文，避免附带代理密码、SSH 私钥、账户文件和带会话信息的地址。

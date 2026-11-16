@@ -19,9 +19,9 @@ for (const platform of ["windows"]) {
         await page.getByRole("button", { name: "下一步：配置代理" }).click();
         await page.getByRole("button", { name: "开始安装", exact: true }).click();
       } else {
-        await page.getByRole("button", { name: "启动 Eden 环境", exact: true }).click();
+        await page.getByRole("button", { name: "启动 Claude Eden 环境", exact: true }).click();
       }
-      await page.getByRole(install ? "button" : "heading", { name: install ? "进入工作台" : "Eden 环境已就绪", exact: true }).waitFor();
+      await page.getByRole(install ? "button" : "heading", { name: install ? "进入工作台" : "Claude Eden 环境已就绪", exact: true }).waitFor();
       assert.equal(state.requests.filter(request => request.path === "/start").length, 1);
       assert.equal(state.requests.some(request => request.path === "/host/git"), false);
       assert.equal(await page.getByText(/启用.*Git.*保护|保护本机 Git/).count(), 0);
