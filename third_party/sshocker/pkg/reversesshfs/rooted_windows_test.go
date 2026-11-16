@@ -1,16 +1,124 @@
 package reversesshfs
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf16"
 	"unsafe"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/sys/windows"
 )
+
+func TestRootedWindowsRenameAndLinkNameLengths(t *testing.T) {
+	operations := []struct {
+		name          string
+		apply         func(*sftp.Client, string, string) error
+		retainsSource bool
+	}{
+		{"rename", (*sftp.Client).Rename, false},
+		{"replace", (*sftp.Client).PosixRename, false},
+		{"link", (*sftp.Client).Link, true},
+	}
+	for _, operation := range operations {
+		for _, name := range []string{"a", "ab", "abc", "字", "🙂", strings.Repeat("x", 255)} {
+			t.Run(fmt.Sprintf("%s/%d-units-%s", operation.name, len(utf16.Encode([]rune(name))), name[:min(len(name), 8)]), func(t *testing.T) {
+				c, root := setupRooted(t, false)
+				source, destination := filepath.Join(root, "src", "main.go"), filepath.Join(root, "src", name)
+				if err := operation.apply(c, source, destination); err != nil {
+					t.Fatalf("%s to %q (%d UTF-16 code units): %v", operation.name, name, len(utf16.Encode([]rune(name))), err)
+				}
+				if data, err := os.ReadFile(destination); err != nil || string(data) != "orig" {
+					t.Fatalf("destination changed: %q %v", data, err)
+				}
+				if operation.retainsSource {
+					src, err := os.Stat(source)
+					if err != nil {
+						t.Fatal(err)
+					}
+					dst, err := os.Stat(destination)
+					if err != nil || !os.SameFile(src, dst) {
+						t.Fatalf("link did not preserve file identity: %v", err)
+					}
+				} else if _, err := os.Stat(source); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("rename retained source: %v", err)
+				}
+				assertUnchanged(t, root)
+			})
+		}
+	}
+}
+
+func TestWindowsSetNameUsesCompleteInformationBuffer(t *testing.T) {
+	for _, class := range []uint32{windows.FileRenameInformation, fileRenameInformationEx, fileLinkInformation} {
+		t.Run(fmt.Sprint(class), func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, "source"), []byte("kept"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			sys, err := openRootedSys(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer sys.close()
+			source, err := ntCreate(sys.rootHandle, "source", windows.DELETE|windows.FILE_WRITE_ATTRIBUTES|windows.FILE_READ_ATTRIBUTES, 0, windows.FILE_OPEN, windows.FILE_NON_DIRECTORY_FILE, windows.OBJ_DONT_REPARSE)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = setName(source, class, 0, sys.rootHandle, "a")
+			closeErr := windows.CloseHandle(source)
+			if err != nil {
+				t.Fatalf("class=%d, struct=%d bytes, name-end=%d bytes: %T %v", class, unsafe.Sizeof(fileNameInformation{}), unsafe.Offsetof(fileNameInformation{}.FileName)+2, err, err)
+			}
+			if closeErr != nil {
+				t.Fatal(closeErr)
+			}
+			if data, err := os.ReadFile(filepath.Join(root, "a")); err != nil || string(data) != "kept" {
+				t.Fatalf("destination: %q %v", data, err)
+			}
+		})
+	}
+}
+
+func TestRootedWindowsReplaceShortOpenTarget(t *testing.T) {
+	c, root := setupRooted(t, false)
+	source, target := filepath.Join(root, "src", "main.go"), filepath.Join(root, "src", "字")
+	old, err := c.Create(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer old.Close()
+	if _, err := old.Write([]byte("prior")); err != nil {
+		t.Fatal(err)
+	}
+	for _, operation := range []func(string, string) error{c.Rename, c.Link} {
+		if err := operation(source, target); err == nil {
+			t.Fatal("non-replacing operation overwrote an existing target")
+		}
+		if data, err := os.ReadFile(target); err != nil || string(data) != "prior" {
+			t.Fatalf("existing target changed: %q %v", data, err)
+		}
+	}
+	if err := c.PosixRename(source, target); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(target); err != nil || string(data) != "orig" {
+		t.Fatalf("atomic replacement: %q %v", data, err)
+	}
+	previous := make([]byte, 5)
+	if n, err := old.ReadAt(previous, 0); err != nil || n != 5 || string(previous) != "prior" {
+		t.Fatalf("open target lost its original file: %q %v", previous, err)
+	}
+	if _, err := os.Stat(source); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("renamed source still exists: %v", err)
+	}
+	assertUnchanged(t, root)
+}
 
 func ctime(t *testing.T, p string) int64 {
 	t.Helper()

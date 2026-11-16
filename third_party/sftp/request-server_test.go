@@ -1045,6 +1045,33 @@ func TestCleanPath(t *testing.T) {
 	assert.Equal(t, "/C:/a", cleanPath("C:"+bslash+"a"))
 }
 
+func TestRequestServerNormalizesPOSIXPathsOnEveryHost(t *testing.T) {
+	serverConn, clientConn := net.Pipe()
+	server := NewRequestServer(serverConn, InMemHandler(), WithStartDirectory("/workspace"))
+	done := make(chan struct{})
+	go func() { defer close(done); _ = server.Serve() }()
+	t.Cleanup(func() { _ = server.Close(); _ = clientConn.Close(); <-done })
+	client, err := NewClientPipe(clientConn, clientConn)
+	require.NoError(t, err)
+	defer client.Close()
+	for _, tc := range []struct{ input, want string }{
+		{"//", "/"},
+		{"///", "/"},
+		{"//host/share/../../file", "/file"},
+		{"C:/dir/../../file", "/workspace/file"},
+		{"nested//file", "/workspace/nested/file"},
+		{"/workspace/./dir/../file", "/workspace/file"},
+		{"../../file", "/file"},
+		{string(os.PathSeparator) + string(os.PathSeparator), "/"},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			resolved, err := client.RealPath(tc.input)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, resolved)
+		})
+	}
+}
+
 // sshfs sends the mode of mkdir(2) as MKDIR attributes.
 func TestRequestMkdirAttributes(t *testing.T) {
 	var b []byte

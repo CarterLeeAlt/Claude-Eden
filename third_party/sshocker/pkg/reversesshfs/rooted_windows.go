@@ -533,7 +533,9 @@ func setName(src windows.Handle, class, flags uint32, dir windows.Handle, name s
 		return err
 	}
 	name16 = name16[:len(name16)-1]
-	size := unsafe.Offsetof(fileNameInformation{}.FileName) + uintptr(len(name16))*2
+	// NtSetInformationFile requires the complete structure, including its
+	// trailing padding when the name occupies only one UTF-16 code unit.
+	size := max(unsafe.Sizeof(fileNameInformation{}), unsafe.Offsetof(fileNameInformation{}.FileName)+uintptr(len(name16))*2)
 	buf := make([]uint64, (size+7)/8)
 	info := (*fileNameInformation)(unsafe.Pointer(&buf[0]))
 	info.Flags = flags

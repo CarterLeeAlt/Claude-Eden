@@ -3,11 +3,15 @@
 package reversesshfs
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
+
+	"github.com/pkg/sftp"
 )
 
 // A removal the server made for the guest is not relayed: the host's event for it must not
@@ -104,7 +108,18 @@ func TestRootedTokenDroppedByCreate(t *testing.T) {
 	} {
 		target := p("t-" + name)
 		h.expectRemove(target)
-		if err := create(target); err != nil {
+		err := create(target)
+		if name == "symlink" && runtime.GOOS == "windows" {
+			var status *sftp.StatusError
+			if !errors.As(err, &status) || status.FxCode() != sftp.ErrSSHFxOpUnsupported {
+				t.Fatalf("Windows symlink contract: %v", err)
+			}
+			if _, err := os.Lstat(target); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("unsupported symlink created an entry: %v", err)
+			}
+			continue
+		}
+		if err != nil {
 			t.Fatal(name, err)
 		}
 		if err := c.Remove(target); err != nil {

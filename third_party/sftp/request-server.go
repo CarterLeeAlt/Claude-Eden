@@ -414,7 +414,9 @@ func cleanPath(p string) string {
 }
 
 func cleanPathWithBase(base, p string) string {
-	p = filepath.ToSlash(filepath.Clean(p))
+	// SFTP paths are POSIX paths, including on a Windows host. Normalize
+	// separators before cleaning so leading slashes cannot become a UNC root.
+	p = path.Clean(filepath.ToSlash(p))
 	if !path.IsAbs(p) {
 		return path.Join(base, p)
 	}
