@@ -45,6 +45,10 @@ func TestMOVE_CrossDevice(t *testing.T) {
 	if err := os.WriteFile(src, []byte("elf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// Make the fixture executable independently of the test runner's umask.
+	if err := os.Chmod(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	// A symlink at the target is replaced, as rename would, not written through.
 	linked := filepath.Join(dstDir, "linked")
 	if err := os.WriteFile(linked, []byte("old"), 0o644); err != nil {

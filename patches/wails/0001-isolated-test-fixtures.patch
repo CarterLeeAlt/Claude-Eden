@@ -41,10 +41,10 @@ index e552dee..eee419f 100644
  		}
  	}
 diff --git a/internal/s/s_unix_test.go b/internal/s/s_unix_test.go
-index 9cc72d6..6ec68b2 100644
+index 9cc72d6..e1ef711 100644
 --- a/internal/s/s_unix_test.go
 +++ b/internal/s/s_unix_test.go
-@@ -10,19 +10,35 @@ import (
+@@ -10,25 +10,45 @@ import (
  )
  
  func TestMOVE_CrossDevice(t *testing.T) {
@@ -57,9 +57,7 @@ index 9cc72d6..6ec68b2 100644
 +	}
 +	if !filepath.IsAbs(volume) || filepath.Clean(volume) == string(filepath.Separator) {
 +		t.Fatal("WAILS_TEST_STORAGE_VOLUME must be an absolute dedicated directory")
- 	}
--	t.Cleanup(func() { _ = os.RemoveAll(srcDir) })
--	dstDir, err := os.MkdirTemp("/var/tmp", "wails-move-")
++	}
 +	for ancestor := filepath.Clean(volume); ; ancestor = filepath.Dir(ancestor) {
 +		info, err := os.Lstat(ancestor)
 +		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
@@ -68,7 +66,9 @@ index 9cc72d6..6ec68b2 100644
 +		if filepath.Dir(ancestor) == ancestor {
 +			break
 +		}
-+	}
+ 	}
+-	t.Cleanup(func() { _ = os.RemoveAll(srcDir) })
+-	dstDir, err := os.MkdirTemp("/var/tmp", "wails-move-")
 +	srcDir := t.TempDir()
 +	dstDir, err := os.MkdirTemp(volume, "wails-move-")
  	if err != nil {
@@ -88,3 +88,13 @@ index 9cc72d6..6ec68b2 100644
  	}
  
  	src := filepath.Join(srcDir, "app.AppImage")
+ 	if err := os.WriteFile(src, []byte("elf"), 0o755); err != nil {
+ 		t.Fatal(err)
+ 	}
++	// Make the fixture executable independently of the test runner's umask.
++	if err := os.Chmod(src, 0o755); err != nil {
++		t.Fatal(err)
++	}
+ 	// A symlink at the target is replaced, as rename would, not written through.
+ 	linked := filepath.Join(dstDir, "linked")
+ 	if err := os.WriteFile(linked, []byte("old"), 0o644); err != nil {
