@@ -29,7 +29,7 @@ type providerCert struct {
 
 // Publisher uses Windows' cache-only Authenticode trust policy and extracts the
 // actual verified signer's SPKI, not a subject name or an arbitrary embedded cert.
-func Publisher(path string) (string, error) {
+func signedPublisher(path string) (string, error) {
 	f, e := installfiles.OpenReadLocked(path)
 	if e != nil {
 		return "", e

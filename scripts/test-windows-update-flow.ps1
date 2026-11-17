@@ -5,6 +5,10 @@
 [CmdletBinding()]
 param(
     [switch]$DisposableMachine,
+    # Explicit authorization for the dedicated physical Windows 10 acceptance
+    # host. This must never be inferred from the machine model.
+    [switch]$ApprovedPhysicalMachine,
+    [switch]$UnsignedFixture,
     [ValidatePattern('^[a-fA-F0-9]{40}$')][string]$SigningCertificateThumbprint,
     [ValidateSet('CurrentUser','LocalMachine')][string]$SigningCertificateStore = 'CurrentUser',
     [string]$ForeignPublisherExecutable,
@@ -15,15 +19,16 @@ param(
 $ErrorActionPreference = 'Stop'
 & (Join-Path $PSScriptRoot 'assert-workspace.ps1')
 if (!$IsWindows) { throw 'Complete updater transactions require Windows.' }
-if ($env:GITHUB_ACTIONS -ne 'true' -and !$DisposableMachine) { throw 'Use -DisposableMachine only on an isolated Windows test machine.' }
+if ($env:GITHUB_ACTIONS -ne 'true' -and !$DisposableMachine -and !$ApprovedPhysicalMachine) { throw 'Use -DisposableMachine on the approved VM or -ApprovedPhysicalMachine on the dedicated physical acceptance host.' }
 $computer = Get-CimInstance Win32_ComputerSystem
-if ($computer.Model -notmatch 'Virtual Machine|VMware|VirtualBox|KVM|QEMU|HVM domU|Parallels' -and $computer.Manufacturer -notmatch 'QEMU|VMware|innotek') {
-    throw 'System update acceptance is restricted to the approved existing Windows VM. Refusing this physical host.'
+$virtualMachine = $computer.Model -match 'Virtual Machine|VMware|VirtualBox|KVM|QEMU|HVM domU|Parallels' -or $computer.Manufacturer -match 'QEMU|VMware|innotek'
+if (!$virtualMachine -and !$ApprovedPhysicalMachine) {
+    throw 'System update acceptance requires the approved VM or explicit -ApprovedPhysicalMachine authorization.'
 }
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 try { $administrator = [Security.Principal.WindowsPrincipal]::new($identity).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) }
 finally { $identity.Dispose() }
-if (!$SigningCertificateThumbprint -and !$administrator) { throw 'Use an elevated disposable Windows runner for temporary test certificate trust, or pass the already trusted controlled CurrentUser signing certificate.' }
+if (!$UnsignedFixture -and !$SigningCertificateThumbprint -and !$administrator) { throw 'Use an elevated disposable Windows runner for temporary test certificate trust, or pass the already trusted controlled CurrentUser signing certificate.' }
 $repository = Split-Path $PSScriptRoot -Parent
 $registration = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ClaudeEden'
 if (Test-Path $registration) { throw 'Use a test account without an installed Claude Eden application.' }
@@ -45,9 +50,16 @@ $reportPath = Join-Path $reportBase ('eden-smoke-update-' + [guid]::NewGuid().To
 $certificate = $null
 $ownsCertificate = $false
 $passed = $false
+$anyScenarioFailure = $false
 $results = @()
 $machineProbe = $null
 function Check([bool]$Value, [string]$Message) { if (!$Value) { throw $Message } }
+function Get-FixtureUtc($Value) {
+    # PowerShell 7.5+ converts JSON ISO timestamps to DateTime automatically.
+    # Do not stringify that value and reparse it using a different culture.
+    if ($Value -is [DateTime]) { return $Value.ToUniversalTime() }
+    return [DateTime]::Parse([string]$Value, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
+}
 function Write-Text([string]$Path, [string]$Value) {
     [IO.Directory]::CreateDirectory((Split-Path $Path -Parent)) | Out-Null
     [IO.File]::WriteAllText($Path, $Value)
@@ -75,6 +87,7 @@ function Run-Tool([string]$File, [string[]]$Arguments) {
     if ($LASTEXITCODE -ne 0) { throw "$File failed with exit $LASTEXITCODE" }
 }
 function Sign([string]$Path) {
+    if ($UnsignedFixture) { return }
     $signature = Set-AuthenticodeSignature -LiteralPath $Path -Certificate $certificate -HashAlgorithm SHA256
     Check ($signature.Status -eq 'Valid') "Fixture signature was not trusted: $Path ($($signature.Status))"
 }
@@ -138,10 +151,12 @@ function Get-FixtureMachine([string]$Path) {
 function Assert-SignedMachineRejection([string]$Executable) {
     Check ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString() -eq 'X64') 'The incompatible-image case requires the actual Windows x64 VM.'
     Check ((Get-FixtureMachine $Executable) -eq 0xaa64) 'The incompatible candidate is not Windows ARM64.'
-    $signature = Get-AuthenticodeSignature -LiteralPath $Executable
-    Check ($signature.Status -eq 'Valid' -and $signature.SignerCertificate.Thumbprint -eq $certificate.Thumbprint) 'The ARM64 image does not have the same controlled trusted publisher.'
+    if (!$UnsignedFixture) {
+        $signature = Get-AuthenticodeSignature -LiteralPath $Executable
+        Check ($signature.Status -eq 'Valid' -and $signature.SignerCertificate.Thumbprint -eq $certificate.Thumbprint) 'The ARM64 image does not have the same controlled trusted publisher.'
+    }
     $version = [Diagnostics.FileVersionInfo]::GetVersionInfo($Executable)
-    Check ($version.ProductName -eq 'Claude Eden' -and $version.ProductVersion -eq '0.1.8') 'The ARM64 image does not carry the required product/version resources.'
+    Check ($version.ProductName -eq 'ClaudeEden' -and $version.ProductVersion -eq '0.1.8') 'The ARM64 image does not carry the required product/version resources.'
     $start = [Diagnostics.ProcessStartInfo]::new($Executable)
     $start.UseShellExecute = $false
     $start.CreateNoWindow = $true
@@ -154,7 +169,7 @@ function Assert-SignedMachineRejection([string]$Executable) {
         catch {
             $native = $_.Exception.GetBaseException()
             if ($native -isnot [ComponentModel.Win32Exception] -or $native.NativeErrorCode -notin @(193,216)) { throw }
-            $evidence = @{machine='ARM64';host='X64';processCreated=$false;nativeError=$native.NativeErrorCode;publisher=$certificate.Thumbprint;productVersion=$version.ProductVersion;imageSHA256=(Get-FileHash -LiteralPath $Executable -Algorithm SHA256).Hash.ToLowerInvariant()}
+            $evidence = @{machine='ARM64';host='X64';processCreated=$false;nativeError=$native.NativeErrorCode;publisher=if($UnsignedFixture){'unsigned-fixture'}else{$certificate.Thumbprint};productVersion=$version.ProductVersion;imageSHA256=(Get-FileHash -LiteralPath $Executable -Algorithm SHA256).Hash.ToLowerInvariant()}
             Write-Text (Join-Path $root 'machine-rejection.json') ($evidence | ConvertTo-Json)
             return $evidence
         }
@@ -174,9 +189,10 @@ function Build-Package([string]$Version, [ValidateSet('amd64','arm64')][string]$
     [IO.Directory]::CreateDirectory($build) | Out-Null
     [IO.Directory]::CreateDirectory($app) | Out-Null
     Copy-Item -LiteralPath (Join-Path $repository 'internal/desktopupdate/testfixture/main.go') -Destination (Join-Path $build 'main.go')
+    Copy-Item -LiteralPath (Join-Path $repository 'internal/desktopupdate/testfixture/path_windows.go') -Destination (Join-Path $build 'path_windows.go')
     $info = Join-Path $build 'version.json'
     @{fixed = @{file_version = "$Version.0"; product_version = "$Version.0"}; info = @{'0409' = @{
-        ProductName = 'Claude Eden'; ProductVersion = $Version; FileVersion = $Version; OriginalFilename = 'Eden.exe'
+        ProductName = 'ClaudeEden'; ProductVersion = $Version; FileVersion = $Version; OriginalFilename = 'ClaudeEden.exe'
     }}} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $info -Encoding utf8
     $wails = Join-Path $repository '.tmp/tools/wails/wails3.exe'
     if (!(Test-Path -LiteralPath $wails)) { throw 'Build the pinned Wails tool with prepare-desktop.mjs --resources before running the VM update fixture.' }
@@ -184,10 +200,13 @@ function Build-Package([string]$Version, [ValidateSet('amd64','arm64')][string]$
         '-icon', (Join-Path $repository 'packaging/windows/Eden.ico'), '-info', $info, '-out', (Join-Path $build ("rsrc_windows_$Architecture.syso")))
     if (!$env:GOROOT) { throw 'Set GOROOT to the workspace Go toolchain.' }
     $go = Join-Path $env:GOROOT 'bin/go.exe'
-    Run-GoBuild $go $Architecture @('build', '-trimpath', '-ldflags', "-H windowsgui -X main.fixtureVersion=$Version", '-o', (Join-Path $app 'Eden.exe'), $build)
-    Sign (Join-Path $app 'Eden.exe')
+    $fixtureBuild = @('build', '-trimpath')
+    if ($UnsignedFixture) { $fixtureBuild += @('-tags', 'eden_unsigned_fixture') }
+    $fixtureBuild += @('-ldflags', "-H windowsgui -X main.fixtureVersion=$Version", '-o', (Join-Path $app 'ClaudeEden.exe'), $build)
+    Run-GoBuild $go $Architecture $fixtureBuild
+    Sign (Join-Path $app 'ClaudeEden.exe')
     [IO.Directory]::CreateDirectory((Join-Path $app 'resources')) | Out-Null
-    Copy-Item -LiteralPath (Join-Path $app 'Eden.exe') -Destination (Join-Path $app 'resources/eden.exe')
+    Copy-Item -LiteralPath (Join-Path $app 'ClaudeEden.exe') -Destination (Join-Path $app 'resources/eden.exe')
     # The installer must run normally on x64 even for the deliberately
     # incompatible candidate. Only the candidate/backend image is ARM64.
     Run-GoBuild $go 'amd64' @('build', '-trimpath', '-o', (Join-Path $app 'resources/eden-install.exe'), './cmd/eden-install')
@@ -210,7 +229,9 @@ function Build-Package([string]$Version, [ValidateSet('amd64','arm64')][string]$
 try {
     [IO.Directory]::CreateDirectory($root) | Out-Null
     if ($ArtifactRoot) { [IO.Directory]::CreateDirectory((Join-Path $ArtifactRoot 'temp')) | Out-Null }
-    if ($SigningCertificateThumbprint) {
+    if ($UnsignedFixture) {
+        Write-Host 'Using unsigned update fixture mode; no certificate or trust-store changes will be made.'
+    } elseif ($SigningCertificateThumbprint) {
         $certificate = Get-Item -LiteralPath "Cert:\$SigningCertificateStore\My\$SigningCertificateThumbprint"
         if (!$certificate.HasPrivateKey) { throw 'The controlled fixture certificate has no private key in this test user.' }
     } else {
@@ -226,17 +247,21 @@ try {
             }
         } finally { $publicCertificate.Dispose() }
     }
-    Write-Host 'Building signed old and new fixture packages.'
+    Write-Host $(if($UnsignedFixture){'Building unsigned old and new fixture packages.'}else{'Building signed old and new fixture packages.'})
     $old = Build-Package '0.1.7'
     $new = Build-Package '0.1.8'
     $unstartable = $null
     if ($Scenarios -contains 'startup-create-failure') {
         $unstartable = Build-Package '0.1.8' 'arm64'
         Check ((Get-FixtureMachine (Join-Path $unstartable.app 'resources/eden-install.exe')) -eq 0x8664) 'The ARM64 candidate package would fail inside the installer rather than at candidate process creation.'
-        $machineProbe = Assert-SignedMachineRejection (Join-Path $unstartable.app 'Eden.exe')
+        $machineProbe = Assert-SignedMachineRejection (Join-Path $unstartable.app 'ClaudeEden.exe')
     }
     foreach ($mode in $Scenarios) {
         Write-Host "Running Windows update transaction: $mode"
+        if ($UnsignedFixture -and $mode -in @('signature-failure','publisher-failure')) {
+            $results += @{scenario = $mode; passed = $null; skipped = $true; reason = 'unsigned fixture does not exercise Authenticode trust'}
+            continue
+        }
         $scenario = Join-Path $root $mode
         $target = Join-Path $scenario 'installed application'
         $profile = Join-Path $scenario 'selected profile'
@@ -268,7 +293,7 @@ try {
             Write-Text (Join-Path $profile 'fixture.json') (@{mode = $mode; installer = $installer} | ConvertTo-Json)
             Run-Installer $old.setup $target $initialDiagnostic
             Check ((Read-InstallerDiagnostic $initialDiagnostic).status -eq 'success') 'The initial installer did not record success.'
-            $originalHash = (Get-FileHash -LiteralPath (Join-Path $target 'Eden.exe')).Hash
+            $originalHash = (Get-FileHash -LiteralPath (Join-Path $target 'ClaudeEden.exe')).Hash
             $originalInventory = Get-Content -LiteralPath (Join-Path $target 'Eden.install-files.json') -Raw | ConvertFrom-Json
             $originalInventoryHash = (Get-FileHash -LiteralPath (Join-Path $target 'Eden.install-files.json') -Algorithm SHA256).Hash
             $personal = @{
@@ -290,15 +315,15 @@ try {
                 $disk = [IO.File]::Open((Join-Path $target 'EdenData/state/persistent.img'), 'Open', 'Read', 'Read')
             }
             if ($mode -eq 'installer-failure') {
-                $holder = Start-Fixture (Join-Path $old.app 'Eden.exe') $profile @('--hold-directory', $target)
+                $holder = Start-Fixture (Join-Path $old.app 'ClaudeEden.exe') $profile @('--hold-directory', $target)
                 $null = Wait-File (Join-Path $profile 'held.json')
             }
             if ($probe) {
-                $probeExecutable = if ($mode -eq 'parent-image-mismatch') { Join-Path $old.app 'Eden.exe' } else { Join-Path $target 'Eden.exe' }
+                $probeExecutable = if ($mode -eq 'parent-image-mismatch') { Join-Path $old.app 'ClaudeEden.exe' } else { Join-Path $target 'ClaudeEden.exe' }
                 $parent = Start-Fixture $probeExecutable $profile @('--probe-helper', $target)
             } else {
 				$updateStartedAt = [DateTime]::UtcNow
-                $parent = Start-Fixture (Join-Path $target 'Eden.exe') $profile @('--start-update')
+                $parent = Start-Fixture (Join-Path $target 'ClaudeEden.exe') $profile @('--start-update')
             }
             $rejected = $mode -in @('signature-failure','digest-failure','publisher-failure','metadata-version-failure')
             if ($probe) {
@@ -371,13 +396,13 @@ try {
                     Check ($active.startupSeconds -ge 185) 'The real candidate did not cross the old 120-second startup limit.'
                     Check (!(Test-Path -LiteralPath (Join-Path $profile 'reopened.json'))) 'Slow successful startup reopened the original application.'
                 }
-                Check ([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $target 'Eden.exe')).ProductVersion -eq '0.1.8') 'The update did not install the requested version.'
+                Check ([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $target 'ClaudeEden.exe')).ProductVersion -eq '0.1.8') 'The update did not install the requested version.'
             } elseif (!$rejected -and !$probe -and !$preparationFailure) {
                 $reopened = Wait-File (Join-Path $profile 'reopened.json')
                 Check ($reopened.version -eq '0.1.7' -and $reopened.profile -eq $profile) 'The original application did not reopen with its original profile.'
             }
             if (!$successful) {
-                Check ((Get-FileHash -LiteralPath (Join-Path $target 'Eden.exe')).Hash -eq $originalHash) 'The failed update did not retain the original program bytes.'
+                Check ((Get-FileHash -LiteralPath (Join-Path $target 'ClaudeEden.exe')).Hash -eq $originalHash) 'The failed update did not retain the original program bytes.'
             }
             $project = if ($mode -eq 'startup-failure') { 'saved by new version' } else { 'original project' }
             Check ((Get-Content -LiteralPath (Join-Path $target 'my-project/work.txt') -Raw) -eq $project) 'Update or rollback lost the latest project contents.'
@@ -404,7 +429,7 @@ try {
                 if ($mode -in @('startup-error','startup-cancel')) {
                     $live = Wait-File (Join-Path $profile 'failure-reported-live.json')
                     Check ($live.pid -eq $candidate.pid -and $live.startTicks -eq $candidate.startTicks) 'Explicit failure was not reported by the live candidate.'
-                    Check (([DateTime]::UtcNow - [DateTime]::Parse($live.utc)).TotalSeconds -lt 60) 'Explicit failure waited for a startup timeout instead of triggering recovery.'
+                    Check (([DateTime]::UtcNow - (Get-FixtureUtc $live.utc)).TotalSeconds -lt 60) 'Explicit failure waited for a startup timeout instead of triggering recovery.'
                 }
                 $rollback = Wait-File (Join-Path $profile 'handoff-0.1.7.json')
                 $backupPrefix = Join-Path $profile 'updates/previous-'
@@ -415,7 +440,7 @@ try {
                 Check ($finished.nativeError -in @(193,216)) 'The helper did not return a real CreateProcess image/machine error.'
                 Check ($result.message -like '*新版工作台进程未能创建*') 'The candidate was rejected before the intended process-creation step.'
                 Check (!(Test-Path -LiteralPath (Join-Path $profile 'candidate.json'))) 'The incompatible candidate unexpectedly reached application entry.'
-                Check ((Get-FixtureMachine (Join-Path $target 'Eden.exe')) -eq 0x8664) 'Recovery did not restore the original AMD64 application.'
+                Check ((Get-FixtureMachine (Join-Path $target 'ClaudeEden.exe')) -eq 0x8664) 'Recovery did not restore the original AMD64 application.'
                 Check ((Get-FileHash -LiteralPath (Join-Path $target 'Eden.install-files.json') -Algorithm SHA256).Hash -eq $originalInventoryHash) 'Recovery changed the complete original program inventory.'
                 foreach ($file in $originalInventory.files) {
                     Check ((Get-FileHash -LiteralPath (Join-Path $target $file.path) -Algorithm SHA256).Hash.ToLowerInvariant() -eq $file.sha256) ('Recovered original program differs: ' + $file.path)
@@ -428,11 +453,12 @@ try {
             if ($mode -eq 'stop-required') {
                 Check ((Wait-File (Join-Path $profile 'handoff-0.1.7.json')).stop) 'stop_required was not followed by the explicit stop request.'
             }
-            $scenarioResult = @{scenario = $mode; passed = $true; signatureVerification = $true; personalDataPreserved = $true}
+            $scenarioResult = @{scenario = $mode; passed = $true; signatureVerification = !$UnsignedFixture; personalDataPreserved = $true}
             if ($creationFailure) { $scenarioResult.processCreationError = $finished.nativeError }
             $results += $scenarioResult
             Write-Host "PASS: complete Windows update transaction ($mode)."
         } catch {
+            $anyScenarioFailure = $true
             $diagnostics = @{
                 initialInstaller = Read-InstallerDiagnostic $initialDiagnostic
                 initialFileHelper = Read-InstallerDiagnostic "$initialDiagnostic.helper.json"
@@ -441,7 +467,6 @@ try {
             }
             $results += @{scenario = $mode; passed = $false; error = $_.Exception.Message; diagnostics = $diagnostics}
             Write-Host "Windows installer diagnostics ($mode): $($diagnostics | ConvertTo-Json -Depth 6 -Compress)"
-            throw
         } finally {
             if ($disk) { $disk.Dispose() }
             Write-Text (Join-Path $profile 'release.json') '{}'
@@ -457,7 +482,7 @@ try {
                 if ($owned) {
                     try {
                         $identity = Get-Content -LiteralPath $record -Raw | ConvertFrom-Json
-                        $matches = $owned.MainModule.FileName -eq (Join-Path $target 'Eden.exe')
+                        $matches = $owned.MainModule.FileName -eq (Join-Path $target 'ClaudeEden.exe')
                         if ($identity.startTicks) { $matches = $matches -and $owned.StartTime.ToUniversalTime().Ticks -eq $identity.startTicks }
                         if ($matches -and !$owned.WaitForExit(10000)) { $owned.Kill(); $owned.WaitForExit() }
                     } finally { $owned.Dispose() }
@@ -469,9 +494,10 @@ try {
             }
         }
     }
+    if ($anyScenarioFailure) { throw 'One or more Windows update transaction scenarios failed; see the complete scenario report.' }
     $passed = $true
 } finally {
-    @{success = $passed; scenarios = $results; machineTypeProbe = $machineProbe; transport = 'local fixture'; readiness = 'headless acknowledgement'} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $reportPath
+    @{success = $passed; unsignedFixture = [bool]$UnsignedFixture; scenarios = $results; machineTypeProbe = $machineProbe; transport = 'local fixture'; readiness = 'headless acknowledgement'} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $reportPath
     if ($certificate -and $ownsCertificate) {
         foreach ($storeName in @('Root','TrustedPublisher')) { Remove-Item "Cert:\LocalMachine\$storeName\$($certificate.Thumbprint)" -Force -ErrorAction SilentlyContinue }
         Remove-Item "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -DeleteKey -Force -ErrorAction SilentlyContinue

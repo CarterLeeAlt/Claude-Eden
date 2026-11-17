@@ -60,7 +60,7 @@ func RunInstallerWithDiagnostics(ctx context.Context, root, executable string, i
 			return e
 		}
 		if OriginalIntact(plan.Target, backup) {
-			if e = SamePublisher(filepath.Join(plan.Target, "Eden.exe"), plan.Publisher); e != nil {
+			if e = SamePublisher(filepath.Join(plan.Target, "ClaudeEden.exe"), plan.Publisher); e != nil {
 				return e
 			}
 			result(false, "更新未完成，原应用已保留："+detail)
@@ -154,7 +154,7 @@ func RunInstallerWithDiagnostics(ctx context.Context, root, executable string, i
 	if strings.TrimSpace(string(identity)) != installfiles.Identity {
 		return errors.New("请先使用 Claude Eden 安装程序安装应用，再自动更新")
 	}
-	original := filepath.Join(plan.Target, "Eden.exe")
+	original := filepath.Join(plan.Target, "ClaudeEden.exe")
 	publisher, e := Publisher(executable)
 	if e != nil {
 		return e
@@ -345,7 +345,7 @@ func restoreApplicationFiles(ctx context.Context, plan InstallPlan, backup strin
 }
 
 func startApplication(target, configPath, confirmation, publisher string) error {
-	image := filepath.Join(target, "Eden.exe")
+	image := filepath.Join(target, "ClaudeEden.exe")
 	locked, e := installfiles.OpenReadLocked(image)
 	if e != nil {
 		return e

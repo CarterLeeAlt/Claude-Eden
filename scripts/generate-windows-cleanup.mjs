@@ -50,7 +50,7 @@ export async function generateWindowsCleanup(appDirectory) {
   if (files.some(name => name === 'Eden.client-id' || name === 'resources/client-only' || name.startsWith('resources/cloud-linux-'))) throw new Error('Unexpected non-local product payload.');
   const markers = Object.keys(identities).filter(name => files.includes(name));
   if (markers.length !== 1 || (await readFile(path.join(directory, markers[0]), 'utf8')).trim() !== identities[markers[0]]) throw new Error('Expected exactly one valid Claude Eden build identity.');
-  for (const name of ['Eden.exe', 'resources/eden.exe', 'version.txt']) if (!files.includes(name)) throw new Error(`Incomplete application payload: ${name}`);
+  for (const name of ['ClaudeEden.exe', 'resources/eden.exe', 'version.txt']) if (!files.includes(name)) throw new Error(`Incomplete application payload: ${name}`);
   const version = (await readFile(path.join(directory, 'version.txt'), 'utf8')).trim();
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error('Invalid application version.');
   const owned = [...files.filter(name => ![guideName, manifestName].includes(name)), guideName].sort(compare);

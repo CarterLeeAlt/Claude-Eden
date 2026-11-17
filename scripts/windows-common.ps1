@@ -74,7 +74,7 @@ function Wait-WindowsWorkbenchFiles {
     # The log relay can outlive the controller's profile lock. Wait for the
     # isolated build's executable images to be released before moving them.
     $deadline = [DateTime]::UtcNow.AddSeconds(20)
-    foreach ($relative in @('Eden.exe', 'resources/eden.exe')) {
+    foreach ($relative in @('ClaudeEden.exe', 'resources/eden.exe')) {
         $file = Join-Path $AppDirectory $relative
         while ($true) {
             try {
@@ -95,7 +95,7 @@ function Assert-WindowsWorkbench {
     $testRoot = Join-Path (Get-WindowsWorkbenchTestBase) ('eden-build-ui-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
     $report = Join-Path $testRoot 'smoke.json'
-    $start = [Diagnostics.ProcessStartInfo]::new((Join-Path $AppDirectory 'Eden.exe'))
+    $start = [Diagnostics.ProcessStartInfo]::new((Join-Path $AppDirectory 'ClaudeEden.exe'))
     $start.UseShellExecute = $false
     $start.WorkingDirectory = $AppDirectory
     $start.Environment['EDEN_CONFIG'] = Join-Path $testRoot 'profile/config.json'

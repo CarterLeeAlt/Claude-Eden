@@ -80,7 +80,7 @@ try {
     Invoke-BuildTool $go @('build', '-trimpath', '-tags', $tags, '-ldflags', $ldflags, '-o', (Join-Path $resources 'eden.exe'), './cmd/eden')
     Invoke-BuildTool (Join-Path $resources 'eden.exe') @('verify-vm-assets')
     Invoke-BuildTool (Join-Path $resources 'eden.exe') @('verify-web-assets')
-    Invoke-BuildTool $go @('build', '-trimpath', '-tags', 'production', '-ldflags', "$ldflags -H windowsgui", '-o', (Join-Path $app 'Eden.exe'), './cmd/eden-desktop')
+    Invoke-BuildTool $go @('build', '-trimpath', '-tags', 'production', '-ldflags', "$ldflags -H windowsgui", '-o', (Join-Path $app 'ClaudeEden.exe'), './cmd/eden-desktop')
     Invoke-BuildTool $go @('build', '-trimpath', '-ldflags', $ldflags, '-o', (Join-Path $resources 'eden-install.exe'), './cmd/eden-install')
     $coreArchive = Get-VerifiedDependency $dependencies.mihomo $DependencyCache
     $core = Join-Path $stage 'mihomo'
@@ -150,7 +150,7 @@ try {
     [IO.File]::WriteAllText((Join-Path $app 'version.txt'), $version)
     if ($signed) {
         $signTool = Get-SigningTool
-        foreach ($file in @('Eden.exe', 'resources/eden.exe', 'resources/eden-install.exe', 'resources/mihomo.exe')) { Sign-EdenFile (Join-Path $app $file) $signTool }
+        foreach ($file in @('ClaudeEden.exe', 'resources/eden.exe', 'resources/eden-install.exe', 'resources/mihomo.exe')) { Sign-EdenFile (Join-Path $app $file) $signTool }
     } else {
         [IO.File]::WriteAllText((Join-Path $app 'DEVELOPMENT-BUILD.txt'), "Unsigned development build. Automatic update installation is disabled. Runtime acceptance on the target Windows 10 system is still required.`n")
     }

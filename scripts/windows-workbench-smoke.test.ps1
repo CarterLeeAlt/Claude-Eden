@@ -63,7 +63,7 @@ try {
     }
     $app = Join-Path $directory 'app'
     New-Item -ItemType Directory -Path (Join-Path $app 'resources') -Force | Out-Null
-    [IO.File]::WriteAllText((Join-Path $app 'Eden.exe'), 'native fixture')
+    [IO.File]::WriteAllText((Join-Path $app 'ClaudeEden.exe'), 'native fixture')
     $image = Join-Path $app 'resources/eden.exe'
     [IO.File]::WriteAllText($image, 'backend fixture')
     $ready = Join-Path $directory 'image-locked'

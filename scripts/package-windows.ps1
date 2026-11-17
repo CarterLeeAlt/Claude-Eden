@@ -27,13 +27,13 @@ if ((Get-Content -LiteralPath (Join-Path $AppDirectory 'version.txt') -Raw).Trim
 $makeNSIS = Get-BuildCommand @('makensis.exe', 'makensis')
 $sevenZip = Get-BuildCommand @('7z.exe', '7zz', '7z')
 if ($IsWindows) {
-    if ([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $AppDirectory 'Eden.exe')).ProductVersion -ne $version) { throw 'Eden.exe version differs from VERSION; rebuild before packaging.' }
+    if ([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $AppDirectory 'ClaudeEden.exe')).ProductVersion -ne $version) { throw 'ClaudeEden.exe version differs from VERSION; rebuild before packaging.' }
     Invoke-BuildTool (Join-Path $AppDirectory 'resources/eden.exe') @('verify-vm-assets')
     Invoke-BuildTool (Join-Path $AppDirectory 'resources/eden.exe') @('verify-web-assets')
     if ($SkipBuild -and $VerifyDesktop) { Assert-WindowsWorkbench $AppDirectory }
 } else {
-    $metadata = & $sevenZip 'l' '-tPE' (Join-Path $AppDirectory 'Eden.exe')
-    if ($LASTEXITCODE -ne 0 -or -not ($metadata -match ('^ProductVersion: ' + [regex]::Escape($version) + '$'))) { throw 'Eden.exe version differs from VERSION; rebuild before packaging.' }
+    $metadata = & $sevenZip 'l' '-tPE' (Join-Path $AppDirectory 'ClaudeEden.exe')
+    if ($LASTEXITCODE -ne 0 -or -not ($metadata -match ('^ProductVersion: ' + [regex]::Escape($version) + '$'))) { throw 'ClaudeEden.exe version differs from VERSION; rebuild before packaging.' }
 }
 $signTool = $null
 if ($signed) {
@@ -45,7 +45,7 @@ if ($signed) {
     }
     if ($Release) { Invoke-BuildTool $sevenZip @('t', '-bso0', '-bsp0', $QemuSourceArchive) }
     $signTool = Get-SigningTool
-    foreach ($file in @('Eden.exe', 'resources/eden.exe', 'resources/eden-install.exe', 'resources/mihomo.exe')) {
+    foreach ($file in @('ClaudeEden.exe', 'resources/eden.exe', 'resources/eden-install.exe', 'resources/mihomo.exe')) {
         $signature = Get-AuthenticodeSignature -LiteralPath (Join-Path $AppDirectory $file)
         if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $env:EDEN_WINDOWS_CERT_SHA1) { throw "Invalid release signature: $file" }
     }

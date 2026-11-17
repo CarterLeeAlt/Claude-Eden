@@ -174,7 +174,7 @@ func OriginalIntact(target, backup string) bool {
 	if installfiles.PlainPath(target) != nil || installfiles.PlainPath(backup) != nil {
 		return false
 	}
-	for _, p := range []string{filepath.Join(backup, "Eden.exe"), filepath.Join(backup, installfiles.IdentityName)} {
+	for _, p := range []string{filepath.Join(backup, "ClaudeEden.exe"), filepath.Join(backup, installfiles.IdentityName)} {
 		if _, e := os.Stat(p); e != nil {
 			return false
 		}

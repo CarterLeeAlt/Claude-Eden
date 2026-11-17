@@ -32,7 +32,7 @@ if (args[0] === '--resources') {
   }
   const numeric = `${match[1]}.${match[2]}.${match[3]}.0`;
   for (const [entry, filename, description] of [
-    ['eden-desktop', 'Eden.exe', 'Claude Eden desktop workbench'],
+    ['eden-desktop', 'ClaudeEden.exe', 'ClaudeEden desktop workbench'],
     ['eden-install', 'eden-install.exe', 'Claude Eden installation helper'],
   ]) {
     const info = path.join(tools, `${entry}.json`);
@@ -40,7 +40,7 @@ if (args[0] === '--resources') {
       fixed: { file_version: numeric, product_version: numeric },
       info: { '0409': {
         FileVersion: version, ProductVersion: version,
-        CompanyName: 'Claude Eden contributors', ProductName: 'Claude Eden',
+        CompanyName: 'Claude Eden contributors', ProductName: 'ClaudeEden',
         FileDescription: description, OriginalFilename: filename,
       } },
     }, null, 2) + '\n');

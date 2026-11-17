@@ -65,7 +65,7 @@ func TestOriginalIntactClassification(t *testing.T) {
 	root := t.TempDir()
 	target, backup := filepath.Join(root, "target"), filepath.Join(root, "backup")
 	for _, dir := range []string{target, backup} {
-		writeTest(t, filepath.Join(dir, "Eden.exe"), "original launcher")
+		writeTest(t, filepath.Join(dir, "ClaudeEden.exe"), "original launcher")
 		writeTest(t, filepath.Join(dir, installfiles.IdentityName), installfiles.Identity)
 		writeTest(t, BackendPath(dir), "original backend")
 	}
@@ -85,7 +85,7 @@ func TestOriginalIntactClassification(t *testing.T) {
 	if e := os.Remove(target + ".eden-installation.json"); e != nil {
 		t.Fatal(e)
 	}
-	if e := os.Remove(filepath.Join(target, "Eden.exe")); e != nil {
+	if e := os.Remove(filepath.Join(target, "ClaudeEden.exe")); e != nil {
 		t.Fatal(e)
 	}
 	if OriginalIntact(target, backup) {
@@ -217,7 +217,7 @@ func TestCleanupFailureDoesNotAffectHealthyApp(t *testing.T) {
 	locked := filepath.Join(backup, "old.dll")
 	writeTest(t, locked, "old")
 	writeTest(t, filepath.Join(download, "archive.exe"), "download")
-	app := filepath.Join(root, "installed", "Eden.exe")
+	app := filepath.Join(root, "installed", "ClaudeEden.exe")
 	writeTest(t, app, "healthy")
 	f, e := installfiles.OpenReadLocked(locked)
 	if e != nil {
@@ -603,16 +603,16 @@ func TestRecoveryRelaunchFailureRetainsVerifiedBackup(t *testing.T) {
 	root := t.TempDir()
 	backup := filepath.Join(root, "previous-application")
 	original := backup
-	writeTest(t, filepath.Join(backup, "Eden.exe"), "verified previous application")
+	writeTest(t, filepath.Join(backup, "ClaudeEden.exe"), "verified previous application")
 	launchFailure := errors.New("controlled process creation failure")
 	if e := reopenRecovered(&backup, func() error { return launchFailure }); !errors.Is(e, launchFailure) {
 		t.Fatal(e)
 	}
-	if backup != original || readTest(t, filepath.Join(original, "Eden.exe")) != "verified previous application" {
+	if backup != original || readTest(t, filepath.Join(original, "ClaudeEden.exe")) != "verified previous application" {
 		t.Fatal("failed relaunch discarded the recovery snapshot")
 	}
 	if e := reopenRecovered(&backup, func() error {
-		if _, e := os.Stat(filepath.Join(original, "Eden.exe")); e != nil {
+		if _, e := os.Stat(filepath.Join(original, "ClaudeEden.exe")); e != nil {
 			t.Fatal("snapshot removed before process creation", e)
 		}
 		return nil
@@ -634,7 +634,7 @@ func TestRestoreApplicationFilesKeepsDataAndRecoveryEvidence(t *testing.T) {
 			backup, target := filepath.Join(root, "previous"), filepath.Join(root, "installed")
 			writeProgram := func(directory, version string) {
 				files := map[string]string{
-					"Eden.exe": version + " launcher", "resources/eden.exe": version + " backend",
+					"ClaudeEden.exe": version + " launcher", "resources/eden.exe": version + " backend",
 					"Uninstall.exe": version + " uninstaller", installfiles.IdentityName: installfiles.Identity,
 				}
 				manifest := installfiles.Manifest{Version: 1}
@@ -690,13 +690,13 @@ func TestRestoreApplicationFilesKeepsDataAndRecoveryEvidence(t *testing.T) {
 			if mode == "success" {
 				want = "old launcher"
 			}
-			if readTest(t, filepath.Join(target, "Eden.exe")) != want {
+			if readTest(t, filepath.Join(target, "ClaudeEden.exe")) != want {
 				t.Fatal("incorrect recovered program")
 			}
 			if readTest(t, project) != "latest personal work" || readTest(t, disk) != "original environment disk" {
 				t.Fatal("recovery changed personal data")
 			}
-			if readTest(t, filepath.Join(backup, "Eden.exe")) != "old launcher" {
+			if readTest(t, filepath.Join(backup, "ClaudeEden.exe")) != "old launcher" {
 				t.Fatal("file recovery discarded the original snapshot before relaunch")
 			}
 			if mode == "success" {

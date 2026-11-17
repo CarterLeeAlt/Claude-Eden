@@ -1,6 +1,7 @@
 // Headless system-integration fixture. It uses the production transaction;
 // only release transport and workbench readiness are local, deterministic data.
-// Run solely in the approved disposable Windows VM via test-windows-update-flow.
+// Run solely on an explicitly approved Windows test host via
+// test-windows-update-flow. Never use a real user's profile as fixture storage.
 package main
 
 import (
@@ -114,7 +115,7 @@ func (b *fixtureBackend) PrepareUpdate(ctx context.Context, stop bool) error {
 	if b.settings.Mode == "startup-create-failure" && fixtureVersion == "0.1.7" && stop {
 		// The real recovery backend must still have the complete original
 		// snapshot before any candidate files are restored or relaunched.
-		image, e := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(b.executable)), "Eden.exe"))
+		image, e := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(b.executable)), "ClaudeEden.exe"))
 		if e != nil {
 			return e
 		}
@@ -124,12 +125,40 @@ func (b *fixtureBackend) PrepareUpdate(ctx context.Context, stop bool) error {
 	return record(b.profile, "handoff-"+fixtureVersion, handoff)
 }
 
-func run() error {
-	config, e := filepath.Abs(os.Getenv("EDEN_CONFIG"))
+func fixtureConfig() (string, error) {
+	workspace, config := os.Getenv("EDEN_WORKSPACE_ROOT"), os.Getenv("EDEN_CONFIG")
+	if workspace == "" || config == "" {
+		return "", errors.New("fixture requires EDEN_WORKSPACE_ROOT and EDEN_CONFIG")
+	}
+	workspace, e := filepath.Abs(workspace)
+	if e != nil {
+		return "", e
+	}
+	config, e = filepath.Abs(config)
+	if e != nil {
+		return "", e
+	}
+	relative, e := filepath.Rel(workspace, config)
+	if e != nil || relative == "." || relative == ".." || filepath.IsAbs(relative) || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", errors.New("fixture configuration must stay below the workspace")
+	}
+	if e = installfiles.PlainPath(config); e != nil {
+		return "", e
+	}
+	return config, nil
+}
+
+func run() (err error) {
+	config, e := fixtureConfig()
 	if e != nil {
 		return e
 	}
 	profile := filepath.Dir(config)
+	defer func() {
+		if err != nil {
+			_ = record(profile, "fixture-error", map[string]string{"error": err.Error()})
+		}
+	}()
 	if e = os.MkdirAll(profile, 0700); e != nil {
 		return e
 	}
@@ -138,6 +167,9 @@ func run() error {
 	}
 	executable, e := os.Executable()
 	if e != nil {
+		return e
+	}
+	if executable, e = canonicalExecutable(executable); e != nil {
 		return e
 	}
 	root := filepath.Join(profile, "updates")
@@ -200,6 +232,14 @@ func run() error {
 		return e
 	}
 	configOptions := desktopupdate.Config{Root: root, Target: filepath.Dir(executable), Executable: executable, Version: fixtureVersion, ConfigPath: config, Backend: backend}
+	if len(args) == 1 && args[0] == "--start-update" {
+		stderr, openErr := os.OpenFile(filepath.Join(profile, "helper-stderr.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+		if openErr != nil {
+			return openErr
+		}
+		defer stderr.Close()
+		configOptions.HelperStderr = stderr
+	}
 	if len(args) == 1 && args[0] == "--start-update" {
 		failed := make(chan struct{}, 1)
 		configOptions.Changed = func(s desktopupdate.State) {

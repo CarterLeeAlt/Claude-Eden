@@ -37,16 +37,16 @@ ManifestSupportedOS all
 !define APP_ID "io.github.carterleealt.claude-eden"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\ClaudeEden"
 !define WEBVIEW2_APP_ID "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
-Name "Claude Eden ${VERSION}"
+Name "ClaudeEden ${VERSION}"
 OutFile "${OUTPUT_FILE}"
 InstallDir "$LOCALAPPDATA\Programs\Eden"
 InstallDirRegKey HKCU "${UNINSTALL_KEY}" "InstallLocation"
 VIProductVersion "${VERSION_NUMERIC}"
-VIAddVersionKey /LANG=1033 "ProductName" "Claude Eden"
+VIAddVersionKey /LANG=1033 "ProductName" "ClaudeEden"
 VIAddVersionKey /LANG=1033 "ProductVersion" "${VERSION}"
 VIAddVersionKey /LANG=1033 "FileVersion" "${VERSION}"
-VIAddVersionKey /LANG=1033 "FileDescription" "Claude Eden Windows Installer"
-VIAddVersionKey /LANG=1033 "LegalCopyright" "Claude Eden contributors"
+VIAddVersionKey /LANG=1033 "FileDescription" "ClaudeEden Windows Installer"
+VIAddVersionKey /LANG=1033 "LegalCopyright" "ClaudeEden contributors"
 
 !ifdef SIGN_SCRIPT
   !uninstfinalize '"${SIGN_PWSH}" -NoProfile -File "${SIGN_SCRIPT}" -Path "%1"' = 0
@@ -55,9 +55,9 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "Claude Eden contributors"
 !define MUI_CUSTOMFUNCTION_ABORT ConfirmInstallerAbort
 !define MUI_CUSTOMFUNCTION_GUIINIT RefreshFontControls
 !define MUI_CUSTOMFUNCTION_UNGUIINIT un.RefreshFontControls
-!define MUI_FINISHPAGE_RUN "$INSTDIR\Eden.exe"
+!define MUI_FINISHPAGE_RUN "$INSTDIR\ClaudeEden.exe"
 !define MUI_FINISHPAGE_RUN_NOTCHECKED
-!define MUI_FINISHPAGE_TEXT "Claude Eden is installed.$\r$\n$\r$\nIf virtualization is unavailable, enable Windows Hypervisor Platform in Windows Features and restart Windows. Your projects and Claude Eden data are preserved during upgrades and uninstall."
+!define MUI_FINISHPAGE_TEXT "ClaudeEden is installed.$\r$\n$\r$\nIf virtualization is unavailable, enable Windows Hypervisor Platform in Windows Features and restart Windows. Your projects and ClaudeEden data are preserved during upgrades and uninstall."
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW RefreshFontControls
 !insertmacro MUI_PAGE_WELCOME
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW RefreshFontControls
@@ -79,18 +79,18 @@ Page custom ShortcutOptionsPage ShortcutOptionsLeave
 ; Resource layout reserves 11-point space; controls use 14 px at 96 DPI.
 SetFont "Eden UI" 11
 
-LangString EdenDirectoryHelp ${LANG_ENGLISH} "Choose where to install the Claude Eden application. On first launch, you can choose a separate drive for the Linux image, download cache, and virtual disks before starting the environment."
-LangString EdenDirectoryHelp ${LANG_SIMPCHINESE} "请选择 Claude Eden 程序的安装目录。首次打开 Claude Eden 后，可以在启动环境前单独选择存放 Linux 镜像、下载缓存和虚拟磁盘的磁盘。"
+LangString EdenDirectoryHelp ${LANG_ENGLISH} "Choose where to install the ClaudeEden application. On first launch, you can choose a separate drive for the Linux image, download cache, and virtual disks before starting the environment."
+LangString EdenDirectoryHelp ${LANG_SIMPCHINESE} "请选择 ClaudeEden 程序的安装目录。首次打开 ClaudeEden 后，可以在启动环境前单独选择存放 Linux 镜像、下载缓存和虚拟磁盘的磁盘。"
 LangString EdenShortcutsTitle ${LANG_ENGLISH} "Shortcuts"
 LangString EdenShortcutsTitle ${LANG_SIMPCHINESE} "快捷方式"
-LangString EdenShortcutsHelp ${LANG_ENGLISH} "Choose where to add Claude Eden shortcuts for your Windows account."
-LangString EdenShortcutsHelp ${LANG_SIMPCHINESE} "选择为当前 Windows 用户添加的 Claude Eden 快捷方式。"
+LangString EdenShortcutsHelp ${LANG_ENGLISH} "Choose where to add ClaudeEden shortcuts for your Windows account."
+LangString EdenShortcutsHelp ${LANG_SIMPCHINESE} "选择为当前 Windows 用户添加的 ClaudeEden 快捷方式。"
 LangString EdenDesktopShortcut ${LANG_ENGLISH} "Add a desktop shortcut"
 LangString EdenDesktopShortcut ${LANG_SIMPCHINESE} "添加桌面快捷方式"
 LangString EdenStartMenuShortcuts ${LANG_ENGLISH} "Add to the Start menu"
 LangString EdenStartMenuShortcuts ${LANG_SIMPCHINESE} "添加到开始菜单"
-LangString EdenAbortQuestion ${LANG_ENGLISH} "Are you sure you want to quit the Claude Eden installer?"
-LangString EdenAbortQuestion ${LANG_SIMPCHINESE} "确定要退出 Claude Eden 安装程序吗？"
+LangString EdenAbortQuestion ${LANG_ENGLISH} "Are you sure you want to quit the ClaudeEden installer?"
+LangString EdenAbortQuestion ${LANG_SIMPCHINESE} "确定要退出 ClaudeEden 安装程序吗？"
 
 Var UpdateMode
 Var StageDir
@@ -195,7 +195,7 @@ Function ShowFontMessage
   System::Call 'user32::SetWindowsHookExW(i 5, k $UIFontDialogCallback, p 0, i r5) p.s'
   Pop $UIFontDialogHook
   StrCpy $4 ""
-  System::Call 'user32::MessageBoxW(p $HWNDPARENT, w "$UIFontDialogText", w "Claude Eden", i $UIFontDialogFlags) i.s'
+  System::Call 'user32::MessageBoxW(p $HWNDPARENT, w "$UIFontDialogText", w "ClaudeEden", i $UIFontDialogFlags) i.s'
   font_message_callback:
     StrCpy $5 $4 8
     ${If} $5 == "callback"
@@ -347,12 +347,12 @@ FunctionEnd
   Pop $1
   ${If} $0 == 0
     SetErrorLevel 2
-    Abort "无法锁定 Claude Eden 安装操作，请核对系统权限后重试。"
+    Abort "无法锁定 ClaudeEden 安装操作，请核对系统权限后重试。"
   ${EndIf}
   StrCpy $InstallationMutex $0
   ${If} $1 == 183
     SetErrorLevel 2
-    Abort "另一个 Claude Eden 安装或卸载仍在进行，请等待完成后重试。"
+    Abort "另一个 ClaudeEden 安装或卸载仍在进行，请等待完成后重试。"
   ${EndIf}
 !macroend
 
@@ -378,10 +378,10 @@ Function LoadShortcutOptions
   ${If} $0 != ""
     StrCpy $DesktopShortcut 0
     StrCpy $StartMenuShortcuts 0
-    ${If} ${FileExists} "$DESKTOP\Claude Eden.lnk"
+    ${If} ${FileExists} "$DESKTOP\ClaudeEden.lnk"
       StrCpy $DesktopShortcut 1
     ${EndIf}
-    ${If} ${FileExists} "$SMPROGRAMS\Claude Eden\Claude Eden.lnk"
+    ${If} ${FileExists} "$SMPROGRAMS\ClaudeEden\ClaudeEden.lnk"
       StrCpy $StartMenuShortcuts 1
     ${EndIf}
   ${EndIf}
@@ -490,7 +490,7 @@ FunctionEnd
     ${If} $0 == -1
       StrCpy $HelperExit "application_file_in_use"
       SetErrorLevel 2
-      Abort "Quit Claude Eden and stop its environment before installing or uninstalling."
+      Abort "Quit ClaudeEden and stop its environment before installing or uninstalling."
     ${EndIf}
     System::Call 'kernel32::CloseHandle(p r0)'
   ${EndIf}
@@ -511,14 +511,14 @@ Function .onInit
   SetShellVarContext current
   SetRegView 64
   ${IfNot} ${IsNativeAMD64}
-    StrCpy $UIFontDialogText "This Claude Eden package requires an Intel/AMD 64-bit version of Windows. Windows on ARM and 32-bit Windows are not supported."
+    StrCpy $UIFontDialogText "This ClaudeEden package requires an Intel/AMD 64-bit version of Windows. Windows on ARM and 32-bit Windows are not supported."
     StrCpy $UIFontDialogFlags 0x10
     Call ShowFontMessage
     SetErrorLevel 1633
     Quit
   ${EndIf}
   ${IfNot} ${AtLeastWin10}
-    StrCpy $UIFontDialogText "This Claude Eden package requires Windows 10 x64."
+    StrCpy $UIFontDialogText "This ClaudeEden package requires Windows 10 x64."
     StrCpy $UIFontDialogFlags 0x10
     Call ShowFontMessage
     SetErrorLevel 1633
@@ -571,7 +571,7 @@ Function CheckDestination
     ${EndIf}
     StrCpy $ExistingInstall "1"
     ; Never stop processes by their name or force-close user workloads.
-    !insertmacro CheckStopped "Eden.exe"
+    !insertmacro CheckStopped "ClaudeEden.exe"
     !insertmacro CheckStopped "resources\eden.exe"
     !insertmacro CheckStopped "resources\mihomo.exe"
     !insertmacro CheckStopped "resources\runtime\qemu\qemu-system-x86_64.exe"
@@ -610,7 +610,7 @@ Function RestorePreservedFiles
   ${EndIf}
 FunctionEnd
 
-Section "Claude Eden" Main
+Section "ClaudeEden" Main
   !insertmacro InstallPhase "acquiring_installation_lock"
   !insertmacro AcquireInstallationMutex
   StrCpy $TransactionRecord "$INSTDIR.eden-installation.json"
@@ -638,7 +638,7 @@ Section "Claude Eden" Main
     SetOutPath "$TEMP"
     RMDir /r "$StageDir"
     SetErrorLevel 2
-    Abort "Could not unpack Claude Eden. Check free disk space and folder permissions."
+    Abort "Could not unpack ClaudeEden. Check free disk space and folder permissions."
   ${EndIf}
 
   ; Install the bundled offline runtime only when WebView2 is absent.
@@ -708,7 +708,7 @@ Section "Claude Eden" Main
       Pop $1
       RMDir /r "$StageDir"
       SetErrorLevel 2
-      Abort "Could not move the installed application. Quit Claude Eden, close programs using files in its folder, and retry."
+      Abort "Could not move the installed application. Quit ClaudeEden, close programs using files in its folder, and retry."
     ${EndIf}
     DetailPrint "正在迁入个人文件并保留原有链接…"
     !insertmacro InstallPhase "moving_personal_files"
@@ -749,7 +749,7 @@ Section "Claude Eden" Main
     ${EndIf}
     RMDir /r "$StageDir"
     SetErrorLevel 2
-    Abort "Could not install Claude Eden. The previous installation has been restored."
+    Abort "Could not install ClaudeEden. The previous installation has been restored."
   ${EndIf}
   ${If} $BackupDir != ""
     !insertmacro InstallPhase "cleaning_previous_application"
@@ -778,29 +778,29 @@ Section "Claude Eden" Main
     ${EndIf}
   ${EndIf}
   !insertmacro InstallPhase "registering_installation"
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "Claude Eden"
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "ClaudeEden"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayVersion" "${VERSION}"
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher" "Claude Eden contributors"
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher" "ClaudeEden contributors"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
   WriteRegStr HKCU "${UNINSTALL_KEY}" "QuietUninstallString" '$\"$INSTDIR\Uninstall.exe$\" /S'
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\Eden.exe,0"
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\ClaudeEden.exe,0"
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoModify" 1
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoRepair" 1
   SetOutPath "$INSTDIR"
   ${If} $DesktopShortcut == 1
-    CreateShortcut "$DESKTOP\Claude Eden.lnk" "$INSTDIR\Eden.exe"
+    CreateShortcut "$DESKTOP\ClaudeEden.lnk" "$INSTDIR\ClaudeEden.exe"
   ${Else}
-    Delete "$DESKTOP\Claude Eden.lnk"
+    Delete "$DESKTOP\ClaudeEden.lnk"
   ${EndIf}
   ${If} $StartMenuShortcuts == 1
-    CreateDirectory "$SMPROGRAMS\Claude Eden"
-    CreateShortcut "$SMPROGRAMS\Claude Eden\Claude Eden.lnk" "$INSTDIR\Eden.exe"
-    CreateShortcut "$SMPROGRAMS\Claude Eden\Uninstall Claude Eden.lnk" "$INSTDIR\Uninstall.exe"
+    CreateDirectory "$SMPROGRAMS\ClaudeEden"
+    CreateShortcut "$SMPROGRAMS\ClaudeEden\ClaudeEden.lnk" "$INSTDIR\ClaudeEden.exe"
+    CreateShortcut "$SMPROGRAMS\ClaudeEden\Uninstall ClaudeEden.lnk" "$INSTDIR\Uninstall.exe"
   ${Else}
-    Delete "$SMPROGRAMS\Claude Eden\Claude Eden.lnk"
-    Delete "$SMPROGRAMS\Claude Eden\Uninstall Claude Eden.lnk"
-    RMDir "$SMPROGRAMS\Claude Eden"
+    Delete "$SMPROGRAMS\ClaudeEden\ClaudeEden.lnk"
+    Delete "$SMPROGRAMS\ClaudeEden\Uninstall ClaudeEden.lnk"
+    RMDir "$SMPROGRAMS\ClaudeEden"
   ${EndIf}
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "DesktopShortcut" $DesktopShortcut
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "StartMenuShortcuts" $StartMenuShortcuts
@@ -829,10 +829,10 @@ Function un.onInit
     StrCpy $HelperExit "identity_mismatch"
     Call un.WriteInstallDiagnostic
     SetErrorLevel 2
-    Abort "This is not a Claude Eden installation folder."
+    Abort "This is not a ClaudeEden installation folder."
   ${EndIf}
   !insertmacro UninstallPhase "checking_stopped_processes"
-  !insertmacro CheckStopped "Eden.exe"
+  !insertmacro CheckStopped "ClaudeEden.exe"
   !insertmacro CheckStopped "resources\eden.exe"
   !insertmacro CheckStopped "resources\mihomo.exe"
   !insertmacro CheckStopped "resources\runtime\qemu\qemu-system-x86_64.exe"
@@ -866,10 +866,10 @@ Section "Uninstall"
     Abort "部分程序文件正在使用或无法读取，卸载未完成。个人文件已保留，请关闭占用程序后重试。"
   ${EndIf}
   !insertmacro UninstallPhase "removing_shortcuts_and_registration"
-  Delete "$DESKTOP\Claude Eden.lnk"
-  Delete "$SMPROGRAMS\Claude Eden\Claude Eden.lnk"
-  Delete "$SMPROGRAMS\Claude Eden\Uninstall Claude Eden.lnk"
-  RMDir "$SMPROGRAMS\Claude Eden"
+  Delete "$DESKTOP\ClaudeEden.lnk"
+  Delete "$SMPROGRAMS\ClaudeEden\ClaudeEden.lnk"
+  Delete "$SMPROGRAMS\ClaudeEden\Uninstall ClaudeEden.lnk"
+  RMDir "$SMPROGRAMS\ClaudeEden"
   DeleteRegKey HKCU "${UNINSTALL_KEY}"
   !insertmacro UninstallPhase "removing_install_directory"
   RMDir "$INSTDIR"

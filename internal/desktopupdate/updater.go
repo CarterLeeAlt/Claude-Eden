@@ -33,6 +33,7 @@ type Backend interface {
 type Config struct {
 	Root, Target, Executable, Version, ConfigPath string
 	Backend                                       Backend
+	HelperStderr                                  io.Writer
 	Changed                                       func(State)
 	// Quit is required to install; Reconnect resumes a revoked preparation.
 	Quit, Reconnect func()
@@ -301,9 +302,12 @@ func (u *Updater) install(parent context.Context) {
 		if e != nil {
 			return e
 		}
-		// The helper reports actionable errors through last-result.json. Do not
-		// let an unconsumed stderr pipe block its lifecycle.
+		// The helper reports actionable errors through last-result.json. Tests may
+		// inject a bounded stderr writer; production keeps the pipe unconsumed.
 		helper.Stderr = io.Discard
+		if u.config.HelperStderr != nil {
+			helper.Stderr = u.config.HelperStderr
+		}
 		if e = helper.Start(); e != nil {
 			return e
 		}

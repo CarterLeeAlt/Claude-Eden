@@ -21,7 +21,7 @@ import (
 
 func writeCreationFailureProgram(t *testing.T, directory string, executable []byte, version string) {
 	t.Helper()
-	files := map[string][]byte{"Eden.exe": executable, "resources/eden.exe": []byte(version + " backend"), "Uninstall.exe": []byte(version + " uninstaller"), installfiles.IdentityName: []byte(installfiles.Identity)}
+	files := map[string][]byte{"ClaudeEden.exe": executable, "resources/eden.exe": []byte(version + " backend"), "Uninstall.exe": []byte(version + " uninstaller"), installfiles.IdentityName: []byte(installfiles.Identity)}
 	manifest := installfiles.Manifest{Version: 1}
 	for name, content := range files {
 		writeTest(t, filepath.Join(directory, filepath.FromSlash(name)), string(content))
@@ -55,7 +55,7 @@ func TestCandidateCreationFailureRestoresAndReopensOriginal(t *testing.T) {
 			originalBackup := backup
 			writeCreationFailureProgram(t, backup, oldImage, "old")
 			originalFiles := map[string]string{}
-			for _, name := range []string{"Eden.exe", "resources/eden.exe", "Uninstall.exe", installfiles.IdentityName, installfiles.ManifestName} {
+			for _, name := range []string{"ClaudeEden.exe", "resources/eden.exe", "Uninstall.exe", installfiles.IdentityName, installfiles.ManifestName} {
 				originalFiles[name] = readTest(t, filepath.Join(backup, filepath.FromSlash(name)))
 			}
 			writeCreationFailureProgram(t, target, []byte("controlled invalid Windows PE image"), "new")
@@ -73,7 +73,7 @@ func TestCandidateCreationFailureRestoresAndReopensOriginal(t *testing.T) {
 			plan := InstallPlan{Target: target, ConfigPath: config, Confirmation: newConfirmation()}
 			t.Setenv("EDEN_CONFIG", filepath.Join(root, "unselected profile", "config.json"))
 			t.Setenv("EDEN_UPDATE_CONFIRMATION", plan.Confirmation)
-			candidate := exec.Command(filepath.Join(target, "Eden.exe"))
+			candidate := exec.Command(filepath.Join(target, "ClaudeEden.exe"))
 			hide(candidate)
 			candidate.Dir = target
 			candidate.Env = profileEnvironment(config, plan.Confirmation)
@@ -87,14 +87,14 @@ func TestCandidateCreationFailureRestoresAndReopensOriginal(t *testing.T) {
 			if err := restoreApplicationFiles(context.Background(), plan, backup); err != nil {
 				t.Fatal("old program recovery was not attempted successfully", err)
 			}
-			if actual, err := os.ReadFile(filepath.Join(target, "Eden.exe")); err != nil || !bytes.Equal(actual, oldImage) {
+			if actual, err := os.ReadFile(filepath.Join(target, "ClaudeEden.exe")); err != nil || !bytes.Equal(actual, oldImage) {
 				t.Fatal("the original executable was not restored", err)
 			}
-			if _, err := os.Stat(filepath.Join(backup, "Eden.exe")); err != nil {
+			if _, err := os.Stat(filepath.Join(backup, "ClaudeEden.exe")); err != nil {
 				t.Fatal("snapshot removed before original process creation", err)
 			}
 			marker := filepath.Join(profile, "reopened.json")
-			old := exec.Command(filepath.Join(target, "Eden.exe"), "-test.run=^TestProcessLifecycleFixture$")
+			old := exec.Command(filepath.Join(target, "ClaudeEden.exe"), "-test.run=^TestProcessLifecycleFixture$")
 			hide(old)
 			old.Dir = target
 			old.Env = append(profileEnvironment(config, ""), "EDEN_UPDATE_TEST_PROCESS=recovered", "EDEN_UPDATE_TEST_MARKER="+marker)
@@ -103,7 +103,7 @@ func TestCandidateCreationFailureRestoresAndReopensOriginal(t *testing.T) {
 			}
 			var oldExit chan error
 			reopenErr := reopenRecovered(&backup, func() error {
-				if _, err := os.Stat(filepath.Join(originalBackup, "Eden.exe")); err != nil {
+				if _, err := os.Stat(filepath.Join(originalBackup, "ClaudeEden.exe")); err != nil {
 					t.Fatal("reopen lost its recovery snapshot", err)
 				}
 				var err error
@@ -114,7 +114,7 @@ func TestCandidateCreationFailureRestoresAndReopensOriginal(t *testing.T) {
 				if reopenErr == nil || old.Process != nil || oldExit != nil || backup != originalBackup {
 					t.Fatal("real old-process creation failure was not retained", reopenErr)
 				}
-				if actual, err := os.ReadFile(filepath.Join(backup, "Eden.exe")); err != nil || !bytes.Equal(actual, oldImage) {
+				if actual, err := os.ReadFile(filepath.Join(backup, "ClaudeEden.exe")); err != nil || !bytes.Equal(actual, oldImage) {
 					t.Fatal("failed relaunch discarded the original backup", err)
 				}
 			} else {
@@ -135,7 +135,7 @@ func TestCandidateCreationFailureRestoresAndReopensOriginal(t *testing.T) {
 				if err := readSmallJSON(marker, &reopened, 16384); err != nil {
 					t.Fatal("old application never reached its actual entry", err)
 				}
-				if !strings.EqualFold(reopened.Executable, filepath.Join(target, "Eden.exe")) || reopened.Config != config || reopened.Confirmation != "" {
+				if !strings.EqualFold(reopened.Executable, filepath.Join(target, "ClaudeEden.exe")) || reopened.Config != config || reopened.Confirmation != "" {
 					t.Fatal("recovery launched the wrong image/profile or inherited confirmation", reopened)
 				}
 				if backup != "" {

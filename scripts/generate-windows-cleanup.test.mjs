@@ -45,7 +45,7 @@ function fixture(t) {
   const app = path.join(directory, 'app 中文');
   mkdirSync(path.join(app, 'resources', 'licenses'), { recursive: true });
   for (const [name, text] of Object.entries({
-    'Eden.exe': 'fixture desktop, never executed',
+    'ClaudeEden.exe': 'fixture desktop, never executed',
     'resources/eden.exe': 'fixture backend, never executed',
     'resources/eden-install.exe': 'fixture installation helper inventory, never executed',
     'resources/licenses/LICENSE.txt': 'third-party attribution',
@@ -115,7 +115,7 @@ test('regeneration is deterministic and picks up added, removed and changed payl
   await generateWindowsCleanup(app);
   assert.deepEqual([guideName, manifestName].map(name => readFileSync(path.join(app, name), 'utf8')), before);
   writeFileSync(path.join(app, 'resources/new.txt'), 'new payload');
-  writeFileSync(path.join(app, 'Eden.exe'), 'updated fixture binary');
+  writeFileSync(path.join(app, 'ClaudeEden.exe'), 'updated fixture binary');
   rmSync(path.join(app, 'resources/licenses/LICENSE.txt'));
   await generateWindowsCleanup(app);
   const manifest = assertManifest(app);
@@ -138,7 +138,7 @@ test('moving a payload does not change the guide or manifest bytes', async t => 
 
 test('incomplete, ambiguous, invalid-version and installed/data-bearing input fails before modifying generated outputs', async t => {
   for (const mutate of [
-    app => rmSync(path.join(app, 'Eden.exe')),
+    app => rmSync(path.join(app, 'ClaudeEden.exe')),
     app => rmSync(path.join(app, 'Eden.install-id')),
     app => writeFileSync(path.join(app, 'Eden.install-id'), 'another application'),
     app => writeFileSync(path.join(app, 'Eden.client-id'), 'io.github.carterleealt.claude-eden-client'),
@@ -243,6 +243,6 @@ test('existing uninstall helper removes the hash-matching guide and retains a mo
     assert.equal(result.status, 0, `${shell}: ${result.stderr}`);
     assert.equal(existsSync(path.join(app, guideName)), modified);
     assert.equal(readFileSync(path.join(app, 'user-project.txt'), 'utf8'), 'keep user data');
-    assert.equal(existsSync(path.join(app, 'Eden.exe')), false);
+    assert.equal(existsSync(path.join(app, 'ClaudeEden.exe')), false);
   }
 });

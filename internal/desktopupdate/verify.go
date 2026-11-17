@@ -51,7 +51,7 @@ func verifyArchive(f *os.File, path, digest, version, publisher string) error {
 	if e != nil {
 		return e
 	}
-	if product != "Claude Eden" || v != version {
+	if product != "ClaudeEden" || v != version {
 		return errors.New("安装包产品身份或版本不匹配")
 	}
 	return nil

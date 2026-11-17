@@ -5,18 +5,22 @@ param(
     [Parameter(Mandatory, ParameterSetName = 'Matrix')][string]$Installer,
     [Parameter(Mandatory, ParameterSetName = 'Cleanup')][string]$CleanupReceipt,
     [Parameter(ParameterSetName = 'Matrix')][string]$ArtifactRoot,
-    [switch]$DisposableMachine
+    [switch]$DisposableMachine,
+    # Explicit authorization for the dedicated physical Windows 10 acceptance
+    # host. This must never be inferred from the machine model.
+    [switch]$ApprovedPhysicalMachine
 )
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $OutputEncoding = [Console]::OutputEncoding
 . (Join-Path $PSScriptRoot 'windows-common.ps1')
 if (-not $IsWindows) { throw 'Installation smoke tests must run on Windows.' }
-if ($env:GITHUB_ACTIONS -ne 'true' -and (-not $DisposableMachine -or $env:COMPUTERNAME -ne 'EDEN-WINTEST')) { throw 'Use the approved disposable Windows VM, or the Windows CI runner.' }
+if ($env:GITHUB_ACTIONS -ne 'true' -and !$ApprovedPhysicalMachine -and (-not $DisposableMachine -or $env:COMPUTERNAME -ne 'EDEN-WINTEST')) { throw 'Use the approved disposable Windows VM, the Windows CI runner, or -ApprovedPhysicalMachine on the dedicated physical acceptance host.' }
 if ([IntPtr]::Size -ne 8) { throw 'Run installation acceptance in 64-bit PowerShell.' }
 $computer = Get-CimInstance Win32_ComputerSystem
-if ($computer.Model -notmatch 'Virtual Machine|VMware|VirtualBox|KVM|QEMU|HVM domU|Parallels' -and $computer.Manufacturer -notmatch 'QEMU|VMware|innotek') { throw 'Refuse installation acceptance on a physical host.' }
-$desktopShortcut = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'Claude Eden.lnk'
-$startMenuDirectory = Join-Path ([Environment]::GetFolderPath('Programs')) 'Claude Eden'
+$virtualMachine = $computer.Model -match 'Virtual Machine|VMware|VirtualBox|KVM|QEMU|HVM domU|Parallels' -or $computer.Manufacturer -match 'QEMU|VMware|innotek'
+if (!$virtualMachine -and !$ApprovedPhysicalMachine) { throw 'Installation acceptance requires the approved VM or explicit -ApprovedPhysicalMachine authorization.' }
+$desktopShortcut = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'ClaudeEden.lnk'
+$startMenuDirectory = Join-Path ([Environment]::GetFolderPath('Programs')) 'ClaudeEden'
 $savedKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ClaudeEden'
 function Assert-InstallTestPath([string]$Path) {
     $absolute = [IO.Path]::GetFullPath($Path)
@@ -86,9 +90,9 @@ function Invoke-InstallTestProcess([string]$Executable, [string]$Arguments, [int
 }
 function Get-InstallTestShortcuts($Owned) {
     return @(
-        @{path=$Owned.desktop;target=(Join-Path $Owned.target 'Eden.exe')}
-        @{path=(Join-Path $Owned.startMenu 'Claude Eden.lnk');target=(Join-Path $Owned.target 'Eden.exe')}
-        @{path=(Join-Path $Owned.startMenu 'Uninstall Claude Eden.lnk');target=(Join-Path $Owned.target 'Uninstall.exe')}
+        @{path=$Owned.desktop;target=(Join-Path $Owned.target 'ClaudeEden.exe')}
+        @{path=(Join-Path $Owned.startMenu 'ClaudeEden.lnk');target=(Join-Path $Owned.target 'ClaudeEden.exe')}
+        @{path=(Join-Path $Owned.startMenu 'Uninstall ClaudeEden.lnk');target=(Join-Path $Owned.target 'Uninstall.exe')}
     )
 }
 function Assert-InstallTestRegistrationOwner($Owned) {
@@ -239,11 +243,11 @@ function Run-Installer {
 function Assert-Shortcuts {
     param([bool]$Desktop, [bool]$StartMenu)
     if ((Test-Path -LiteralPath $desktopShortcut) -ne $Desktop) { throw 'Desktop shortcut differs from the installer selection.' }
-    foreach ($name in @('Claude Eden.lnk', 'Uninstall Claude Eden.lnk')) {
+    foreach ($name in @('ClaudeEden.lnk', 'Uninstall ClaudeEden.lnk')) {
         if ((Test-Path -LiteralPath (Join-Path $startMenuDirectory $name)) -ne $StartMenu) { throw "Start menu shortcut differs from the installer selection: $name" }
     }
-    if ($Desktop -and (Get-InstallShortcutTarget $desktopShortcut) -ne (Join-Path $target 'Eden.exe')) { throw 'Desktop shortcut targets a different installation.' }
-    if ($StartMenu -and ((Get-InstallShortcutTarget (Join-Path $startMenuDirectory 'Claude Eden.lnk')) -ne (Join-Path $target 'Eden.exe') -or (Get-InstallShortcutTarget (Join-Path $startMenuDirectory 'Uninstall Claude Eden.lnk')) -ne (Join-Path $target 'Uninstall.exe'))) { throw 'Start menu shortcuts target a different installation.' }
+    if ($Desktop -and (Get-InstallShortcutTarget $desktopShortcut) -ne (Join-Path $target 'ClaudeEden.exe')) { throw 'Desktop shortcut targets a different installation.' }
+    if ($StartMenu -and ((Get-InstallShortcutTarget (Join-Path $startMenuDirectory 'ClaudeEden.lnk')) -ne (Join-Path $target 'ClaudeEden.exe') -or (Get-InstallShortcutTarget (Join-Path $startMenuDirectory 'Uninstall ClaudeEden.lnk')) -ne (Join-Path $target 'Uninstall.exe'))) { throw 'Start menu shortcuts target a different installation.' }
 }
 function Complete-InstallTestStep([string]$Name) {
     $results.Add(@{scenario=$Name;passed=$true;utc=[DateTime]::UtcNow.ToString('o')})
@@ -257,7 +261,7 @@ function Run-Uninstaller {
     if ($code -ne 0) { throw "Uninstaller returned $code." }
     $deadline = [DateTime]::UtcNow.AddSeconds(120)
     while (((Test-Path -LiteralPath (Join-Path $target 'Uninstall.exe')) -or (Test-Path -LiteralPath $savedKey)) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 200 }
-    if ((Test-Path -LiteralPath (Join-Path $target 'Eden.exe')) -or (Test-Path -LiteralPath (Join-Path $target 'Uninstall.exe')) -or (Test-Path -LiteralPath $savedKey)) { throw 'Uninstall left owned program files or registration.' }
+    if ((Test-Path -LiteralPath (Join-Path $target 'ClaudeEden.exe')) -or (Test-Path -LiteralPath (Join-Path $target 'Uninstall.exe')) -or (Test-Path -LiteralPath $savedKey)) { throw 'Uninstall left owned program files or registration.' }
     Assert-PersonalData
     Assert-Shortcuts $false $false
 }
@@ -284,7 +288,7 @@ try {
     Assert-Shortcuts $true $true
     Complete-InstallTestStep 'fresh-empty-directory'
 
-    if (-not (Test-Path -LiteralPath (Join-Path $target 'Eden.exe'))) { throw 'Installer did not create Eden.exe.' }
+    if (-not (Test-Path -LiteralPath (Join-Path $target 'ClaudeEden.exe'))) { throw 'Installer did not create ClaudeEden.exe.' }
     Invoke-BuildTool (Join-Path $target 'resources/eden.exe') @('--help')
     Invoke-BuildTool (Join-Path $target 'resources/eden.exe') @('verify-vm-assets')
     Invoke-BuildTool (Join-Path $target 'resources/eden.exe') @('verify-web-assets')
@@ -301,19 +305,19 @@ try {
     Complete-InstallTestStep 'initial-workbench-entry'
 
     # A locked installed executable must fail before replacing the installation.
-    $before = (Get-FileHash -LiteralPath (Join-Path $target 'Eden.exe') -Algorithm SHA256).Hash
-    $locked = [IO.File]::Open((Join-Path $target 'Eden.exe'), [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    $before = (Get-FileHash -LiteralPath (Join-Path $target 'ClaudeEden.exe') -Algorithm SHA256).Hash
+    $locked = [IO.File]::Open((Join-Path $target 'ClaudeEden.exe'), [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
     try { Run-Installer -Update -ExpectedExitCode 2 } finally { $locked.Dispose() }
     Assert-PersonalData
-    if ((Get-FileHash -LiteralPath (Join-Path $target 'Eden.exe') -Algorithm SHA256).Hash -ne $before) { throw 'Failed update replaced the existing application.' }
+    if ((Get-FileHash -LiteralPath (Join-Path $target 'ClaudeEden.exe') -Algorithm SHA256).Hash -ne $before) { throw 'Failed update replaced the existing application.' }
     Complete-InstallTestStep 'persistent-executable-lock'
 
-    $locked = [IO.File]::Open((Join-Path $target 'Eden.exe'), [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    $locked = [IO.File]::Open((Join-Path $target 'ClaudeEden.exe'), [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
     try { Run-Installer -Update -ReleaseOnDestinationCheck $locked } finally { $locked.Dispose() }
     Assert-PersonalData
     Complete-InstallTestStep 'transient-executable-lock'
 
-    $executablePath = Join-Path $target 'Eden.exe'
+    $executablePath = Join-Path $target 'ClaudeEden.exe'
     $attributes = [IO.File]::GetAttributes($executablePath)
     try {
         [IO.File]::SetAttributes($executablePath, $attributes -bor [IO.FileAttributes]::ReadOnly)

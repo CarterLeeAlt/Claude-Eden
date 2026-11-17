@@ -39,7 +39,7 @@ func TestDownloadLocationPolicy(t *testing.T) {
 	if got, e := DownloadPath(good, root); e != nil || got != good {
 		t.Fatal(got, e)
 	}
-	for _, bad := range []string{"", "Eden-setup.exe", filepath.Join(root+"-other", "download-abc", "Eden-setup.exe"), filepath.Join(root, "verified-abc", "Eden-setup.exe"), filepath.Join(root, "download-abc", "nested", "Eden-setup.exe"), filepath.Join(root, "download-abc", "Eden.exe"), filepath.Join(root, "download-abc", "eden-setup.exe")} {
+	for _, bad := range []string{"", "Eden-setup.exe", filepath.Join(root+"-other", "download-abc", "Eden-setup.exe"), filepath.Join(root, "verified-abc", "Eden-setup.exe"), filepath.Join(root, "download-abc", "nested", "Eden-setup.exe"), filepath.Join(root, "download-abc", "ClaudeEden.exe"), filepath.Join(root, "download-abc", "eden-setup.exe")} {
 		if _, e := DownloadPath(bad, root); e == nil {
 			t.Errorf("accepted %q", bad)
 		}
@@ -65,7 +65,7 @@ func (b *fakeBackend) count() int { b.mu.Lock(); defer b.mu.Unlock(); return b.c
 func testUpdater(t *testing.T, b Backend, changed func(State)) *Updater {
 	t.Helper()
 	root := t.TempDir()
-	u, e := New(Config{Root: filepath.Join(root, "updates"), Target: filepath.Join(root, "installed"), Executable: filepath.Join(root, "installed", "Eden.exe"), Version: "0.1.0", ConfigPath: filepath.Join(root, "config.json"), Backend: b, Changed: changed})
+	u, e := New(Config{Root: filepath.Join(root, "updates"), Target: filepath.Join(root, "installed"), Executable: filepath.Join(root, "installed", "ClaudeEden.exe"), Version: "0.1.0", ConfigPath: filepath.Join(root, "config.json"), Backend: b, Changed: changed})
 	if e != nil {
 		t.Fatal(e)
 	}

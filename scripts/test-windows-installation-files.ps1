@@ -83,8 +83,8 @@ function Test-InstallerTransaction {
         throw 'Installer acceptance is restricted to the approved existing Windows VM. Refusing this physical host.'
     }
     $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ClaudeEden'
-    $desktop = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'Claude Eden.lnk'
-    $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Claude Eden'
+    $desktop = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'ClaudeEden.lnk'
+    $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'ClaudeEden'
     if ((Test-Path $key) -or (Test-Path -LiteralPath $desktop) -or (Test-Path -LiteralPath $menu)) { throw 'The NSIS fixture refuses an existing Claude Eden registration or shortcuts.' }
     $runtime = $false
     foreach ($hive in @([Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryHive]::CurrentUser)) {
