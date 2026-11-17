@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sylvinus/agent-vm/internal/hostimage"
+	"github.com/sylvinus/agent-vm/internal/vmname"
 )
 
 // Installation persists the media choice and private instance identity.
@@ -175,7 +176,7 @@ func FinishLinuxInstallation(profile string, id uuid.UUID) error {
 // UnstartedInstallation reports whether base disk creation has not begun.
 // A partial VM counts as started and must keep its original media binding.
 func UnstartedInstallation(profile string, i Installation) (bool, error) {
-	paths := []string{filepath.Join("state", "lima", "base-building"), filepath.Join("state", "lima", "base")}
+	paths := []string{filepath.Join("state", "lima", vmname.Building), filepath.Join("state", "lima", vmname.Template)}
 	for _, rel := range paths {
 		_, err := os.Lstat(filepath.Join(profile, rel))
 		if err == nil {

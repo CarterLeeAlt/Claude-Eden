@@ -28,11 +28,16 @@ func windowsApplicationDataDirectory(app, platform string) string {
 	if platform != "windows" {
 		return ""
 	}
+	if marker, err := os.Stat(filepath.Join(app, "portable.flag")); err == nil && marker.Mode().IsRegular() {
+		if launcher, err := os.Stat(filepath.Join(app, "ClaudeEden.exe")); err == nil && launcher.Mode().IsRegular() {
+			return filepath.Join(app, "data", "environment")
+		}
+	}
 	marker, err := os.ReadFile(filepath.Join(app, "Eden.install-id"))
 	if err != nil || string(marker) != "io.github.carterleealt.claude-eden" {
 		return ""
 	}
-	if info, err := os.Stat(filepath.Join(app, "Eden.exe")); err != nil || !info.Mode().IsRegular() {
+	if info, err := os.Stat(filepath.Join(app, "ClaudeEden.exe")); err != nil || !info.Mode().IsRegular() {
 		return ""
 	}
 	return filepath.Join(app, "EdenData")

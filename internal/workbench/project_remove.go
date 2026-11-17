@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"os"
-	"path/filepath"
 	"slices"
 )
 
@@ -59,13 +57,8 @@ func (s *Server) removeProject(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	var saved sharedProjects
-	filename := filepath.Join(s.profile, "projects.json")
-	data, err := os.ReadFile(filename)
-	if err == nil {
-		err = json.Unmarshal(data, &saved)
-	}
-	if err != nil && !os.IsNotExist(err) {
+	saved, err := s.readSharedProjects()
+	if err != nil {
 		requestError(w, err)
 		return
 	}
@@ -74,7 +67,7 @@ func (s *Server) removeProject(w http.ResponseWriter, r *http.Request) {
 		// later write fails, a retry can still find and remove this project.
 		if !slices.Contains(saved.Paths, preferences.Workspace) {
 			saved.Paths = append(saved.Paths, preferences.Workspace)
-			if err = writePrivate(filename, saved); err != nil {
+			if err = s.saveSharedProjects(saved); err != nil {
 				requestError(w, err)
 				return
 			}
@@ -86,7 +79,7 @@ func (s *Server) removeProject(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 		}
-		if err = writePrivate(filepath.Join(s.profile, "workbench.json"), preferences); err != nil {
+		if err = savePreferences(s.profile, preferences); err != nil {
 			requestError(w, err)
 			return
 		}
@@ -97,7 +90,7 @@ func (s *Server) removeProject(w http.ResponseWriter, r *http.Request) {
 	deleteProject := func(value string) bool { return slices.Contains(folders, value) }
 	saved.Paths = slices.DeleteFunc(saved.Paths, deleteProject)
 	saved.Groups = slices.DeleteFunc(saved.Groups, func(g projectGroup) bool { return slices.Contains(folders, g.Workspace) })
-	if err = writePrivate(filename, saved); err != nil {
+	if err = s.saveSharedProjects(saved); err != nil {
 		requestError(w, err)
 		return
 	}
@@ -184,7 +177,7 @@ func (s *Server) replaceRemovedWorkspace(removed []string, replacement string) e
 		return nil
 	}
 	preferences.Workspace = replacement
-	if err := writePrivate(filepath.Join(s.profile, "workbench.json"), preferences); err != nil {
+	if err := savePreferences(s.profile, preferences); err != nil {
 		return err
 	}
 	s.mu.Lock()

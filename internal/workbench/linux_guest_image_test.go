@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/sylvinus/agent-vm/internal/guestos"
 	"github.com/sylvinus/agent-vm/internal/hostimage"
+	"github.com/sylvinus/agent-vm/internal/vmname"
 )
 
 func TestDebianGuestChoicesMatchSupportedHostArchitectures(t *testing.T) {
@@ -55,7 +56,7 @@ func TestDebianCatalogPlanPreservesArchitectureAndResumeChoice(t *testing.T) {
 	if err != nil || view.Pending == nil || view.Pending.Source != plan || !view.Fresh {
 		t.Fatalf("cross-host resume: %+v %v", view, err)
 	}
-	if err := os.MkdirAll(filepath.Join(s.profile, "state", "lima", "base-building"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(s.profile, "state", "lima", vmname.Building), 0700); err != nil {
 		t.Fatal(err)
 	}
 	view, err = s.guestInstallView()
@@ -121,9 +122,9 @@ func TestInstalledGuestSystemMatchesExistingEnvironment(t *testing.T) {
 		{name: "fresh"},
 		{name: "downloaded Debian", material: true},
 		{name: "pending Debian", material: true, pending: true},
-		{name: "partial Debian", instance: "base-building", system: "debian-13"},
+		{name: "partial Debian", instance: vmname.Building, system: "debian-13"},
 		{name: "installed Debian", instance: "base", system: "debian-13"},
-		{name: "partial bound Debian", instance: "base-building", material: true, pending: true, system: "debian-13"},
+		{name: "partial bound Debian", instance: vmname.Building, material: true, pending: true, system: "debian-13"},
 		{name: "installed bound Debian", instance: "base", material: true, system: "debian-13"},
 		{name: "damaged Debian", instance: "base", material: true, corrupt: true},
 	} {

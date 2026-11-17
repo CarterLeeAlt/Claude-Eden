@@ -124,12 +124,9 @@ func (s *Server) proxyMutation(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &input, 768<<10) {
 		return
 	}
-	s.mu.Lock()
-	pauseVersion := s.safety.pauseVersion
-	s.mu.Unlock()
-	s.launch(w, "proxy", func() error { return s.changeProxy(action, input, &pauseVersion) })
+	s.launch(w, "proxy", func() error { return s.changeProxy(action, input) })
 }
-func (s *Server) changeProxy(action string, in proxyInput, resumeVersion *uint64) error {
+func (s *Server) changeProxy(action string, in proxyInput) error {
 	p, err := managedproxy.Load(s.profile)
 	if err != nil {
 		return err
@@ -158,7 +155,7 @@ func (s *Server) changeProxy(action string, in proxyInput, resumeVersion *uint64
 			}
 			p.Port = in.Port
 		}
-		return s.applyProxy(p, cfg, resumeVersion, action != "restart")
+		return s.applyProxy(p, cfg, action != "restart")
 	}
 	index := slices.IndexFunc(p.Nodes, func(n managedproxy.Node) bool { return n.ID == in.NodeID })
 	if action == "delete" {
@@ -201,7 +198,7 @@ func (s *Server) changeProxy(action string, in proxyInput, resumeVersion *uint64
 	}
 	if action == "edit" && node.ID == p.Selected && cfg.ProxyRevision != "" && cfg.ProxyURL == p.Endpoint() {
 		// Editing the active node revalidates its route but preserves a manual pause.
-		return s.applyProxy(p, cfg, nil, false)
+		return s.applyProxy(p, cfg, false)
 	}
 	s.setMessage("节点已保存；选择节点并应用代理后生效")
 	return p.Save(s.profile)
@@ -216,10 +213,10 @@ func (s *Server) closeProxyGate(reason string) error {
 func (s *Server) activateProxy(p managedproxy.Store, old eden.Config) (returned error) {
 	// The explicit start operation already requested networking. A pause made
 	// after that request must survive any core recovery within the start.
-	return s.applyProxy(p, old, nil, false)
+	return s.applyProxy(p, old, false)
 }
 
-func (s *Server) applyProxy(p managedproxy.Store, old eden.Config, resumeVersion *uint64, selectExit bool) (returned error) {
+func (s *Server) applyProxy(p managedproxy.Store, old eden.Config, selectExit bool) (returned error) {
 	ctx := s.operationContext()
 	previous, err := managedproxy.Load(s.profile)
 	if err != nil {
@@ -266,14 +263,10 @@ func (s *Server) applyProxy(p managedproxy.Store, old eden.Config, resumeVersion
 		return err
 	}
 	committed = true
-	if resumeVersion != nil {
-		if err := s.resumeNetworkIntentAt(*resumeVersion); err != nil {
-			return err
-		}
-	}
 	s.mu.Lock()
-	// Only a user request may resume networking, and a later pause wins even
-	// when it arrived while node validation or core startup was pending.
+	// Applying or restarting a node changes the route, not the user's pause
+	// intent. Only an explicit network check/start may resume that intent;
+	// pauses made before or during this operation must both survive.
 	paused := s.networkPaused
 	s.exitProbeError = ""
 	s.locationError = ""

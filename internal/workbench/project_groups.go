@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/sylvinus/agent-vm/internal/eden"
 )
 
 // Workspace is the stable default directory and preserves transcript identity.
@@ -27,6 +29,28 @@ func (s *Server) readSharedProjects() (sharedProjects, error) {
 	}
 	if err == nil {
 		err = json.Unmarshal(data, &saved)
+	}
+	if err != nil {
+		return saved, err
+	}
+	for i, path := range saved.Paths {
+		saved.Paths[i], err = eden.ResolvePortablePath(s.profile, path)
+		if err != nil {
+			return saved, err
+		}
+	}
+	for i := range saved.Groups {
+		group := &saved.Groups[i]
+		group.Workspace, err = eden.ResolvePortablePath(s.profile, group.Workspace)
+		if err != nil {
+			return saved, err
+		}
+		for j, path := range group.Folders {
+			group.Folders[j], err = eden.ResolvePortablePath(s.profile, path)
+			if err != nil {
+				return saved, err
+			}
+		}
 	}
 	return saved, err
 }
@@ -252,7 +276,7 @@ func (s *Server) saveProject(w http.ResponseWriter, r *http.Request) {
 		requestError(w, err)
 		return
 	}
-	if err := writePrivate(filepath.Join(s.profile, "projects.json"), saved); err != nil {
+	if err := s.saveSharedProjects(saved); err != nil {
 		requestError(w, err)
 		return
 	}

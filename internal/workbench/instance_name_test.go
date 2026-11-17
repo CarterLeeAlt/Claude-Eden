@@ -59,6 +59,12 @@ func TestControllerNamesMatchCLIForIndependentProfiles(t *testing.T) {
 	an, bn := cliName(a), cliName(b)
 	wantA := vmname.HomeLimit(filepath.Join(a.profile, "state", "lima"), false).Name(workspace)
 	wantB := vmname.HomeLimit(filepath.Join(b.profile, "state", "lima"), false).Name(workspace)
+	if vmname.HomeLimit(filepath.Join(a.profile, "state", "lima"), false) < 10 {
+		wantA = "work"
+	}
+	if vmname.HomeLimit(filepath.Join(b.profile, "state", "lima"), false) < 10 {
+		wantB = "work"
+	}
 	if an != wantA || bn != wantB {
 		t.Fatalf("CLI names differ from their profile budgets: %q != %q, %q != %q", an, wantA, bn, wantB)
 	}
@@ -105,7 +111,13 @@ func TestControllerNamesMatchCLIForIndependentProfiles(t *testing.T) {
 	if err = os.WriteFile(filepath.Join(dir, "lima.yaml"), []byte("{}"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if got := cliName(b); got != old || b.sshTarget() != "lima-"+old {
-		t.Fatalf("existing disk %s not reused; CLI picked %s", old, got)
+	expected := old
+	if bn == "work" {
+		// New low-budget profiles have one fixed environment, not an
+		// undersized hash or an automatic legacy-path compatibility mapping.
+		expected = bn
+	}
+	if got := cliName(b); got != expected || b.sshTarget() != "lima-"+expected {
+		t.Fatalf("existing path selection differs: want %s, CLI picked %s", expected, got)
 	}
 }

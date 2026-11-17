@@ -38,7 +38,7 @@ func TestProxySelectionKeepsExitBindingsWithTheirNodes(t *testing.T) {
 	}
 	selectNode := func(id string) eden.Config {
 		t.Helper()
-		if err := s.changeProxy("select", proxyInput{NodeID: id}, nil); err != nil {
+		if err := s.changeProxy("select", proxyInput{NodeID: id}); err != nil {
 			t.Fatal(err)
 		}
 		got, err := loadConfig(s.configPath)
@@ -66,7 +66,7 @@ func TestProxySelectionKeepsExitBindingsWithTheirNodes(t *testing.T) {
 	if got := selectNode(first); got.ExitPolicy.IP != "1.1.1.1" {
 		t.Fatalf("return to first exit lost binding: %+v", got.ExitPolicy)
 	}
-	if err := s.changeProxy("restart", proxyInput{}, nil); err != nil {
+	if err := s.changeProxy("restart", proxyInput{}); err != nil {
 		t.Fatal(err)
 	}
 	cfg, _ = loadConfig(s.configPath)
@@ -74,7 +74,7 @@ func TestProxySelectionKeepsExitBindingsWithTheirNodes(t *testing.T) {
 		t.Fatal("core restart reset exit binding")
 	}
 	fail = true
-	if err := s.changeProxy("select", proxyInput{NodeID: second}, nil); err == nil {
+	if err := s.changeProxy("select", proxyInput{NodeID: second}); err == nil {
 		t.Fatal("failed startup accepted")
 	}
 	cfg, _ = loadConfig(s.configPath)

@@ -21,6 +21,7 @@ import (
 	"github.com/sylvinus/agent-vm/internal/host"
 	"github.com/sylvinus/agent-vm/internal/hostimage"
 	"github.com/sylvinus/agent-vm/internal/managedproxy"
+	"github.com/sylvinus/agent-vm/internal/vmname"
 )
 
 var loadConfig = eden.Load
@@ -456,8 +457,8 @@ func (s *Server) stopEnvironment() (returned error) {
 		}
 	}()
 	s.setMessage("正在停止 Claude Eden 环境…")
-	if (explicitStop || s.jobs.snapshot().Kind == "storage") && eden.InstanceJobID(filepath.Join(s.profile, "state"), "base-building") != "" {
-		if err := s.runEden("stop", "--keep-proxy", "base-building"); err != nil {
+	if (explicitStop || s.jobs.snapshot().Kind == "storage") && eden.InstanceJobID(filepath.Join(s.profile, "state"), vmname.Building) != "" {
+		if err := s.runEden("stop", "--keep-proxy", vmname.Building); err != nil {
 			return err
 		}
 	}
@@ -556,7 +557,7 @@ func (s *Server) apply(v savedProfile, validate bool) error {
 	if err != nil {
 		return err
 	}
-	if err = writePrivate(filepath.Join(s.profile, "workbench.json"), v.Preferences); err != nil {
+	if err = savePreferences(s.profile, v.Preferences); err != nil {
 		_ = writePrivate(s.configPath, old)
 		return err
 	}

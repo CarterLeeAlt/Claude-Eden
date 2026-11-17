@@ -14,6 +14,7 @@ import (
 type EnvironmentRecord struct {
 	Directory         string `json:"directory"`
 	IdentityDirectory string `json:"identity_directory,omitempty"`
+	Portable          bool   `json:"portable,omitempty"`
 }
 
 func LoadEnvironmentRecord(profile string) (EnvironmentRecord, error) {
@@ -25,7 +26,22 @@ func LoadEnvironmentRecord(profile string) (EnvironmentRecord, error) {
 	if err != nil {
 		return saved, err
 	}
-	if json.Unmarshal(data, &saved) != nil || !filepath.IsAbs(saved.Directory) ||
+	if json.Unmarshal(data, &saved) != nil {
+		return saved, errors.New("环境工作目录记录无效，请保留原配置并导出诊断记录")
+	}
+	if saved.Portable {
+		root := PortableDataDirectory(profile)
+		if root == "" || saved.IdentityDirectory != "" {
+			return saved, errors.New("便携环境记录必须位于随包 data/profile 内")
+		}
+		resolved, err := portableRelativePath(root, saved.Directory)
+		if err != nil {
+			return saved, err
+		}
+		saved.Directory = resolved
+		return saved, nil
+	}
+	if !filepath.IsAbs(saved.Directory) ||
 		saved.IdentityDirectory != "" && !filepath.IsAbs(saved.IdentityDirectory) {
 		return saved, errors.New("环境工作目录记录无效，请保留原配置并导出诊断记录")
 	}
@@ -69,6 +85,31 @@ func EnvironmentIdentityDir(profile string) string {
 // InstanceName is shared by the controller and each Eden CLI subprocess.
 // It uses the same spelling as the CLI's AbsDir, including Windows drives.
 func InstanceName(profile, workspace string) string {
+	// There is exactly one work environment per portable profile. Its identity
+	// must not change when the application moves to a different drive or user.
+	if PortableDataDirectory(profile) != "" {
+		// Keep an already-created disk's directory name as its portable ID.
+		// Never derive a replacement ID from the new installation path.
+		home := filepath.Join(profile, "state", "lima")
+		entries, _ := os.ReadDir(home)
+		name := ""
+		for _, entry := range entries {
+			if !entry.IsDir() || entry.Name() == "base" || entry.Name() == "build" || strings.HasPrefix(entry.Name(), "_") {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(home, entry.Name(), "lima.yaml")); err != nil {
+				continue
+			}
+			if name != "" {
+				return "work"
+			}
+			name = entry.Name()
+		}
+		if name != "" {
+			return name
+		}
+		return "work"
+	}
 	if saved, err := LoadEnvironmentRecord(profile); err == nil && saved.IdentityDirectory != "" &&
 		paths.Equal(paths.Host(filepath.Clean(workspace)), paths.Host(filepath.Clean(saved.Directory))) {
 		workspace = saved.IdentityDirectory
@@ -82,7 +123,15 @@ func InstanceName(profile, workspace string) string {
 		}
 	}
 	dir := paths.Host(filepath.Clean(workspace))
-	expected := vmname.HomeLimit(home, logical).Name(dir)
+	limit := vmname.HomeLimit(home, logical)
+	// A hashed project name needs at least one prefix byte plus nine suffix
+	// bytes. Eden owns only one environment per profile, so a fixed short
+	// name is unambiguous when that minimum does not fit. Never truncate the
+	// hash or pretend the socket limit can hold a ten-byte name.
+	if limit < 10 {
+		return "work"
+	}
+	expected := limit.Name(dir)
 	if _, err := os.Stat(filepath.Join(home, expected)); err == nil {
 		return expected
 	}

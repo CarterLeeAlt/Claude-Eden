@@ -52,7 +52,6 @@ const (
 	SerialPCISock           = "serialp.sock"
 	SerialVirtioLog         = "serialv.log" // virtio serial
 	SerialVirtioSock        = "serialv.sock"
-	SSHSock                 = "ssh.sock"
 	SSHConfig               = "ssh.config"
 	VhostSock               = "virtiofsd-%d.sock"
 	VNCDisplayFile          = "vncdisplay"
@@ -111,6 +110,7 @@ func PIDFile(name string) string {
 // SkipOnClone files should be skipped on cloning an instance.
 var SkipOnClone = []string{
 	Protected,
+	SSHSock,  // Windows uses a compact name without the .sock suffix.
 	SwtpmDir, // TPM state must not be shared between instances.
 }
 

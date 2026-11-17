@@ -68,6 +68,13 @@ func loadLocalAccount(profile string) (*localAccount, error) {
 	a := &localAccount{path: filepath.Join(profile, "account.json")}
 	b, err := os.ReadFile(a.path)
 	if os.IsNotExist(err) {
+		// Accountless installs still need a stable private data key for the
+		// browser vault and Claude Desktop keyring, without a password prompt.
+		key, err := loadAccountlessKey(profile)
+		if err != nil {
+			return nil, err
+		}
+		a.setKey(key)
 		return a, nil
 	}
 	if err != nil {
@@ -93,6 +100,36 @@ func loadLocalAccount(profile string) (*localAccount, error) {
 		}
 	}
 	return a, nil
+}
+
+const accountlessKeyFile = "local-data-key.json"
+
+func loadAccountlessKey(profile string) ([]byte, error) {
+	path := filepath.Join(profile, accountlessKeyFile)
+	if err := host.CheckPrivateFile(path); err != nil {
+		if !os.IsNotExist(err) {
+			return nil, errors.New("本地数据密钥权限无效，请保留配置并检查私有文件权限")
+		}
+		key := make([]byte, 32)
+		if _, err := rand.Read(key); err != nil {
+			return nil, err
+		}
+		if err := writePrivate(path, key); err != nil {
+			clear(key)
+			return nil, errors.New("本地数据密钥未能保存，请检查配置目录")
+		}
+		return key, nil
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, errors.New("无法读取本地数据密钥，请保留现有配置")
+	}
+	var key []byte
+	if len(b) > 256 || json.Unmarshal(b, &key) != nil || len(key) != 32 {
+		clear(key)
+		return nil, errors.New("本地数据密钥损坏，请保留配置并从备份恢复")
+	}
+	return key, nil
 }
 
 func validAccountName(name string) error {
@@ -155,7 +192,7 @@ func (a *localAccount) viewFor(desktop bool) accountView {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	v := accountView{Exists: a.record != nil, Unlocked: len(a.key) == 32 && (!a.trustedSession || desktop)}
+	v := accountView{Exists: a.record != nil, Unlocked: a.record == nil || (len(a.key) == 32 && (!a.trustedSession || desktop))}
 	v.DeviceBinding = fmtAccountBinding(a.path)
 	if a.record != nil {
 		v.RecoveryReady = a.record.Recovery != nil
@@ -180,7 +217,7 @@ func (a *localAccount) accessFor(desktop bool) (context.Context, bool) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.epoch, len(a.key) == 32 && (!a.trustedSession || desktop)
+	return a.epoch, a.record == nil || (len(a.key) == 32 && (!a.trustedSession || desktop))
 }
 
 func (a *localAccount) setKey(key []byte) {
@@ -208,6 +245,19 @@ func (a *localAccount) lock() {
 	a.key = nil
 }
 
+func (a *localAccount) suspend() {
+	a.mu.Lock()
+	if a.record == nil && len(a.key) == 32 {
+		// Accountless mode has no password to unlock later. Revoke the old
+		// view epoch/lease while retaining the persistent data key for reentry.
+		a.setKey(append([]byte(nil), a.key...))
+		a.mu.Unlock()
+		return
+	}
+	a.mu.Unlock()
+	a.lock()
+}
+
 func (a *localAccount) create(name, password, avatar string) error {
 	_, err := a.createAccount(name, password, avatar)
 	return err
@@ -231,7 +281,9 @@ func (a *localAccount) createAccount(name, password, avatar string) (string, err
 		return "", errors.New("此配置已创建本地账户，请登录")
 	}
 	key := make([]byte, 32)
-	if _, err = rand.Read(key); err != nil {
+	if len(a.key) == 32 {
+		copy(key, a.key)
+	} else if _, err = rand.Read(key); err != nil {
 		return "", err
 	}
 	defer clear(key)
@@ -248,6 +300,9 @@ func (a *localAccount) createAccount(name, password, avatar string) (string, err
 	}
 	a.record = record
 	a.setKey(append([]byte(nil), key...))
+	if err := os.Remove(filepath.Join(filepath.Dir(a.path), accountlessKeyFile)); err != nil && !os.IsNotExist(err) {
+		return "", errors.New("账户已保存，但未能移除免密码数据密钥，请检查配置目录权限")
+	}
 	return recoveryKey, nil
 }
 

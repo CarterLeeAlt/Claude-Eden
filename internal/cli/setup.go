@@ -385,7 +385,7 @@ func (e *app) askCodeExtensions(in install) {
 
 // building is the VM the new base is built as. The base that is there keeps
 // serving the starts, with its markers, until the new one is complete.
-const building = vmname.Template + "-building"
+const building = vmname.Building
 
 // buildBase makes the base template: built as `building` (created, booted,
 // provisioned by the setup script and the user's, stopped), then swapped in

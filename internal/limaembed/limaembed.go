@@ -99,7 +99,7 @@ func Run(args []string) bool {
 		usernet.Names, usernet.Answered = nil, nil
 		dns.Names, dns.Answered = nil, nil
 		name := args[len(args)-1]
-		if name == vmname.Template+"-building" {
+		if name == vmname.Building {
 			// The base builder installs trusted tooling before any project is
 			// mounted. Project VMs always start with the external gate closed.
 			egress, err := eden.NewEgress(cfg)

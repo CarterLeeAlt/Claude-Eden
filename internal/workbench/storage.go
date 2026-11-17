@@ -103,7 +103,7 @@ func (s *Server) environmentStorage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		suggested := ""
-		if !location.Custom && !location.HasEnvironment {
+		if !location.Portable && !location.Custom && !location.HasEnvironment {
 			initialization, err := s.initializationState()
 			if err != nil {
 				requestError(w, err)

@@ -4,8 +4,40 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestWindowsControlSocketFitsWorkspaceTempAndRejectsLongPaths(t *testing.T) {
+	profile := t.TempDir()
+	temporary := os.TempDir()
+	s, err := Load(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Nodes = []Node{{ID: Token()[:24], Name: "test", Type: "http", Server: "127.0.0.1", Port: 1080}}
+	s.Selected = s.Nodes[0].ID
+	socket := Socket(profile)
+	if filepath.Dir(filepath.Dir(socket)) != filepath.Clean(temporary) || Socket(profile) != socket || Socket(filepath.Join(profile, "other")) == socket {
+		t.Fatal("socket no longer stays in a profile-specific workspace temp directory")
+	}
+	if len(socket) >= 108 {
+		t.Fatalf("workspace socket exceeds AF_UNIX limit: %d bytes", len(socket))
+	}
+	if _, err := s.Runtime(profile); err != nil {
+		t.Fatal(err)
+	}
+	// This is a string-only invalid configuration, not a real write target.
+	longTemp := filepath.Join(temporary, strings.Repeat("long", 40))
+	t.Setenv("TMP", longTemp)
+	t.Setenv("TEMP", longTemp)
+	if _, err := s.Runtime(profile); err == nil || !strings.Contains(err.Error(), "107") {
+		t.Fatalf("long socket was not rejected before writes: %v", err)
+	}
+	if _, err := os.Stat(longTemp); !os.IsNotExist(err) {
+		t.Fatalf("invalid temp path was created or inaccessible: %v", err)
+	}
+}
 
 // A PID reused after a reboot must neither be terminated nor block startup.
 func TestStopWindowsCoreForgetsReusedPID(t *testing.T) {

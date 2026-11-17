@@ -3,10 +3,35 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	agentvm "github.com/sylvinus/agent-vm"
 )
+
+func TestPortableEnvironmentFollowsExecutableDriveAndDirectory(t *testing.T) {
+	// Windows path strings only: these paths are never created or written.
+	for _, root := range []string{`C:\Apps\ClaudeEden`, `D:\便携 软件\ClaudeEden`, `Z:\OtherUser\Moved App`} {
+		values := portableEnvironment(root)
+		data := filepath.Join(root, "data")
+		for name, value := range values {
+			if name == "HOMEDRIVE" || name == "HOMEPATH" {
+				continue
+			}
+			rel, err := filepath.Rel(data, value)
+			if err != nil || !filepath.IsLocal(rel) {
+				t.Fatalf("%s escaped the executable-relative data root: %q", name, value)
+			}
+			if root[0] != 'C' && strings.HasPrefix(value, "C:") {
+				t.Fatalf("%s kept the previous drive: %q", name, value)
+			}
+		}
+		if values["HOMEDRIVE"]+values["HOMEPATH"] != values["USERPROFILE"] {
+			t.Fatal("split Windows home still refers to a different user or drive")
+		}
+	}
+}
 
 // Resource wiring is a byte-only check. Do not start Wails or register fonts
 // from ordinary host tests; GDI and actual controls are verified in the VM.

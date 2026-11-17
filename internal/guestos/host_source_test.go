@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sylvinus/agent-vm/internal/hostimage"
+	"github.com/sylvinus/agent-vm/internal/vmname"
 )
 
 func TestHostSourcePublishesOneVerifiedMediaReceipt(t *testing.T) {
@@ -54,7 +55,7 @@ func TestHostSourcePublishesOneVerifiedMediaReceipt(t *testing.T) {
 }
 
 func TestLinuxInstallationKeepsItsChoiceAfterBaseInstallation(t *testing.T) {
-	for _, name := range []string{"base-building", "base"} {
+	for _, name := range []string{vmname.Building, vmname.Template} {
 		t.Run(name, func(t *testing.T) {
 			profile := t.TempDir()
 			install := Installation{

@@ -13,7 +13,48 @@ import (
 	"github.com/sylvinus/agent-vm/internal/version"
 )
 
-func main() { os.Exit(run(os.Args[1:])) }
+func main() {
+	configurePortableEnvironment()
+	os.Exit(run(os.Args[1:]))
+}
+
+func configurePortableEnvironment() {
+	executable, err := os.Executable()
+	if err != nil {
+		return
+	}
+	root := filepath.Dir(executable)
+	if _, err = os.Stat(filepath.Join(root, "portable.flag")); err != nil {
+		return
+	}
+	for name, value := range portableEnvironment(root) {
+		_ = os.Setenv(name, value)
+	}
+}
+
+func portableEnvironment(root string) map[string]string {
+	data := filepath.Join(root, "data")
+	user := filepath.Join(data, "user")
+	return map[string]string{
+		"EDEN_CONFIG":            filepath.Join(data, "profile", "config.json"),
+		"AGENT_VM_STATE_DIR":     filepath.Join(data, "state"),
+		"AGENT_VM_LIMA_HOME":     filepath.Join(data, "state", "lima"),
+		"EDEN_LOGICAL_LIMA_HOME": filepath.Join(data, "state", "lima"),
+		"LIMA_HOME":              filepath.Join(data, "state", "lima"),
+		"HOME":                   user,
+		"USERPROFILE":            user,
+		"HOMEDRIVE":              filepath.VolumeName(user),
+		"HOMEPATH":               user[len(filepath.VolumeName(user)):],
+		"APPDATA":                filepath.Join(user, "AppData", "Roaming"),
+		"LOCALAPPDATA":           filepath.Join(user, "AppData", "Local"),
+		"XDG_CONFIG_HOME":        filepath.Join(user, ".config"),
+		"XDG_CACHE_HOME":         filepath.Join(user, ".cache"),
+		"XDG_DATA_HOME":          filepath.Join(user, ".local", "share"),
+		"TEMP":                   filepath.Join(data, "temp"),
+		"TMP":                    filepath.Join(data, "temp"),
+		"TMPDIR":                 filepath.Join(data, "temp"),
+	}
+}
 
 func run(args []string) int {
 	options := desktopAssets()
@@ -95,7 +136,7 @@ func run(args []string) int {
 	if len(args) == 2 && args[0] == "--smoke-test" && filepath.IsAbs(args[1]) {
 		smoke = args[1]
 	} else if len(args) != 0 {
-		fmt.Fprintln(os.Stderr, "usage: Eden.exe [--smoke-test <absolute-result.json> | --native-self-test <output-directory> | --native-input-self-test <output-directory> | --native-startup-self-test <output-directory> <scenario> | --install-update]")
+		fmt.Fprintln(os.Stderr, "usage: ClaudeEden.exe [--smoke-test <absolute-result.json> | --native-self-test <output-directory> | --native-input-self-test <output-directory> | --native-startup-self-test <output-directory> <scenario> | --install-update]")
 		return 2
 	}
 	var shell *desktop.Shell

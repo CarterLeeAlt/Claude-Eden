@@ -1,0 +1,45 @@
+diff --git a/pkg/limatype/filenames/filenames.go b/pkg/limatype/filenames/filenames.go
+--- a/pkg/limatype/filenames/filenames.go
++++ b/pkg/limatype/filenames/filenames.go
+@@ -52,7 +52,6 @@ const (
+ 	SerialPCISock           = "serialp.sock"
+ 	SerialVirtioLog         = "serialv.log" // virtio serial
+ 	SerialVirtioSock        = "serialv.sock"
+-	SSHSock                 = "ssh.sock"
+ 	SSHConfig               = "ssh.config"
+ 	VhostSock               = "virtiofsd-%d.sock"
+ 	VNCDisplayFile          = "vncdisplay"
+@@ -111,6 +110,7 @@ func PIDFile(name string) string {
+ // SkipOnClone files should be skipped on cloning an instance.
+ var SkipOnClone = []string{
+ 	Protected,
++	SSHSock,  // Windows uses a compact name without the .sock suffix.
+ 	SwtpmDir, // TPM state must not be shared between instances.
+ }
+ 
+diff --git a/pkg/limatype/filenames/ssh_socket_windows.go b/pkg/limatype/filenames/ssh_socket_windows.go
+new file mode 100644
+--- /dev/null
++++ b/pkg/limatype/filenames/ssh_socket_windows.go
+@@ -0,0 +1,8 @@
++// SPDX-FileCopyrightText: Copyright The Lima Authors
++// SPDX-License-Identifier: Apache-2.0
++
++package filenames
++
++// OpenSSH adds a 17-byte temporary suffix; reserve it without consuming an
++// unnecessary seven bytes of the Windows AF_UNIX path budget.
++const SSHSock = "s"
+diff --git a/pkg/limatype/filenames/ssh_socket_other.go b/pkg/limatype/filenames/ssh_socket_other.go
+new file mode 100644
+--- /dev/null
++++ b/pkg/limatype/filenames/ssh_socket_other.go
+@@ -0,0 +1,8 @@
++//go:build !windows
++
++// SPDX-FileCopyrightText: Copyright The Lima Authors
++// SPDX-License-Identifier: Apache-2.0
++
++package filenames
++
++const SSHSock = "ssh.sock"

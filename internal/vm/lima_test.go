@@ -2,6 +2,8 @@ package vm
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -33,9 +35,19 @@ import (
 func newTestLima(t *testing.T) *Lima {
 	t.Helper()
 	// Socket paths have the host's sockaddr_un limit, independent of test names.
-	home, err := os.MkdirTemp(os.TempDir(), "lima-")
-	if err != nil {
-		t.Fatal(err)
+	var home string
+	for {
+		var suffix [3]byte
+		if _, err := rand.Read(suffix[:]); err != nil {
+			t.Fatal(err)
+		}
+		home = filepath.Join(os.TempDir(), "l"+hex.EncodeToString(suffix[:]))
+		if err := os.Mkdir(home, 0700); os.IsExist(err) {
+			continue
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		break
 	}
 	t.Cleanup(func() {
 		if err := os.RemoveAll(home); err != nil {

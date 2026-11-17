@@ -43,7 +43,7 @@ func Dir(profile string) string { return filepath.Join(profile, "proxy") }
 func Socket(profile string) string {
 	h := sha256.Sum256([]byte(filepath.Clean(profile)))
 	if runtime.GOOS == "windows" {
-		return filepath.Join(os.TempDir(), fmt.Sprintf("eden-proxy-%x", h[:8]), "control.sock")
+		return filepath.Join(os.TempDir(), fmt.Sprintf("eden-%x", h[:8]), "api.sock")
 	}
 	return filepath.Join(os.TempDir(), fmt.Sprintf("eden-proxy-%d-%x", os.Getuid(), h[:8]), "control.sock")
 }
@@ -156,6 +156,11 @@ func BootstrapDNSURLs() []string {
 func (s Store) Runtime(profile string) ([]byte, error) {
 	if err := s.Validate(); err != nil {
 		return nil, err
+	}
+	// Windows AF_UNIX has 108 bytes including its trailing NUL. Reject long
+	// temp paths before writing a config or starting a core that cannot bind.
+	if runtime.GOOS == "windows" && len(Socket(profile)) >= 108 {
+		return nil, errors.New("代理控制 socket 路径超过 Windows 的 107 字节上限，请使用更短且可写的临时目录；外网保持关闭")
 	}
 	if _, ok := s.Find(s.Selected); !ok {
 		return nil, errors.New("请先选择有效的代理节点")

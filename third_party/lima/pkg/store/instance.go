@@ -13,7 +13,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"text/tabwriter"
 	"text/template"
 	"time"
@@ -224,33 +223,15 @@ func ReadPIDFile(path string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	proc, err := os.FindProcess(pid)
-	if runtime.GOOS == "windows" {
-		// On Windows, os.FindProcess will fail if the process does not exist.
-		if err == nil {
-			return pid, nil
-		}
-		var errno syscall.Errno
-		const ErrorInvalidParameter syscall.Errno = 0x57
-		if errors.As(err, &errno) && errno == ErrorInvalidParameter {
-			_ = os.Remove(path)
-			return 0, nil
-		}
-	}
+	alive, err := pidRunning(pid)
 	if err != nil {
 		return 0, err
 	}
-	err = proc.Signal(syscall.Signal(0))
-	if err != nil {
-		if errors.Is(err, os.ErrProcessDone) {
-			_ = os.Remove(path)
-			return 0, nil
-		}
-		// We may not have permission to send the signal (e.g. to network daemon running as root).
-		// But if we get a permissions error, it means the process is still running.
-		if !errors.Is(err, os.ErrPermission) {
+	if !alive {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return 0, err
 		}
+		return 0, nil
 	}
 	return pid, nil
 }

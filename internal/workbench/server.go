@@ -27,6 +27,7 @@ import (
 	"github.com/sylvinus/agent-vm/internal/eden"
 	"github.com/sylvinus/agent-vm/internal/guestos"
 	"github.com/sylvinus/agent-vm/internal/host"
+	"github.com/sylvinus/agent-vm/internal/vmname"
 )
 
 //go:embed web/*
@@ -195,6 +196,10 @@ func serve(configPath string, fullConfigPath string) (returned error) {
 			// Existing profiles without this field used manual language settings.
 			s.preferences.AutoLanguage = false
 			_ = json.Unmarshal(b, &s.preferences)
+			s.preferences.Workspace, err = eden.ResolvePortablePath(profile, s.preferences.Workspace)
+			if err != nil {
+				return err
+			}
 		}
 		if !s.storageRecoveryStatus().Required {
 			if err = s.prepareEnvironment(); err != nil {
@@ -721,7 +726,7 @@ func (s *Server) requestStop(w http.ResponseWriter, logout bool) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	for _, name := range []string{eden.InstanceName(s.profile, s.environmentDir()), "base-building"} {
+	for _, name := range []string{eden.InstanceName(s.profile, s.environmentDir()), vmname.Building} {
 		if owner := eden.InstanceJobID(filepath.Join(s.profile, "state"), name); owner != "" {
 			_ = eden.RequestJobStop(s.profile, owner)
 		}

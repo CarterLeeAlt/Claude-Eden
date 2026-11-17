@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sylvinus/agent-vm/internal/hostimage"
+	"github.com/sylvinus/agent-vm/internal/vmname"
 )
 
 func TestInstallationKeepsChoiceAndDiskBinding(t *testing.T) {
@@ -30,7 +31,7 @@ func TestInstallationKeepsChoiceAndDiskBinding(t *testing.T) {
 	if unstarted, err := UnstartedInstallation(p, first); err != nil || !unstarted {
 		t.Fatal("fresh binding was treated as a created disk", err)
 	}
-	disk := filepath.Join(p, "state", "lima", "base-building")
+	disk := filepath.Join(p, "state", "lima", vmname.Building)
 	if err := os.MkdirAll(disk, 0700); err != nil {
 		t.Fatal(err)
 	}

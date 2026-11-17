@@ -19,6 +19,7 @@ import (
 
 type StorageLocation struct {
 	Directory      string `json:"directory"`
+	Portable       bool   `json:"portable,omitempty"`
 	Custom         bool   `json:"custom"`
 	HasEnvironment bool   `json:"has_environment"`
 	Backup         string `json:"backup,omitempty"`
@@ -178,7 +179,18 @@ func getStorageLocation(profile string) (StorageLocation, error) {
 		return StorageLocation{}, err
 	}
 	anchor := storageAnchor(profile)
-	loc := StorageLocation{Directory: anchor, Custom: r.Directory != ""}
+	loc := StorageLocation{Directory: anchor, Custom: r.Directory != "", Portable: PortableDataDirectory(profile) != ""}
+	if loc.Portable && loc.Custom {
+		return loc, errors.New("便携版数据必须随程序保存在 data 内，不能使用独立存储目录链接；请保留原数据并恢复完整便携目录")
+	}
+	if loc.Portable {
+		if _, err := portableRelativePath(PortableDataDirectory(profile), filepath.Join("profile", "state")); err != nil {
+			return loc, err
+		}
+		if info, err := os.Lstat(anchor); err == nil && info.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0 {
+			return loc, errors.New("便携版环境存储必须是 data 内的真实目录，不能使用目录链接")
+		}
+	}
 	if loc.Custom {
 		loc.Directory = r.Directory
 		real, err := paths.Resolve(anchor)
@@ -297,6 +309,9 @@ func ValidateStorageTarget(profile, directory string) error {
 }
 
 func validateStorageTarget(profile, directory, app, platform string) error {
+	if PortableDataDirectory(profile) != "" {
+		return errors.New("便携版不单独迁移环境存储；请停止环境后移动整个 ClaudeEden 文件夹，data 会随程序一起移动")
+	}
 	if _, err := os.Readlink(storageAnchor(profile)); err == nil {
 		r, err := readStorageRecord(profile)
 		if err != nil {

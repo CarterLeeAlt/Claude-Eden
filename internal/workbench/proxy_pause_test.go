@@ -125,11 +125,11 @@ func TestManualProxySelectionHonorsLaterPause(t *testing.T) {
 	}
 }
 
-func TestManualProxySelectionMayResumeExistingPause(t *testing.T) {
+func TestManualProxySelectionPreservesExistingPauseWithoutVM(t *testing.T) {
 	s, _, started, finish := pendingProxyApply(t)
 	pauseProxyNetwork(t, s)
-	// No VM is running in this case, so selecting a node may prepare networking
-	// without trying to start a real guest as part of this unit test.
+	// Applying a node without a running VM must not clear the durable pause
+	// that the next guest start would otherwise inherit.
 	path := filepath.Join(s.profile, "state", "lima", eden.InstanceName(s.profile, s.environmentDir()), "eden-running.json")
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
@@ -144,11 +144,34 @@ func TestManualProxySelectionMayResumeExistingPause(t *testing.T) {
 	defer s.op.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.jobs.snapshot().Running || s.jobs.snapshot().Error != "" || s.networkPaused {
-		t.Fatalf("explicit selection failed to resume the existing pause: %+v", s.jobs.snapshot())
+	if s.jobs.snapshot().Running || s.jobs.snapshot().Error != "" || !s.networkPaused {
+		t.Fatalf("node selection revoked the existing pause: %+v", s.jobs.snapshot())
 	}
 	reloaded := reloadedIntentServer(t, s)
-	if err := reloaded.restoreNetworkIntent(); err != nil || reloaded.networkPaused {
-		t.Fatal("explicit node resume was not durable", err)
+	if err := reloaded.restoreNetworkIntent(); err != nil || !reloaded.networkPaused {
+		t.Fatal("manual pause was not durable after selecting a node", err)
+	}
+}
+
+func TestManualProxySelectionAndRestartPreserveExistingPause(t *testing.T) {
+	for _, action := range []string{"select", "restart"} {
+		t.Run(action, func(t *testing.T) {
+			s, gate, started, finish := pendingProxyApply(t)
+			pauseProxyNetwork(t, s)
+			p, err := managedproxy.Load(s.profile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if w := request(s, "POST", "/api/proxy/"+action, s.origin, `{"node_id":"`+p.Selected+`"}`, true); w.Code != 200 {
+				t.Fatalf("proxy action rejected: %d %s", w.Code, w.Body.String())
+			}
+			awaitProxyStart(t, started)
+			finish()
+			assertProxyStayedPaused(t, s, gate)
+			reloaded := reloadedIntentServer(t, s)
+			if err := reloaded.restoreNetworkIntent(); err != nil || !reloaded.networkPaused {
+				t.Fatal("manual pause was not durable after proxy action", err)
+			}
+		})
 	}
 }

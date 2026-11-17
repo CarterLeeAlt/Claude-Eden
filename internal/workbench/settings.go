@@ -92,7 +92,11 @@ func (s *Server) prepareEnvironment() error {
 		return err
 	}
 	record.Directory = path
-	if err = writePrivate(filepath.Join(s.profile, "environment.json"), record); err != nil {
+	stored, err := eden.EnvironmentRecordForStorage(s.profile, record)
+	if err != nil {
+		return err
+	}
+	if err = writePrivate(filepath.Join(s.profile, "environment.json"), stored); err != nil {
 		return err
 	}
 	if p.Workspace != "" && record.IdentityDirectory != "" && paths.Equal(paths.Host(p.Workspace), paths.Host(record.IdentityDirectory)) {
@@ -101,12 +105,21 @@ func (s *Server) prepareEnvironment() error {
 			p.Workspace = ""
 		}
 	}
-	if err := writePrivate(filepath.Join(s.profile, "workbench.json"), p); err != nil {
+	if err := savePreferences(s.profile, p); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	s.preferences = p
 	s.mu.Unlock()
+	if eden.PortableDataDirectory(s.profile) != "" {
+		projects, err := s.readSharedProjects()
+		if err != nil {
+			return err
+		}
+		if len(projects.Paths) != 0 || len(projects.Groups) != 0 {
+			return s.saveSharedProjects(projects)
+		}
+	}
 	return nil
 }
 

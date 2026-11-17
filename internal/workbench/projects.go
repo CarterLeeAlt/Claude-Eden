@@ -2,7 +2,6 @@ package workbench
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -90,7 +89,7 @@ func (s *Server) openProject(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.Activate {
 		preferences.Workspace = workspace
-		if err = writePrivate(filepath.Join(s.profile, "workbench.json"), preferences); err != nil {
+		if err = savePreferences(s.profile, preferences); err != nil {
 			requestError(w, err)
 			return
 		}
@@ -340,12 +339,8 @@ func (s *Server) setProjectError(path string, err error) {
 // The saved directory grants are the project list. Retain a legacy current
 // selection as an ordinary project, without granting the transfer directory.
 func (s *Server) projectPaths() ([]string, error) {
-	var saved sharedProjects
-	if b, err := os.ReadFile(filepath.Join(s.profile, "projects.json")); err == nil {
-		if err = json.Unmarshal(b, &saved); err != nil {
-			return nil, err
-		}
-	} else if !os.IsNotExist(err) {
+	saved, err := s.readSharedProjects()
+	if err != nil {
 		return nil, err
 	}
 	paths := []string{}
@@ -381,12 +376,8 @@ func (s *Server) projectWorkspace(path string) (string, error) {
 }
 
 func (s *Server) rememberSharedProject(path string) error {
-	var saved sharedProjects
-	if b, err := os.ReadFile(filepath.Join(s.profile, "projects.json")); err == nil {
-		if err = json.Unmarshal(b, &saved); err != nil {
-			return err
-		}
-	} else if !os.IsNotExist(err) {
+	saved, err := s.readSharedProjects()
+	if err != nil {
 		return err
 	}
 	for _, p := range saved.Paths {
@@ -395,12 +386,13 @@ func (s *Server) rememberSharedProject(path string) error {
 		}
 	}
 	saved.Paths = append(saved.Paths, path)
-	return writePrivate(filepath.Join(s.profile, "projects.json"), saved)
+	return s.saveSharedProjects(saved)
 }
 func (s *Server) restoreProjectShares() {
-	var saved sharedProjects
-	if b, err := os.ReadFile(filepath.Join(s.profile, "projects.json")); err == nil {
-		_ = json.Unmarshal(b, &saved)
+	saved, err := s.readSharedProjects()
+	if err != nil {
+		s.setProjectError("", err)
+		return
 	}
 	s.mu.Lock()
 	current := s.preferences.Workspace

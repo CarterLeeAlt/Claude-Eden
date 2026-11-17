@@ -255,7 +255,8 @@ func TestSetupBase(t *testing.T) {
 	if base == nil || base.Status != vm.Stopped || base.CPUs != 2 || base.Memory != 5<<30 || base.Disk != 12<<30 || len(base.Mounts) != 0 {
 		t.Fatalf("base: %+v", base)
 	}
-	if !strings.HasPrefix(te.fake.CallLog(), "delete base-building\ncreate base-building template:debian-13\nstart base-building\nshell base-building bash -l\nstop base-building\ndelete base\nclone base-building base\ndelete base-building") {
+	wantCalls := strings.ReplaceAll("delete base-building\ncreate base-building template:debian-13\nstart base-building\nshell base-building bash -l\nstop base-building\ndelete base\nclone base-building base\ndelete base-building", "base-building", building)
+	if !strings.HasPrefix(te.fake.CallLog(), wantCalls) {
 		t.Errorf("calls:\n%s", te.fake.CallLog())
 	}
 	if len(stdin) != 1 {
@@ -330,7 +331,7 @@ func TestEdenSetupResumesExistingBuild(t *testing.T) {
 		t.Fatalf("resume failed: %s", te.out())
 	}
 	log := te.fake.CallLog()
-	if strings.Contains(log, "create base-building") || !strings.Contains(log, "clone base-building base") {
+	if strings.Contains(log, "create "+building) || !strings.Contains(log, "clone "+building+" "+vmname.Template) {
 		t.Fatalf("partial build was recreated instead of resumed: %s", log)
 	}
 }

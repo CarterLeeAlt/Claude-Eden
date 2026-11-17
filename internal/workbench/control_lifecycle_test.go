@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/sylvinus/agent-vm/internal/vmname"
 )
 
 func TestAlreadyAdmittedHandoffsShutDownOnlyOnce(t *testing.T) {
@@ -64,7 +66,7 @@ func TestHandoffRequiresLauncherSecretAndIdleEnvironment(t *testing.T) {
 			case "terminal":
 				s.terminals.sessions = map[string]*terminalSession{"live": {}}
 			case "vm":
-				path := filepath.Join(s.profile, "state", "lima", "base-building", "eden-running.json")
+				path := filepath.Join(s.profile, "state", "lima", vmname.Building, "eden-running.json")
 				if err := writePrivate(path, map[string]int{"pid": os.Getpid()}); err != nil {
 					t.Fatal(err)
 				}

@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -47,7 +48,7 @@ func (c *controllerClient) localControl(ctx context.Context, action string, inpu
 	case http.StatusConflict:
 		return reply, errors.New("本机仍有操作或状态已变化，请重新确认")
 	default:
-		return reply, errors.New("本机控制服务未接受此操作")
+		return reply, fmt.Errorf("本机控制服务未接受此操作（%s，HTTP %d）", action, status)
 	}
 }
 
@@ -134,8 +135,19 @@ func (d *desktopLocal) Connect(ctx context.Context) (_ *localsession.Session, re
 		return nil, err
 	}
 	var launchID string
+	var previousToken string
 	var exited <-chan error
 	if !st.ServiceRunning {
+		// An abnormal exit can leave a record whose port (or PID) is already
+		// reused. Wait for the launched controller to replace that record;
+		// never send the retired owner's token to a newly bound listener.
+		previous, readErr := openController(d.profile)
+		if readErr == nil {
+			previousToken = previous.record.Token
+			previous.close()
+		} else if !errors.Is(readErr, errControllerUnavailable) {
+			return nil, readErr
+		}
 		launchID = randomToken()
 		if exited, err = startControllerExecutable(d.config, d.executable, "EDEN_DESKTOP_START_ID="+launchID); err != nil {
 			return nil, err
@@ -151,39 +163,47 @@ func (d *desktopLocal) Connect(ctx context.Context) (_ *localsession.Session, re
 			}
 		}()
 	}
-	bootstrap := ctx
+	c, view, err := d.waitLocalController(ctx, previousToken, launchID != "", exited)
+	if err != nil {
+		return nil, err
+	}
+	defer c.close()
+	if st.ControllerID != "" && view.ControllerID != st.ControllerID {
+		return nil, errors.New("本机后台已变化，请重新选择")
+	}
+	life := ctx
+	if launchID != "" && view.LaunchID == launchID {
+		life = context.WithValue(ctx, localLaunchKey{}, launchID)
+	}
+	return d.localSession(life, ctx, c, view)
+}
+
+func (d *desktopLocal) waitLocalController(ctx context.Context, previousToken string, started bool, exited <-chan error) (*controllerClient, desktopLocalReply, error) {
 	for {
 		c, err := openController(d.profile)
-		if err == nil {
-			view, probeErr := c.localControl(bootstrap, "status", desktopLocalRequest{})
+		if err == nil && (c.record.Token == previousToken || !processExists(c.record.PID)) {
+			c.close()
+		} else if err == nil {
+			view, probeErr := c.localControl(ctx, "status", desktopLocalRequest{})
 			if probeErr == nil {
-				defer c.close()
-				if st.ControllerID != "" && view.ControllerID != st.ControllerID {
-					return nil, errors.New("本机后台已变化，请重新选择")
-				}
-				life := ctx
-				if launchID != "" && view.LaunchID == launchID {
-					life = context.WithValue(ctx, localLaunchKey{}, launchID)
-				}
-				session, err := d.localSession(life, bootstrap, c, view)
-				return session, err
+				return c, view, nil
 			}
 			c.close()
 			var networkError *url.Error
 			if !errors.As(probeErr, &networkError) {
-				return nil, probeErr
+				return nil, desktopLocalReply{}, probeErr
 			}
 		} else if !errors.Is(err, errControllerUnavailable) {
-			return nil, err
+			return nil, desktopLocalReply{}, err
 		}
-		if launchID == "" && controllerLockFree(d.profile) {
-			return nil, errors.New("本机后台已退出，请重新连接")
+		if !started && controllerLockFree(d.profile) {
+			return nil, desktopLocalReply{}, errors.New("本机后台已退出，请重新连接")
 		}
 		select {
-		case <-bootstrap.Done():
-			return nil, bootstrap.Err()
+		case <-ctx.Done():
+			return nil, desktopLocalReply{}, ctx.Err()
 		case err := <-exited:
-			return nil, errors.Join(errors.New("本机后台在连接就绪前退出，请查看 control.log"), err)
+			return nil, desktopLocalReply{}, errors.Join(errors.New("本机后台在连接就绪前退出，请查看 control.log"), err)
 		case <-time.After(100 * time.Millisecond):
 		}
 	}

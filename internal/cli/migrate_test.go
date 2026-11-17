@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"io"
 	"os"
 	"path/filepath"
@@ -62,7 +64,21 @@ func TestMigrateNotFromReaders(t *testing.T) {
 
 func TestMigrateOld(t *testing.T) {
 	old := t.TempDir()
-	now := filepath.Join(t.TempDir(), "lima")
+	// The migration subject is not a socket-length rejection. Keep its real
+	// destination inside the workspace temp root without the test-name prefix.
+	var suffix [3]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		t.Fatal(err)
+	}
+	now := filepath.Join(os.TempDir(), "m"+hex.EncodeToString(suffix[:]))
+	if err := os.Mkdir(now, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(now); err != nil {
+			t.Error(err)
+		}
+	})
 	// Already at the new place, under its new name: the move fails, and says
 	// so.
 	os.MkdirAll(filepath.Join(now, "p-12345678"), 0o755)

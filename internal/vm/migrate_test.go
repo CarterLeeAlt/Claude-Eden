@@ -19,14 +19,14 @@ func TestMoveOld(t *testing.T) {
 	proj := paths.Host(t.TempDir())
 	mounts := []Mount{{Location: proj, MountPoint: paths.Guest(proj), Writable: true, SSHFS: &SSHFS{SFTPDriver: "builtin", Cache: &off, ReadonlyNames: []string{".git", ".hg"}}}}
 	rev := ReverseSSHFS
-	if err := l.Create(ctx, "agent-vm-p-12345678", "template:debian-13", Settings{CPUs: 1, Mounts: &mounts, MountType: &rev}, io.Discard); err != nil {
+	if err := l.Create(ctx, "agent-vm-p", "template:debian-13", Settings{CPUs: 1, Mounts: &mounts, MountType: &rev}, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	none := []Mount{}
 	if err := l.Create(ctx, "other", "template:debian-13", Settings{CPUs: 1, Mounts: &none}, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(old, "agent-vm-p-12345678")
+	dir := filepath.Join(old, "agent-vm-p")
 	for _, f := range []string{"ha.sock", "stale.pid", "x.tmp", "protected", "vz-identifier"} {
 		if err := os.WriteFile(filepath.Join(dir, f), []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
@@ -34,18 +34,20 @@ func TestMoveOld(t *testing.T) {
 	}
 	// A hostagent's pid that is not running: not running.
 	found, err := FindOld(old, "agent-vm-")
-	if err != nil || len(found) != 1 || found[0].Name != "agent-vm-p-12345678" || found[0].Running {
+	if err != nil || len(found) != 1 || found[0].Name != "agent-vm-p" || found[0].Running {
 		t.Fatalf("FindOld: %+v %v", found, err)
 	}
 
-	now := filepath.Join(t.TempDir(), "lima")
-	if err := MoveOld(ctx, old, now, "agent-vm-p-12345678", "p-12345678"); err != nil {
+	// A nested destination remains owned by newTestLima's short temp root.
+	// Long-path rejection is a separate assertion below, not this move case.
+	now := filepath.Join(old, "n")
+	if err := MoveOld(ctx, old, now, "agent-vm-p", "p"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Error("left in the old home")
 	}
-	moved := filepath.Join(now, "p-12345678")
+	moved := filepath.Join(now, "p")
 	for _, f := range []string{"ha.sock", "stale.pid", "x.tmp", "protected"} {
 		if _, err := os.Stat(filepath.Join(moved, f)); err == nil {
 			t.Errorf("%s was moved", f)
@@ -62,14 +64,14 @@ func TestMoveOld(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inst, err := l2.Get(ctx, "p-12345678")
-	if err != nil || inst.Name != "p-12345678" || inst.MountType != ReverseSSHFS || len(inst.Mounts) != 1 || inst.Mounts[0].Location != proj || inst.Status != Stopped {
+	inst, err := l2.Get(ctx, "p")
+	if err != nil || inst.Name != "p" || inst.MountType != ReverseSSHFS || len(inst.Mounts) != 1 || inst.Mounts[0].Location != proj || inst.Status != Stopped {
 		t.Fatalf("in the new home: %+v %v", inst, err)
 	}
 
 	// Too long for the sockets at the new place: refused, nothing moved.
 	long := filepath.Join(t.TempDir(), strings.Repeat("d", 90))
-	if err := MoveOld(ctx, now, long, "p-12345678", "p-12345678"); err == nil || !strings.Contains(err.Error(), "too long") {
+	if err := MoveOld(ctx, now, long, "p", "p"); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Errorf("long path: %v", err)
 	}
 	if _, err := os.Stat(moved); err != nil {

@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"strings"
 )
 
@@ -62,7 +61,7 @@ func (s *Server) saveBrowserHome(w http.ResponseWriter, r *http.Request, value s
 	}
 	next := previous
 	next.BrowserHomeURL = home
-	if err = writePrivate(filepath.Join(s.profile, "workbench.json"), next); err != nil {
+	if err = savePreferences(s.profile, next); err != nil {
 		if ready {
 			_ = s.setBrowserHome(r.Context(), token, browserHomeURL(previous))
 		}
