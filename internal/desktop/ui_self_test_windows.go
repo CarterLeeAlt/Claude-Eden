@@ -16,7 +16,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 	"unicode/utf16"
 	"unsafe"
@@ -321,50 +320,4 @@ func runNativeUISelfTest(output, scenario string, options Options) (report Nativ
 	}
 	err = errors.Join(err, readErr, traceErr)
 	return report, err
-}
-
-func preserveUIClipboard(clipboard nativeClipboard) (func() error, error) {
-	type item struct {
-		format uintptr
-		data   []byte
-	}
-	var saved []item
-	err := clipboard.opened(func() error {
-		previous := uintptr(0)
-		for {
-			kernel32.NewProc("SetLastError").Call(0)
-			format, _, nativeErr := user32.NewProc("EnumClipboardFormats").Call(previous)
-			if format == 0 {
-				if nativeErr != syscall.Errno(0) {
-					return fmtNative("无法保存 VM 剪贴板", nativeErr)
-				}
-				return nil
-			}
-			previous = format
-			if format != 1 && format != 7 && format != 8 && format != 13 && format != 15 && format != 16 && format != 17 && format != pngFormat() {
-				return fmt.Errorf("VM 剪贴板含不可还原格式 %d", format)
-			}
-			data, readErr := clipboardBytes(format, maxPixels*4+4096)
-			if readErr != nil {
-				return readErr
-			}
-			saved = append(saved, item{format, data})
-		}
-	})
-	if err != nil {
-		return nil, err
-	}
-	return func() error {
-		return clipboard.opened(func() error {
-			if result, _, nativeErr := emptyClipboard.Call(); result == 0 {
-				return fmtNative("无法恢复 VM 剪贴板", nativeErr)
-			}
-			for _, value := range saved {
-				if err := putClipboard(value.format, value.data); err != nil {
-					return err
-				}
-			}
-			return nil
-		})
-	}, nil
 }

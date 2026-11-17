@@ -59,7 +59,7 @@ button.primary:hover:not(:disabled) {
 .appearance-theme-card {
   margin: 24px 0 32px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-panel);
   overflow: hidden;
   background: var(--paper);
 }
@@ -183,7 +183,7 @@ button.primary:hover:not(:disabled) {
 .settings-content
   .theme-options
   input:not([type="checkbox"]):not([type="range"]) {
-  height: 34px;
+  height: var(--control-height);
   font-size: var(--text-help);
 }
 .settings-content .appearance-switch {
@@ -230,7 +230,7 @@ button.primary:hover:not(:disabled) {
 }
 .settings-content .font-size-control input {
   width: 64px;
-  height: 34px;
+  height: var(--control-height);
   text-align: center;
 }
 .appearance-control .inline-select {
@@ -244,7 +244,7 @@ button.primary:hover:not(:disabled) {
   margin-top: 20px;
   padding: 20px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
 }
 .appearance-sample code {
   color: var(--link);

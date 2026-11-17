@@ -12,15 +12,24 @@ test("host styles share the four scalable typography tokens", async () => {
       if (!/^(?:var\(|inherit|0$)/.test(match[1]))
         hardcoded.push(`${name}: ${match[0]}`);
     }
+    // Font registration is the one place that must name bundled families.
+    // Components use family tokens; rejecting Inter here would contradict
+    // the current packaged-font design rather than protect its consistency.
+    if (name === "fonts.css") {
+      assert.match(source, /@font-face\s*\{/);
+      assert.match(source, /font-family:\s*"Inter"/);
+      assert.match(source, /font-family:\s*"Noto Sans SC"/);
+      continue;
+    }
     assert.ok(
-      !/font-family:[^;]*(?:Inter|Times|Georgia|serif\s*;)/.test(
+      !/(?:^|[;{])\s*font-family:[^;]*(?:Inter|Times|Georgia|serif\s*;)/m.test(
         source.replaceAll("sans-serif", "sans"),
       ),
       name,
     );
   }
   assert.deepEqual(hardcoded, []);
-  const source = await readFile(new URL("style.css", directory), "utf8");
+  const source = await readFile(new URL("tokens.css", directory), "utf8");
   for (const token of [
     "--text-body: 1rem",
     "--text-help: 0.9286rem",

@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/pelletier/go-toml/v2"
+	"github.com/sylvinus/agent-vm/internal/uitheme"
 )
 
 type AppearanceTheme struct {
@@ -40,7 +41,11 @@ type Appearance struct {
 }
 
 func defaultAppearance() Appearance {
-	return Appearance{Light: AppearanceTheme{Preset: "codex", Accent: "#339cff", Surface: "#ffffff", Ink: "#1a1c1f", Contrast: 45}, UIFontSize: 14, CodeFontSize: 13, FontSmoothing: true, ReducedMotion: "system"}
+	var theme AppearanceTheme
+	if err := json.Unmarshal(uitheme.LightJSON, &theme); err != nil {
+		panic("invalid bundled ClaudeEden palette: " + err.Error())
+	}
+	return Appearance{Light: theme, UIFontSize: 14, CodeFontSize: 13, FontSmoothing: true, ReducedMotion: "system"}
 }
 
 func (a Appearance) validate() error {
@@ -104,6 +109,12 @@ func (s *Server) getAppearance(w http.ResponseWriter, r *http.Request) {
 	a := defaultAppearance()
 	b, err := os.ReadFile(filepath.Join(s.profile, "appearance.json"))
 	if err == nil {
+		var stored map[string]json.RawMessage
+		if json.Unmarshal(b, &stored) == nil && stored["lightTheme"] != nil {
+			// A saved/imported theme without element overrides requests derived
+			// colors; do not merge the brand's overrides into another palette.
+			a.Light.Colors = nil
+		}
 		decoder := json.NewDecoder(bytes.NewReader(b))
 		decoder.DisallowUnknownFields()
 		err = decoder.Decode(&a)

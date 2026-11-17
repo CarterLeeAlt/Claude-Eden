@@ -156,7 +156,7 @@ export function DesktopToolbar({
             if (
               await onConfirm({
                 title: "关闭 Claude Desktop？",
-                body: "请先保存应用内的工作。浏览器和 Claude Eden 终端会继续运行。",
+                body: "请先保存应用内的工作。浏览器和 ClaudeEden 终端会继续运行。",
                 confirm: "关闭应用",
               })
             )
@@ -392,7 +392,7 @@ export function ClaudeDesktop({
       )}
       {desktop?.running && desktop.managed === false && (
         <div className="connection-banner" role="status">
-          当前应用尚未接入 Claude Eden
+          当前应用尚未接入 ClaudeEden
           账户解锁。请先保存并关闭应用，再重新打开。
         </div>
       )}
@@ -422,15 +422,15 @@ export function ClaudeDesktop({
             <h2>
               {desktop?.installed
                 ? "Claude Desktop"
-                : "在 Claude Eden 中使用 Claude Desktop"}
+                : "在 ClaudeEden 中使用 Claude Desktop"}
             </h2>
             <p>
-              Chat 和 Code 共用一个官方应用。在 Claude Eden
+              Chat 和 Code 共用一个官方应用。在 ClaudeEden
               内安装、登录并使用，项目文件来自已打开的文件夹。
             </p>
             {!desktop?.installed && (
               <p>
-                首次使用时从 Anthropic 官方源下载，不增加 Claude Eden
+                首次使用时从 Anthropic 官方源下载，不增加 ClaudeEden
                 默认安装包体积。
               </p>
             )}
@@ -476,7 +476,7 @@ export function ClaudeDesktop({
               </p>
             )}
             <p className="desktop-note">
-              关闭应用后释放图形会话资源，登录状态保留在 Claude Eden
+              关闭应用后释放图形会话资源，登录状态保留在 ClaudeEden
               环境中。需要额外虚拟机的 Cowork 功能暂未适配。
             </p>
           </div>

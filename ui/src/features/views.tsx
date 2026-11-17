@@ -796,7 +796,7 @@ export function TerminalView({
         }
         onStatus(
           value.png || value.files || value.fileSelection
-            ? "附件已保存到 Claude Eden，路径已插入终端"
+            ? "附件已保存到 ClaudeEden，路径已插入终端"
             : "已粘贴",
         );
       }).catch((error: unknown) => {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { reportDiagnostic } from "./diagnostics.ts";
 import * as Wire from "./contracts.generated.ts";
 
 const strings = z
@@ -173,6 +174,7 @@ export const browserSchema = z.object({
 export type BrowserState = z.infer<typeof browserSchema>;
 const storageLocationSchema = z.object({
   directory: z.string(),
+  portable: z.boolean().optional(),
   suggested_directory: z.string().optional(),
   has_environment: z.boolean(),
   backup: z.string().optional(),
@@ -311,16 +313,16 @@ export const guestProfileSchema = z.object({
   mode: z.string(),
   hostname: z.string(),
   username: z.string(),
-  work_home: z.string(),
+  work_home: z.string().optional().transform((value) => value ?? ""),
   browser_username: z.string(),
-  browser_home: z.string(),
+  browser_home: z.string().optional().transform((value) => value ?? ""),
   extension_name: z.string(),
   display_width: z.number(),
   display_height: z.number(),
   browser_width: z.number(),
   browser_height: z.number(),
   audio_description: z.string(),
-  audio_model: z.string(),
+  audio_model: z.string().optional().transform((value) => value ?? ""),
   audio_name: z.string(),
   graphics_backend: z.string(),
   webgl: z.string(),
@@ -526,6 +528,7 @@ export const responseSchemas = {
   "/tailscale": tailscaleSchema,
 } as const;
 export const mutationSchemas = {
+  "/environment/initialization": z.object({ completed: z.boolean() }),
   "/settings": Wire.WorkbenchJobSchema,
   "/environment/storage": Wire.WorkbenchJobSchema,
   "/environment/resources": z.union([Wire.WorkbenchJobSchema, okSchema]),
@@ -593,13 +596,14 @@ export function responseSchemaFor(
       recovery_key: z.string().optional(),
     });
   if (path === "/agent/native?consumer=window")
-    return z
-      .object({
+    return z.union([
+      z.object({
         id: z.string(),
         connection_id: z.string(),
         request: z.record(z.string(), z.unknown()),
-      })
-      .nullable();
+      }).nullable(),
+      z.object({}).strict().transform(() => null),
+    ]);
   if (
     /^\/cli\/sessions\/[^/]+\/(metadata|archive|purge|restore)$/.test(path) ||
     /^\/agent\/native\/[^/]+\/complete$/.test(path) ||
@@ -615,10 +619,15 @@ export function parseResponse<T>(
   path: string,
 ): T {
   const parsed = schema.safeParse(value);
-  if (!parsed.success)
+  if (!parsed.success) {
+    reportDiagnostic(
+      "frontend",
+      new Error(`${path}: ${JSON.stringify(parsed.error.issues)}`),
+    );
     throw new Error(
-      `后台返回的数据结构无效（${path}）。请更新 Claude Eden；仍失败时导出诊断包。`,
+      `后台返回的数据结构无效（${path}）。请更新 ClaudeEden；仍失败时导出诊断包。`,
       { cause: parsed.error },
     );
+  }
   return parsed.data;
 }

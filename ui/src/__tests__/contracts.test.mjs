@@ -111,6 +111,44 @@ test("vault browser status, unavailable service and mutation acknowledgements fo
     );
 });
 
+test("initialization read and begin/install/complete replies use distinct contracts", () => {
+  const read = responseSchemaFor("/environment/initialization", "GET");
+  const state = { required: true, started: false, tracked: false, prepared: false };
+  assert.deepEqual(read.parse(state), state);
+  for (const action of ["begin", "install", "complete"]) {
+    const write = responseSchemaFor("/environment/initialization", "POST", { action });
+    assert.deepEqual(write.parse({ completed: action === "complete" }), { completed: action === "complete" });
+    assert.equal(write.safeParse(state).success, false);
+  }
+  assert.equal(read.safeParse({ completed: false }).success, false);
+});
+
+test("fresh guest defaults accept only the omitted optional Go fields", () => {
+  const defaults = {
+    mode: "default", hostname: "", username: "developer", browser_username: "browser",
+    extension_name: "Workbench browser panes", display_width: 2880, display_height: 1800,
+    browser_width: 1440, browser_height: 900, audio_description: "Workbench",
+    audio_name: "workbench_output", graphics_backend: "auto", webgl: "native", canvas: "native",
+  };
+  const schema = responseSchemaFor("/environment/guest-profile", "GET");
+  const result = schema.parse({ editable: true, defaults, profile: null });
+  for (const key of ["work_home", "browser_home", "audio_model"]) {
+    assert.equal(result.defaults[key], "");
+    assert.equal(schema.safeParse({ editable: true, defaults: { ...defaults, [key]: 42 } }).success, false);
+  }
+  assert.equal(schema.safeParse({ editable: true, defaults: {} }).success, false);
+});
+
+test("native window polling normalizes the Go empty queue without accepting malformed work items", () => {
+  const schema = responseSchemaFor("/agent/native?consumer=window", "GET");
+  assert.equal(schema.parse({}), null);
+  assert.equal(schema.parse(null), null);
+  const item = { id: "request", connection_id: "local", request: { action: "fixture" } };
+  assert.deepEqual(schema.parse(item), item);
+  for (const invalid of [{ id: "request" }, { unexpected: true }, []])
+    assert.equal(schema.safeParse(invalid).success, false);
+});
+
 test("environment storage accepts the Go recovery-only reply while requiring location fields outside recovery", () => {
   const schema = responseSchemaFor("/environment/storage", "GET");
   const recovery = { recovery: { required: true, error: "原磁盘未连接" } };

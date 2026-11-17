@@ -37,7 +37,7 @@ export function LocalWorkbenchRoot({ children }: React.PropsWithChildren) {
     const value = await api("/client/context");
     if (!alive.current || query !== serial.current) return null;
     if (!["none", "local"].includes(value.mode))
-      throw new Error("后台未返回有效的本机工作台状态，请更新 Claude Eden。");
+      throw new Error("后台未返回有效的本机工作台状态，请更新 ClaudeEden。");
     const next = `${value.mode}:${value.connection_id}`;
     if (identity.current && identity.current !== next) {
       attempt.current++;
@@ -209,13 +209,13 @@ export function LocalWorkbenchRoot({ children }: React.PropsWithChildren) {
               ? "正在打开本机工作台"
               : "连接本机工作台"}
           </h1>
-          <p>Windows 上的 Claude Eden 管理本地 Debian 13 环境。</p>
+          <p>Windows 上的 ClaudeEden 管理本地 Debian 13 环境。</p>
           {(connecting || (!context && !message)) && (
             <p role="status">
               <LoaderCircle className="spin" size={18} />
               {phase === "cancelling"
                 ? "正在取消连接…"
-                : "正在连接 Claude Eden…"}
+                : "正在连接 ClaudeEden…"}
             </p>
           )}
           {message && <p role="alert">{message}</p>}

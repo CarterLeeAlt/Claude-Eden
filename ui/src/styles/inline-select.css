@@ -26,19 +26,17 @@
   display: grid;
   box-sizing: border-box;
   margin: 0;
-  padding: 3px;
+  padding: 4px;
   max-height: min(14rem, 32vh);
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-panel);
   background: var(--paper);
   color: var(--ink);
   font-size: inherit;
   font-weight: 400;
   text-align: start;
-  box-shadow:
-    0 8px 24px #00000020,
-    0 2px 6px #0000000c;
+  box-shadow: var(--shadow-panel);
   overscroll-behavior: contain;
 }
 .inline-select-list--inline {
@@ -52,7 +50,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 4px;
-  padding: 5px 7px;
+  padding: 4px 8px;
+  min-height: var(--control-compact);
   border-radius: 4px;
   overflow-wrap: anywhere;
   cursor: var(--control-cursor, default);

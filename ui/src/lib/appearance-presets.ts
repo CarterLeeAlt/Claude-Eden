@@ -4,6 +4,7 @@
 // Nord: https://www.nordtheme.com/docs/colors-and-palettes/
 // Color Universal Design: https://jfly.uni-koeln.de/color/
 import type { AppearanceTheme } from "./types.ts";
+import edenTheme from "../../../internal/uitheme/light.json";
 type Palette = Omit<AppearanceTheme, "preset" | "opaqueWindows"> & {
   opaqueWindows?: boolean;
 };
@@ -23,31 +24,16 @@ const light = (
 export const themeCatalog = [
   {
     id: "eden",
-    name: "Claude Eden",
+    name: "ClaudeEden",
     group: "经典",
     description: "暖米白画布、深灰文字与克制的陶土强调。",
-    light: light("#a64b32", "#faf9f5", "#141413", {
-      chrome: "#f3f1ea",
-      sidebar: "#f3f1ea",
-      toolbar: "#faf9f5",
-      line: "#e8e6dc",
-      muted: "#6b6a64",
-      strong: "#141413",
-      input: "#faf9f5",
-      button: "#a64b32",
-      buttonInk: "#faf9f5",
-      link: "#a64b32",
-      focus: "#a64b32",
-      hover: "#eeece4",
-      selected: "#e9e5d9",
-      selection: "#edd4c7",
-    }),
+    light: edenTheme,
   },
   {
     id: "codex",
     name: "Codex",
     group: "经典",
-    description: "中性背景与蓝色强调，保持 Claude Eden 的默认外观。",
+    description: "中性背景与蓝色强调，保持 ClaudeEden 的默认外观。",
     light: light("#339cff", "#ffffff", "#1a1c1f"),
   },
   {

@@ -1,0 +1,32 @@
+{
+  "preset": "eden",
+  "accent": "#a64b32",
+  "surface": "#faf9f5",
+  "ink": "#141413",
+  "contrast": 45,
+  "opaqueWindows": true,
+  "colors": {
+    "chrome": "#f3f1ea",
+    "chromeDark": "#eeece4",
+    "sidebar": "#f3f1ea",
+    "sidebarInk": "#141413",
+    "toolbar": "#faf9f5",
+    "toolbarInk": "#141413",
+    "line": "#e8e6dc",
+    "muted": "#6b6a64",
+    "strong": "#141413",
+    "input": "#faf9f5",
+    "button": "#a64b32",
+    "buttonInk": "#faf9f5",
+    "accentInk": "#faf9f5",
+    "link": "#a64b32",
+    "focus": "#a64b32",
+    "hover": "#eeece4",
+    "selected": "#e9e5d9",
+    "selection": "#edd4c7",
+    "success": "#4a6538",
+    "danger": "#a53434",
+    "warning": "#856315",
+    "inactive": "#6b6a64"
+  }
+}

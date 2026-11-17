@@ -185,7 +185,7 @@ export function ProjectDialog({
                 ? editing
                   ? "会话历史保留"
                   : "首个文件夹为默认目录"
-                : "使用已授权的 Claude Eden 项目"}
+                : "使用已授权的 ClaudeEden 项目"}
           </span>
           <button disabled={busy} onClick={onClose}>
             取消
@@ -227,7 +227,7 @@ export function ProjectDialog({
             ? "为项目命名，并添加需要一起使用的文件夹。"
             : activate
               ? "选择要打开的项目，或添加新项目。"
-              : "从 Claude Eden 项目列表选择工作目录。新项目由 Claude Eden 授权并共享。"}
+              : "从 ClaudeEden 项目列表选择工作目录。新项目由 ClaudeEden 授权并共享。"}
         </p>
         {!adding && (
           <>
@@ -285,7 +285,7 @@ export function ProjectDialog({
                         <button
                           type="button"
                           className="icon-button project-picker-remove"
-                          aria-label="从 Claude Eden 移除此项目"
+                          aria-label="从 ClaudeEden 移除此项目"
                           disabled={busy}
                           onClick={() => {
                             setRemoveTarget(path);
@@ -450,7 +450,7 @@ export function ProjectDialog({
         )}
         <p className="field-help project-picker-note">
           <span>绑定文件夹中的改动会直接写入本机。</span>
-          <span>所有项目共用 Claude Eden 环境，已有终端和网页会保持运行。</span>
+          <span>所有项目共用 ClaudeEden 环境，已有终端和网页会保持运行。</span>
         </p>
         {!status.ready && (
           <p className="field-help">

@@ -15,7 +15,7 @@ export function EnvironmentShield({
       size={size}
       className={`environment-shield ${healthy ? "healthy" : ""} ${className}`}
       role="img"
-      aria-label={healthy ? "环境运行正常，网络检查通过" : "Claude Eden 环境"}
+      aria-label={healthy ? "环境运行正常，网络检查通过" : "ClaudeEden 环境"}
       strokeWidth={1.8}
     />
   );

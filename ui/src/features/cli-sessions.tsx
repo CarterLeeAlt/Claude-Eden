@@ -287,7 +287,10 @@ export function ArchivedSessions({
   const hasDeleting = selectedItems.some((session) => session.deleting);
   return (
     <section className="archived-sessions" aria-label="已归档会话">
-      <h2 className="archive-page-title">已归档会话</h2>
+      <div className="section-title">
+        <h3>已归档会话</h3>
+        <p>查看、筛选和恢复已归档的工作会话。</p>
+      </div>
       <div className="archive-toolbar">
         <div className="archive-search">
           <Search size={18} aria-hidden="true" />

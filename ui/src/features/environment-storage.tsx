@@ -84,7 +84,7 @@ export function EnvironmentStorage({
       location.has_environment &&
       !(await onConfirm({
         title: "迁移本机环境？",
-        body: `请先保存文件。Claude Eden 会停止环境和终端，将虚拟磁盘复制到 ${path}，校验后再切换位置。原数据保留为备份，迁移完成后可手动启动环境。`,
+        body: `请先保存文件。ClaudeEden 会停止环境和终端，将虚拟磁盘复制到 ${path}，校验后再切换位置。原数据保留为备份，迁移完成后可手动启动环境。`,
         confirm: "迁移环境",
       }))
     )
@@ -140,7 +140,9 @@ export function EnvironmentStorage({
       ) : (
         <>
           <p className="field-help">
-            系统镜像、下载缓存和虚拟磁盘可以放在另一块本地磁盘。项目文件保存在各自的项目文件夹。
+            {location?.portable
+              ? "便携数据全部保存在程序旁的 data 内。更换电脑或存放位置前，先停止环境并关闭程序，再复制或移动整个 ClaudeEden 文件夹。不要只搬动虚拟磁盘。"
+              : "系统镜像、下载缓存和虚拟磁盘可以放在另一块本地磁盘。项目文件保存在各自的项目文件夹。"}
           </p>
           <div className="setting-summary-row">
             <span>当前环境目录</span>
@@ -152,7 +154,7 @@ export function EnvironmentStorage({
               <p className="field-help">
                 原工作目录中的文件保留在{" "}
                 <code>{status.environment_identity_directory}</code>
-                。需要使用时可从工作台添加该文件夹；位于 Claude Eden
+                。需要使用时可从工作台添加该文件夹；位于 ClaudeEden
                 私有配置目录中的项目需先移到配置目录之外。
               </p>
             )}
@@ -162,43 +164,47 @@ export function EnvironmentStorage({
               。确认新环境能正常启动、文件和登录状态齐全后，可自行清理备份。
             </p>
           )}
-          <label>
-            新存储位置
-            <input
-              value={directory}
-              onChange={(e) => {
-                setDirectory(e.target.value);
-                setError("");
-              }}
-              spellCheck="false"
-              disabled={busy || !location?.directory}
-              placeholder="本地磁盘上专用空文件夹的完整路径"
-            />
-          </label>
-          <div className="storage-actions">
-            {nativeAvailable() && (
-              <button
-                type="button"
-                disabled={busy || !location?.directory}
-                onClick={choose}
-              >
-                <FolderOpen size={15} />
-                选择文件夹
-              </button>
-            )}
-            <button
-              type="button"
-              disabled={
-                busy ||
-                !location?.directory ||
-                !directory.trim() ||
-                directory.trim() === location.directory
-              }
-              onClick={apply}
-            >
-              {location?.has_environment ? "迁移到此位置" : "使用此位置"}
-            </button>
-          </div>
+          {!location?.portable && (
+            <>
+              <label>
+                新存储位置
+                <input
+                  value={directory}
+                  onChange={(e) => {
+                    setDirectory(e.target.value);
+                    setError("");
+                  }}
+                  spellCheck="false"
+                  disabled={busy || !location?.directory}
+                  placeholder="本地磁盘上专用空文件夹的完整路径"
+                />
+              </label>
+              <div className="storage-actions">
+                {nativeAvailable() && (
+                  <button
+                    type="button"
+                    disabled={busy || !location?.directory}
+                    onClick={choose}
+                  >
+                    <FolderOpen size={15} />
+                    选择文件夹
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={
+                    busy ||
+                    !location?.directory ||
+                    !directory.trim() ||
+                    directory.trim() === location.directory
+                  }
+                  onClick={apply}
+                >
+                  {location?.has_environment ? "迁移到此位置" : "使用此位置"}
+                </button>
+              </div>
+            </>
+          )}
         </>
       )}
       {storageJob && job.running && (

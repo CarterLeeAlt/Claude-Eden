@@ -388,7 +388,7 @@ export function SettingsPanel({
                   </div>
                 )}
                 <p className="footnote">
-                  代理不可用时，Claude Eden
+                  代理不可用时，ClaudeEden
                   会停止对外联网。修改表单后需要重新验证。
                 </p>
                 <section
@@ -410,7 +410,7 @@ export function SettingsPanel({
               <>
                 <div className="section-title">
                   <h3>时区与语言</h3>
-                  <p>这些设置作用于 Claude Eden 内的系统、CLI 和浏览器。</p>
+                  <p>这些设置作用于 ClaudeEden 内的系统、CLI 和浏览器。</p>
                 </div>
                 {!draft.auto_timezone && !draft.auto_language && (
                   <p className="field-help">
@@ -664,7 +664,7 @@ export function SettingsPanel({
               <>
                 <div className="section-title">
                   <h3>环境与恢复</h3>
-                  <p>本机与 Claude Eden 中的改动会双向同步。</p>
+                  <p>本机与 ClaudeEden 中的改动会双向同步。</p>
                 </div>
                 {status.local_vm_storage && (
                   <EnvironmentStorage status={status} onConfirm={onConfirm} />
@@ -681,7 +681,7 @@ export function SettingsPanel({
                 <div className="project-explanation">
                   <FolderOpen size={22} />
                   <div>
-                    <strong>所有项目共用一个 Claude Eden 环境</strong>
+                    <strong>所有项目共用一个 ClaudeEden 环境</strong>
                     <p>
                       明确打开的项目文件夹会共享到同一个环境。主机的 Claude
                       登录、SSH 密钥和个人配置不会自动导入。浏览器下载统一保存到

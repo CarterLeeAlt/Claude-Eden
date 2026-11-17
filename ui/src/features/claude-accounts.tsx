@@ -929,7 +929,7 @@ export function ClaudeAccountsPanel({
       )}
       {!running ? (
         <p className="claude-profile-note">
-          启动 Claude Eden 环境后可检测普通终端的登录，也可登录新账号。
+          启动 ClaudeEden 环境后可检测普通终端的登录，也可登录新账号。
         </p>
       ) : detectionStatus === "offline" ? (
         <p className="claude-profile-note">工作环境就绪后可检测和登录账号。</p>

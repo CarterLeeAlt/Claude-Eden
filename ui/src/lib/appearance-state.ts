@@ -1,5 +1,5 @@
 export const uiFontFamily =
-  '"Noto Sans SC", "Noto Sans Mono CJK SC", sans-serif';
+  '"Inter", "Noto Sans SC", sans-serif';
 export const codeFontFamily =
   '"JetBrains Mono", "Noto Sans Mono CJK SC", monospace';
 import { presets } from "./appearance-presets.ts";
@@ -22,7 +22,7 @@ export const defaultAppearance: Appearance = {
   lightTheme: {
     ...presets.eden,
     preset: "eden",
-    opaqueWindows: false,
+    opaqueWindows: true,
   },
   uiFontSize: 14,
   codeFontSize: 13,
@@ -44,7 +44,9 @@ export function normalizeAppearance(input: unknown = {}): Appearance {
       colors:
         isRecord(value.lightTheme) && isRecord(value.lightTheme.colors)
           ? value.lightTheme.colors
-          : {},
+          : isRecord(value.lightTheme) && value.lightTheme.preset !== "eden"
+            ? {}
+            : defaultAppearance.lightTheme.colors,
     },
   };
   validateTheme(merged.lightTheme);
@@ -247,7 +249,7 @@ export function parseThemeDocument(text: string) {
   }
   if (!object(data) || data.format !== "eden-theme" || data.version !== 2)
     throw new Error(
-      "不支持的主题格式或版本，请使用 Claude Eden 导出的主题文件",
+      "不支持的主题格式或版本，请使用 ClaudeEden 导出的主题文件",
     );
   if (
     Object.keys(data).some(

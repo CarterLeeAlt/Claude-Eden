@@ -47,7 +47,7 @@ export function DiagnosticSettings() {
         if (
           !response.headers.get("content-type")?.startsWith("application/zip")
         )
-          throw new Error("当前后台不支持诊断导出，请重新打开 Claude Eden");
+          throw new Error("当前后台不支持诊断导出，请重新打开 ClaudeEden");
         const url = URL.createObjectURL(await response.blob());
         const link = document.createElement("a");
         link.href = url;
@@ -123,14 +123,14 @@ export class DiagnosticBoundary extends React.Component<React.PropsWithChildren>
   render() {
     if (!this.state.failed) return this.props.children;
     return (
-      <main style={{ padding: 32 }}>
+      <main className="recovery-page">
         <h2>工作台显示遇到异常</h2>
         <p>后台任务仍可继续运行。可以导出诊断包，再重新加载界面。</p>
         {this.state.reportError && (
           <p role="alert">未能报告启动失败：{this.state.reportError}</p>
         )}
         <DiagnosticSettings />
-        <button className="primary-button" onClick={() => location.reload()}>
+        <button className="primary" onClick={() => location.reload()}>
           重新加载界面
         </button>
       </main>

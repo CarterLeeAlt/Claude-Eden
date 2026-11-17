@@ -190,7 +190,7 @@
   background: var(--muted);
 }
 .tailscale-presence.online i {
-  background: #528267;
+  background: var(--success);
 }
 .tailscale-device-detail {
   display: flex;

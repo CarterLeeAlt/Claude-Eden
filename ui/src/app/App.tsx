@@ -218,7 +218,7 @@ function App() {
             ...clientStatus.job,
             running: true,
             kind: "start",
-            message: "正在启动 Claude Eden 环境…",
+            message: "正在启动 ClaudeEden 环境…",
           },
         }
       : clientStatus;
@@ -1329,7 +1329,7 @@ function App() {
     document.title =
       (current?.title && current.title !== "新标签页"
         ? current.title + " · "
-        : "") + "Claude Eden";
+        : "") + "ClaudeEden";
     if (active && !current?.incognito)
       localStorage.setItem("eden-active", active);
   }, [current?.url, current?.title, current?.incognito, active]);
@@ -1603,7 +1603,7 @@ function App() {
         }
         if (connectionError || fatal) {
           setDialog({
-            title: "退出 Claude Eden",
+            title: "退出 ClaudeEden",
             body: "工作台连接已中断，暂时无法确认环境状态。仍在运行的后台任务会继续。",
             confirm: "仅退出桌面应用",
             resolve: (confirmed) => confirmed && native("quitNow"),
@@ -1611,7 +1611,7 @@ function App() {
           return;
         }
         setDialog({
-          title: "退出 Claude Eden",
+          title: "退出 ClaudeEden",
           body: "退出前请保存文件和设置。可以保留环境，让后台任务继续运行；下次打开会重新连接。",
           confirm: "停止环境并退出",
           secondary: "保留运行并退出",
@@ -2048,7 +2048,7 @@ function App() {
           footer={
             <>
               <button onClick={cancelAutomaticExit}>
-                {quitting.error ? "留在 Claude Eden" : "取消自动退出"}
+                {quitting.error ? "留在 ClaudeEden" : "取消自动退出"}
               </button>
               {quitting.error && (
                 <button className="primary" onClick={stopAndQuit}>
@@ -2066,7 +2066,7 @@ function App() {
               {quitting.error ||
                 (connectionError
                   ? "正在恢复工作台连接，恢复后会继续确认停止结果。"
-                  : "停止完成后 Claude Eden 会自动退出。取消自动退出只保留窗口，环境仍会停止。")}
+                  : "停止完成后 ClaudeEden 会自动退出。取消自动退出只保留窗口，环境仍会停止。")}
             </p>
             {!quitting.error && (
               <p>
@@ -2086,13 +2086,13 @@ function App() {
       <>
         <div className="boot-screen">
           <Shield size={36} />
-          <h1>连接 Claude Eden 工作台</h1>
+          <h1>连接 ClaudeEden 工作台</h1>
           <p role="alert">{fatal}</p>
           {startupReportError && (
             <p role="alert">未能报告启动失败：{startupReportError}</p>
           )}
           <p className="muted">
-            请从 Claude Eden 应用打开，或在终端运行 <code>eden desktop</code>。
+            请从 ClaudeEden 应用打开，或在终端运行 <code>eden desktop</code>。
           </p>
           <button
             className="primary"
@@ -2111,7 +2111,7 @@ function App() {
       <>
         <div className="boot-screen">
           <div className="brand-mark">C</div>
-          <h1>Claude Eden</h1>
+          <h1>ClaudeEden</h1>
           <p>
             <LoaderCircle size={16} className="spin" />
             正在连接工作区…
@@ -2539,7 +2539,7 @@ function App() {
                     <img
                       className="welcome-logo"
                       src={logo}
-                      alt="Claude Eden"
+                      alt="ClaudeEden"
                     />
                     {storageRecovery ? (
                       <>
@@ -2564,7 +2564,7 @@ function App() {
                         <h1>
                           {status.job.error
                             ? "环境安装未完成"
-                            : "正在安装 Claude Eden 环境"}
+                            : "正在安装 ClaudeEden 环境"}
                         </h1>
                         <SetupProgress
                           job={status.job}
@@ -2581,19 +2581,19 @@ function App() {
                         <h1>
                           {busy
                             ? status.job.kind === "stop"
-                              ? "正在停止 Claude Eden 环境"
+                              ? "正在停止 ClaudeEden 环境"
                               : status.job.kind === "storage"
                                 ? "正在调整环境存储"
                                 : status.job.kind === "project"
                                   ? "正在打开项目"
-                                  : "正在准备 Claude Eden 环境"
+                                  : "正在准备 ClaudeEden 环境"
                             : running
                               ? !status.ready
-                                ? "Claude Eden 环境正在连接"
-                                : "Claude Eden 环境已就绪"
+                                ? "ClaudeEden 环境正在连接"
+                                : "ClaudeEden 环境已就绪"
                               : setupProxy
                                 ? "为 Claude 准备独立工作区"
-                                : "先启动 Claude Eden 环境"}
+                                : "先启动 ClaudeEden 环境"}
                         </h1>
                         <p className="welcome-subtitle">
                           <SafetyMessage
@@ -2616,7 +2616,7 @@ function App() {
                         {!running && (
                           <ol
                             className="onboarding-steps"
-                            aria-label="开始使用 Claude Eden"
+                            aria-label="开始使用 ClaudeEden"
                           >
                             {["配置代理", "启动环境", "开始工作"].map(
                               (label, index) => (
@@ -2642,7 +2642,7 @@ function App() {
                               size={24}
                             />
                             <span>
-                              <strong>Claude Eden 隔离环境</strong>
+                              <strong>ClaudeEden 隔离环境</strong>
                               <small>
                                 {running
                                   ? runtimeLabel
@@ -2707,7 +2707,7 @@ function App() {
                                 : !running
                                   ? setupProxy
                                     ? "配置网络与代理"
-                                    : "启动 Claude Eden 环境"
+                                    : "启动 ClaudeEden 环境"
                                   : !status.ready
                                     ? "恢复浏览器"
                                     : !workspace
@@ -2741,7 +2741,7 @@ function App() {
                         {!running && (
                           <p className="welcome-hint">
                             {setupProxy
-                              ? "Claude Eden 不提供代理或 Claude 账户。连接后，在 Claude Eden 内完成 Claude 登录。"
+                              ? "ClaudeEden 不提供代理或 Claude 账户。连接后，在 ClaudeEden 内完成 Claude 登录。"
                               : "首次安装时可在操作详情中查看下载和配置进度；中断后可以继续安装。"}
                           </p>
                         )}
@@ -2990,7 +2990,7 @@ function App() {
                     setTransfer(null);
                   }}
                 >
-                  粘贴到 Claude Eden
+                  粘贴到 ClaudeEden
                 </button>
               </>
             }

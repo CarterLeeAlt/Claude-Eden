@@ -36,7 +36,7 @@ function InitializationFrame({ children }: React.PropsWithChildren) {
     <main className="initialization">
       <header className="initialization-brand">
         <img src={logo} alt="" />
-        <strong>Claude Eden</strong>
+        <strong>ClaudeEden</strong>
         <span>首次设置</span>
       </header>
       {children}
@@ -53,6 +53,7 @@ export function InitializationGate({ children }: React.PropsWithChildren) {
     setError("");
     (async () => {
       const next = await api("/environment/initialization");
+      if (!live) return;
       if (next.required && !next.tracked && !next.started)
         await api("/environment/initialization", { action: "begin" });
       if (live) setState(next);
@@ -66,17 +67,19 @@ export function InitializationGate({ children }: React.PropsWithChildren) {
   if (error)
     return (
       <InitializationFrame>
-        <section className="initialization-content">
-          <h1>继续准备 Claude Eden</h1>
-          <p role="alert">
-            <SafetyMessage message={error} />
-          </p>
-          <button
-            className="primary"
-            onClick={() => retry((value) => value + 1)}
-          >
-            重新连接
-          </button>
+        <section className="initialization-content initialization-error-content">
+          <div className="initialization-notice">
+            <h2>继续准备 ClaudeEden</h2>
+            <p role="alert">
+              <SafetyMessage message={error} />
+            </p>
+            <button
+              className="primary"
+              onClick={() => retry((value) => value + 1)}
+            >
+              重新连接
+            </button>
+          </div>
           <DiagnosticSettings />
         </section>
       </InitializationFrame>
@@ -84,7 +87,7 @@ export function InitializationGate({ children }: React.PropsWithChildren) {
   if (!state)
     return (
       <InitializationFrame>
-        <section className="initialization-content">
+        <section className="initialization-content initialization-loading-content">
           <h1>正在读取环境状态</h1>
           <p role="status">
             <LoaderCircle size={18} className="spin" />
@@ -351,11 +354,11 @@ function Initialization({
       : null;
   const title =
     step === "system"
-      ? "为 Claude Eden 准备独立环境"
+      ? "为 ClaudeEden 准备独立环境"
       : step === "proxy"
         ? "连接你的网络代理"
         : ready
-          ? "Claude Eden 已准备就绪"
+          ? "ClaudeEden 已准备就绪"
           : !busy && networkPending
             ? "环境已启动，等待联网检查"
             : failed
@@ -441,7 +444,7 @@ function Initialization({
                     <h2>环境已就绪</h2>
                     <p>
                       独立客机已安装，工具、文件和登录状态会持续保存。以后打开
-                      Claude Eden 可直接进入工作台。
+                      ClaudeEden 可直接进入工作台。
                     </p>
                   </div>
                 ) : (
@@ -521,12 +524,12 @@ function Initialization({
                       (failed && !networkPending)) && (
                       <p>
                         系统镜像和在主机上准备的安装组件遵循主机代理设置。下载失败时，可在操作详情中查看当前文件和重试记录。客机内的联网请求使用
-                        Claude Eden 代理。
+                        ClaudeEden 代理。
                       </p>
                     )}
                     <div className="initialization-recovery">
                       <button onClick={() => setStep("proxy")} disabled={busy}>
-                        检查 Claude Eden 代理配置
+                        检查 ClaudeEden 代理配置
                       </button>
                       {!progress && (
                         <button onClick={() => setDetails(true)}>

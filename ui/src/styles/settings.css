@@ -13,7 +13,7 @@
   --s-xl: var(--text-page);
   --s-radius: var(--radius-panel);
   --s-control: var(--control-height);
-  --s-content: 760px;
+  --s-content: var(--content-width);
   --s-gutter: max(48px, calc((100% - var(--s-content)) / 2));
   line-height: 1.6;
 }
@@ -25,9 +25,9 @@
 }
 .settings-page .back-to-workspace {
   align-self: flex-start;
-  min-height: 34px;
-  padding: 8px 12px;
-  border-radius: 8px;
+  min-height: var(--control-height);
+  padding: 7px 12px;
+  border-radius: var(--radius-control);
   font-size: var(--s-sm);
   color: var(--muted);
 }
@@ -46,10 +46,10 @@
   gap: 4px;
 }
 .settings-page .settings-sidebar nav button {
-  min-height: 40px;
-  padding: 8px 12px;
+  min-height: var(--control-height);
+  padding: 7px 12px;
   gap: 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font-size: var(--s-md);
   color: var(--ink);
 }
@@ -196,9 +196,9 @@
 
 /* ── Buttons ─────────────────────────────────────────────── */
 .settings-page .settings-content button:not(.text-button):not(.icon-button) {
-  min-height: 36px;
-  padding: 8px 16px;
-  border-radius: 8px;
+  min-height: var(--control-height);
+  padding: 7px 12px;
+  border-radius: var(--radius-control);
   font-size: var(--s-sm);
 }
 .settings-page .settings-content .text-button {
@@ -573,9 +573,9 @@
   font-size: var(--s-sm);
 }
 .settings-page .settings-footer button {
-  min-height: 38px;
-  padding: 8px 16px;
-  border-radius: 8px;
+  min-height: var(--control-height);
+  padding: 7px 12px;
+  border-radius: var(--radius-control);
   font-size: var(--s-sm);
 }
 .settings-page .settings-footer button.primary {
@@ -594,7 +594,7 @@
 @media (max-width: 720px) {
   .settings-page {
     --s-gutter: 24px;
-    --s-xl: 1.5714rem;
+    --s-xl: var(--text-page);
   }
   .settings-page .settings-sidebar {
     width: 192px;

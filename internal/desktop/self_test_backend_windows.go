@@ -14,8 +14,9 @@ import (
 )
 
 func nativeTestMachine() (string, error) {
-	if os.Getenv("EDEN_NATIVE_SELF_TEST") != "vm" {
-		return "", errors.New("原生自检仅允许在测试虚拟机执行；需显式设置 EDEN_NATIVE_SELF_TEST=vm")
+	mode := os.Getenv("EDEN_NATIVE_SELF_TEST")
+	if mode != "vm" && mode != "approved-physical" {
+		return "", errors.New("原生自检需显式授权测试环境：EDEN_NATIVE_SELF_TEST=vm 或 approved-physical")
 	}
 	key, err := registry.OpenKey(registry.LOCAL_MACHINE, `HARDWARE\DESCRIPTION\System\BIOS`, registry.QUERY_VALUE)
 	if err != nil {
@@ -24,14 +25,29 @@ func nativeTestMachine() (string, error) {
 	defer key.Close()
 	manufacturer, _, _ := key.GetStringValue("SystemManufacturer")
 	product, _, _ := key.GetStringValue("SystemProductName")
-	identity := strings.ToLower(manufacturer + " " + product)
-	if !strings.Contains(identity, "qemu") && !strings.Contains(identity, "kvm") && !strings.Contains(identity, "virtual machine") && !strings.Contains(identity, "virtualbox") && !strings.Contains(identity, "vmware") {
+	if !nativeTestHostAllowed(mode, manufacturer, product) {
 		return "", errors.New("原生自检未检测到虚拟机硬件，已拒绝修改剪贴板或焦点")
 	}
 	return manufacturer + " " + product, nil
 }
 
-// RunNativeTestBackend is a VM-only child-process fixture for the actual
+func nativeTestHostAllowed(mode, manufacturer, product string) bool {
+	if mode == "approved-physical" {
+		return true
+	}
+	if mode != "vm" {
+		return false
+	}
+	identity := strings.ToLower(manufacturer + " " + product)
+	for _, name := range []string{"qemu", "kvm", "virtual machine", "virtualbox", "vmware"} {
+		if strings.Contains(identity, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// RunNativeTestBackend is an explicitly authorized child-process fixture for the actual
 // DesktopService.RefreshSession cancellation path. It cannot control a VM,
 // install anything or return a real controller token.
 func RunNativeTestBackend(arguments []string) error {

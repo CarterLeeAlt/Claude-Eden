@@ -34,10 +34,10 @@ const labels: Record<string, string> = {
 };
 const descriptions: Record<string, string> = {
   Stopped:
-    "登录 Tailscale，让 Claude Eden 加入你的私网。其他设备加入同一网络后，会显示在这里。",
+    "登录 Tailscale，让 ClaudeEden 加入你的私网。其他设备加入同一网络后，会显示在这里。",
   NeedsLogin: "在内置浏览器中登录并授权当前设备。",
   NeedsMachineAuth:
-    "登录已完成。请让此网络的管理员在 Tailscale 管理台批准 Claude Eden 设备。",
+    "登录已完成。请让此网络的管理员在 Tailscale 管理台批准 ClaudeEden 设备。",
   Starting: "正在连接 Tailscale，设备清单会在连接成功后自动更新。",
 };
 const deviceName = (peer: { hostname?: string; name?: string; ip: string }) =>
@@ -205,7 +205,7 @@ export function TailscalePanel({
           <div>
             <strong>
               {!ready
-                ? "等待 Claude Eden 环境就绪"
+                ? "等待 ClaudeEden 环境就绪"
                 : labels[state?.backend || ""] ||
                   (state ? "连接状态待确认" : "正在读取状态…")}
             </strong>
@@ -222,9 +222,9 @@ export function TailscalePanel({
         </div>
         <p className="field-help">
           {!ready
-            ? "启动 Claude Eden 环境后，即可登录并连接私网。"
+            ? "启动 ClaudeEden 环境后，即可登录并连接私网。"
             : connected
-              ? "Claude Eden 已加入私网。选择设备，查看地址并使用它的服务。"
+              ? "ClaudeEden 已加入私网。选择设备，查看地址并使用它的服务。"
               : state?.backend === "NeedsLogin" && !state.auth_url
                 ? "正在向 Tailscale 获取登录链接。若长时间没有打开浏览器，请检查环境联网后重新发起登录。"
                 : descriptions[state?.backend || ""] ||
@@ -316,7 +316,7 @@ export function TailscalePanel({
         </div>
       )}
       {connected && (
-        <section className="tailscale-self" aria-label="当前 Claude Eden 设备">
+        <section className="tailscale-self" aria-label="当前 ClaudeEden 设备">
           <DeviceIcon os={state.os} />
           <div>
             <strong>
@@ -331,7 +331,7 @@ export function TailscalePanel({
           {address && (
             <button
               className="quiet-button"
-              onClick={() => copy(address, "已复制 Claude Eden 私网地址")}
+              onClick={() => copy(address, "已复制 ClaudeEden 私网地址")}
             >
               <Copy size={14} />
               复制地址
@@ -377,7 +377,7 @@ export function TailscalePanel({
             <strong>私网已连接，还没有发现其他设备</strong>
             <p>
               在电脑或手机安装 Tailscale，并加入同一网络。这里只显示此网络允许
-              Claude Eden 发现的设备。
+              ClaudeEden 发现的设备。
             </p>
           </div>
         ) : visible.length === 0 ? (
@@ -444,7 +444,7 @@ export function TailscalePanel({
                       访问设备上的服务
                     </label>
                     <p className="field-help">
-                      填写服务端口，为 Claude Eden
+                      填写服务端口，为 ClaudeEden
                       内的浏览器、数据库客户端或其他应用创建本地连接地址。
                     </p>
                     <div className="tailscale-connect-form">
@@ -474,7 +474,7 @@ export function TailscalePanel({
                             })
                           )
                             setNotice(
-                              "本地连接地址已就绪，请在 Claude Eden 环境内使用。",
+                              "本地连接地址已就绪，请在 ClaudeEden 环境内使用。",
                             );
                         }}
                       >
@@ -498,7 +498,7 @@ export function TailscalePanel({
                             onClick={() =>
                               copy(
                                 entry.address,
-                                "已复制 Claude Eden 内可用的连接地址",
+                                "已复制 ClaudeEden 内可用的连接地址",
                               )
                             }
                           >
@@ -549,7 +549,7 @@ export function TailscalePanel({
                         onClick={() =>
                           copy(
                             `ssh -l '${username.trim().replaceAll("'", "'\\''")}' ${peer.ip}`,
-                            "已复制 SSH 命令，请在 Claude Eden 终端运行",
+                            "已复制 SSH 命令，请在 ClaudeEden 终端运行",
                           )
                         }
                       >
@@ -577,7 +577,7 @@ export function TailscalePanel({
           >
             <span>
               <KeyRound size={16} />
-              从其他设备 SSH 到 Claude Eden
+              从其他设备 SSH 到 ClaudeEden
             </span>
             <ChevronDown size={16} />
           </button>
@@ -592,7 +592,7 @@ export function TailscalePanel({
                   <code>{`ssh ${state.user}@${address}`}</code>
                   <button
                     className="icon-button"
-                    aria-label="复制连接 Claude Eden 命令"
+                    aria-label="复制连接 ClaudeEden 命令"
                     onClick={() => copy(`ssh ${state.user}@${address}`)}
                   >
                     <Copy size={15} />
@@ -654,7 +654,7 @@ export function TailscalePanel({
           {appsOpen && (
             <div id="tailnet-apps" className="tailscale-detail">
               <p className="field-help">
-                需要直接使用设备域名、HTTPS 或多个端口时，在 Claude Eden
+                需要直接使用设备域名、HTTPS 或多个端口时，在 ClaudeEden
                 内的应用中配置 HTTP
                 代理。仅允许访问此私网中可见的设备，公网继续使用原有出口。
               </p>
@@ -670,7 +670,7 @@ export function TailscalePanel({
                 复制私网代理地址
               </button>
               <p className="field-help">
-                代理地址含本地访问凭据，请仅用于 Claude Eden
+                代理地址含本地访问凭据，请仅用于 ClaudeEden
                 内的应用。此接入方式支持 TCP 服务；UDP、系统 VPN
                 和子网路由未启用。
               </p>
@@ -680,7 +680,7 @@ export function TailscalePanel({
       )}
       <p className="field-help tailscale-footer">
         其他设备需安装 Tailscale 并加入同一网络。设备访问受网络权限控制；暂停
-        Claude Eden 联网或停止环境会中断私网连接。
+        ClaudeEden 联网或停止环境会中断私网连接。
       </p>
       {notice && (
         <p className="tailscale-notice" role="status">

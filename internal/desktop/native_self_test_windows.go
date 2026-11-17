@@ -9,6 +9,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -224,7 +225,9 @@ func runNativeSelfTest(output string, webview bool, options Options) (report Nat
 	if startupBodyError != nil {
 		report.Errors = append(report.Errors, startupBodyError.Error())
 	}
+	showWindow.Call(hwnd, 9) // Restore the fixture after the standalone modal dialog.
 	user32.NewProc("SetForegroundWindow").Call(hwnd)
+	pumpNativeMessages(50 * time.Millisecond)
 	input, e := newNativeInput(hwnd, func(value InputEvent) { report.InputEvents = append(report.InputEvents, value) })
 	if e != nil {
 		return report, e
@@ -232,7 +235,12 @@ func runNativeSelfTest(output string, webview bool, options Options) (report Nat
 	defer input.close()
 	owner := uuid.NewString()
 	accepted, e := input.request(RemoteInputRequest{Owner: owner, Operation: "activate", X: 80, Y: 180, Height: 24}, 1)
-	check(e == nil && accepted.Accepted, "真实 EDIT 子控件激活")
+	if e != nil || !accepted.Accepted {
+		visible, _, _ := user32.NewProc("IsWindowVisible").Call(hwnd)
+		minimized, _, _ := user32.NewProc("IsIconic").Call(hwnd)
+		return report, fmt.Errorf("真实 EDIT 子控件激活失败：visible=%d minimized=%d valid=%t error=%v", visible, minimized, validInput(RemoteInputRequest{Owner: owner, Operation: "activate", X: 80, Y: 180, Height: 24}), e)
+	}
+	check(true, "真实 EDIT 子控件激活")
 
 	// SetKeyboardState is thread-local; no SendInput and no LED mutation.
 	original := make([]byte, 256)
@@ -311,7 +319,7 @@ func runNativeSelfTest(output string, webview bool, options Options) (report Nat
 		focused, _, _ := getFocus.Call()
 		check(releaseError == nil && released.Accepted && released.ReturnedFocus == returnFocus && (!returnFocus || focused == focusTarget), fmt.Sprintf("原生输入仅按明确 returnFocus=%t 归还焦点并回读", returnFocus))
 	}
-	restoreProfile, e := activatePinyinProfile()
+	restoreProfile, e := activatePinyinProfile(&report)
 	if e != nil {
 		return report, e
 	}
@@ -328,13 +336,13 @@ func runNativeSelfTest(output string, webview bool, options Options) (report Nat
 	}
 	defer restoreTestProfile()
 	if activation, activationError := input.request(RemoteInputRequest{Owner: owner, Operation: "activate", X: 80, Y: 180, Height: 24}, 1); activationError != nil || !activation.Accepted {
-		return report, errors.New("切换微软拼音后原生输入控件未能激活")
+		return report, errors.New("切换中文输入法后原生输入控件未能激活")
 	}
 	for _, scale := range []float64{1, 1.25, 1.5, 2, 2.5} {
 		_, e = input.request(RemoteInputRequest{Owner: owner, Operation: "caret", X: 80, Y: 180, Height: 24}, scale)
 		check(e == nil, "CSS/DPI 光标定位")
 		rect := w32.GetWindowRect(w32.HWND(input.hwnd))
-		expected := int32(24 * float64(dpi) / 96 * scale)
+		expected := int32(math.Round(24 * float64(dpi) / 96 * scale))
 		check(rect != nil && rect.Bottom-rect.Top == expected, fmt.Sprintf("EDIT 实际高度 scale=%.2f", scale))
 		context, _, _ := immGetContext.Call(input.hwnd)
 		check(context != 0, "EDIT 原生输入法上下文")
@@ -453,61 +461,61 @@ func runNativeSelfTest(output string, webview bool, options Options) (report Nat
 		report.Screenshots = append(report.Screenshots, name)
 	}
 
-	clipboard := nativeClipboard{hwnd: hwnd}
-	var saved []struct {
-		format uintptr
-		data   []byte
+	if e = runNativeClipboardSelfTest(hwnd, output, &report); e != nil {
+		report.Errors = append(report.Errors, e.Error())
 	}
-	// Preserve each supported HGLOBAL format byte-for-byte, including mixed
-	// text/image/file sets. The production reader deliberately picks one type.
-	e = clipboard.opened(func() error {
-		previous := uintptr(0)
-		for {
-			kernel32.NewProc("SetLastError").Call(0)
-			format, _, nativeError := user32.NewProc("EnumClipboardFormats").Call(previous)
-			if format == 0 {
-				if nativeError != syscall.Errno(0) {
-					return fmtNative("无法完整保存 VM 原剪贴板格式", nativeError)
-				}
-				return nil
-			}
-			previous = format
-			if format != 1 && format != 7 && format != 8 && format != 13 && format != 15 && format != 16 && format != 17 && format != pngFormat() {
-				return fmt.Errorf("VM 剪贴板含不可还原格式 %d，请先在 VM 内清空或保存剪贴板后重跑", format)
-			}
-			data, err := clipboardBytes(format, maxPixels*4+4096)
-			if err != nil {
-				return err
-			}
-			saved = append(saved, struct {
-				format uintptr
-				data   []byte
-			}{format, data})
+	_, e = input.request(RemoteInputRequest{Owner: owner, Operation: "deactivate", ReturnFocus: true}, 1)
+	check(e == nil, "原生输入释放与生命周期")
+	// Close the Win32 fixture before Wails owns the application message loop.
+	input.close()
+	showWindow.Call(hwnd, 0)
+	if webview {
+		if e = runWebviewSelfTest(output, &report, options, fonts); e != nil {
+			return report, e
 		}
-	})
+	}
+	return report, nil
+}
+
+// An unsupported original clipboard format must not prevent the independent
+// WebView checks, and must never be discarded merely to run this probe.
+func runNativeClipboardSelfTest(hwnd uintptr, output string, report *NativeSelfTestReport) error {
+	check := func(ok bool, message string) {
+		if !ok {
+			panic(message)
+		}
+		report.Checks = append(report.Checks, message)
+	}
+	clipboard := nativeClipboard{hwnd: hwnd}
+	restore, e := preserveUIClipboard(clipboard)
 	if e != nil {
-		return report, e
+		return e
 	}
 	defer func() {
-		restoreError := clipboard.opened(func() error {
-			if result, _, nativeError := emptyClipboard.Call(); result == 0 {
-				return fmtNative("无法清空 VM 测试剪贴板", nativeError)
-			}
-			for _, item := range saved {
-				if err := putClipboard(item.format, item.data); err != nil {
-					return err
-				}
-			}
-			return nil
-		})
-		if restoreError != nil {
+		if restoreError := restore(); restoreError != nil {
 			report.Errors = append(report.Errors, "恢复 VM 剪贴板："+restoreError.Error())
+		} else {
+			report.Checks = append(report.Checks, "自检前剪贴板全部原有 HGLOBAL 格式（含注册格式）完整保存、恢复及关闭后逐字节回读一致")
 		}
 	}()
 	_, _, e = clipboard.write(clipboardSnapshot{text: "Claude Eden 中文 😀"}, nil)
 	check(e == nil, "VM 剪贴板 Unicode 写入")
 	read, e := clipboard.read()
 	check(e == nil && read.text == "Claude Eden 中文 😀", "VM 剪贴板 Unicode 回读")
+	registered, _, _ := registerClipboardFormat.Call(uintptr(unsafe.Pointer(windows.StringToUTF16Ptr("ClaudeEden.SelfTest.Binary"))))
+	check(registered >= 0xc000 && registered <= 0xffff, "自检注册 HGLOBAL 剪贴板格式")
+	binaryData := []byte{0, 0xff, 0x80, 1, 0, 7, 0}
+	e = clipboard.opened(func() error {
+		if err := putClipboard(registered, binaryData); err != nil {
+			return err
+		}
+		data, err := clipboardBytes(registered, 1024)
+		if err == nil && !bytes.Equal(data, binaryData) {
+			return errors.New("注册格式二进制内容回读不一致")
+		}
+		return err
+	})
+	check(e == nil, "注册剪贴板格式保留 NUL/非文本字节并完整回读")
 	img := image.NewNRGBA(image.Rect(0, 0, 16, 12))
 	img.SetNRGBA(4, 3, color.NRGBA{R: 120, G: 40, B: 90, A: 255})
 	var imageData bytes.Buffer
@@ -528,7 +536,7 @@ func runNativeSelfTest(output string, webview bool, options Options) (report Nat
 	files := []string{filepath.Join(output, "Clipboard_File_One.txt"), filepath.Join(output, "Clipboard_File_Two.txt")}
 	for _, name := range files {
 		if e = os.WriteFile(name, []byte("VM clipboard self-test\n"), 0600); e != nil {
-			return report, e
+			return e
 		}
 	}
 	_, _, e = clipboard.write(clipboardSnapshot{paths: files}, nil)
@@ -538,17 +546,7 @@ func runNativeSelfTest(output string, webview bool, options Options) (report Nat
 	old := clipboard.revision() - 1
 	_, superseded, e := clipboard.write(clipboardSnapshot{text: "must-not-write"}, &old)
 	check(e == nil && superseded, "VM 剪贴板旧 revision 拒绝覆盖")
-	_, e = input.request(RemoteInputRequest{Owner: owner, Operation: "deactivate", ReturnFocus: true}, 1)
-	check(e == nil, "原生输入释放与生命周期")
-	// Close the Win32 fixture before Wails owns the application message loop.
-	input.close()
-	showWindow.Call(hwnd, 0)
-	if webview {
-		if e = runWebviewSelfTest(output, &report, options, fonts); e != nil {
-			return report, e
-		}
-	}
-	return report, nil
+	return nil
 }
 
 func verifySelfTestDialogScroll(dialog uintptr) error {

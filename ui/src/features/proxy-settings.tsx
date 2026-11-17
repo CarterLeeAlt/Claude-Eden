@@ -395,7 +395,7 @@ export function ProxySettings({
         >
           <h4 id="proxy-help-title">代理使用说明</h4>
           <p>
-            Claude Eden 自带 Mihomo
+            ClaudeEden 自带 Mihomo
             核心。准备自己的服务器地址、端口和认证信息，即可添加节点。
           </p>
           <ol className="proxy-help-steps">
@@ -436,7 +436,7 @@ export function ProxySettings({
           <span>
             {proxy.active
               ? proxy.running
-                ? "Claude Eden 自带核心运行中"
+                ? "ClaudeEden 自带核心运行中"
                 : "核心未就绪"
               : "请选择节点后应用，未配置时无法联网"}{" "}
             · 独立端口 {proxy.port}
@@ -454,7 +454,7 @@ export function ProxySettings({
       )}
       {!proxy.core_available && (
         <div role="alert" className="error-message">
-          安装包缺少随附代理核心，请重新构建或安装完整 Claude Eden 应用。
+          安装包缺少随附代理核心，请重新构建或安装完整 ClaudeEden 应用。
         </div>
       )}
       <p className="field-help">
@@ -878,7 +878,7 @@ export function ProxySettings({
             </span>
           </div>
           <p className="field-help">
-            显示当前核心的连接与流量，包含 Claude Eden
+            显示当前核心的连接与流量，包含 ClaudeEden
             自身检测请求；重启核心后累计值重置。
           </p>
           <div className="proxy-node-list">
@@ -902,7 +902,7 @@ export function ProxySettings({
       {tab === "diagnostics" && (
         <>
           <p className="field-help">
-            随附核心 {proxy.version || "未运行"}。以下为 Claude Eden
+            随附核心 {proxy.version || "未运行"}。以下为 ClaudeEden
             状态摘要；含凭据风险的核心原始日志不向页面公开。
           </p>
           <div className="proxy-diagnostics" role="log">
@@ -954,7 +954,7 @@ export function ProxySettings({
             </button>
           </div>
           <p className="field-help">
-            Claude Eden 使用独立代理端口。主机其他代理的 TUN
+            ClaudeEden 使用独立代理端口。主机其他代理的 TUN
             可能影响核心出站，需要结合实际路由验证。
           </p>
         </>

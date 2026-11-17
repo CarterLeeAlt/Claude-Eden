@@ -234,6 +234,14 @@ func (input *nativeInput) readComposition(flags uintptr) bool {
 	if input.resetting || input.owner == "" {
 		return false
 	}
+	// Some TSF providers send RESULTSTR after focus has moved but before
+	// WM_KILLFOCUS reaches EDIT. That late result must not reach the remote
+	// field or EDIT's default handler after the composition was abandoned.
+	focused, _, _ := getFocus.Call()
+	if focused != input.hwnd {
+		input.deactivate()
+		return true
+	}
 	context, _, _ := immGetContext.Call(input.hwnd)
 	if context == 0 {
 		return false

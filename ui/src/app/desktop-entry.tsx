@@ -12,6 +12,8 @@ const Workbench = lazy(async () => {
   // xterm measures cells when it opens; load the bundled faces first.
   await Promise.all(
     [
+      ['400 14px "Inter"', "ClaudeEden 2186"],
+      ['600 14px "Inter"', "ClaudeEden"],
       ['400 14px "Noto Sans SC"', "工作台"],
       ['600 14px "Noto Sans SC"', "工作台"],
       ['400 13px "JetBrains Mono"', "Claude 2186"],
@@ -23,7 +25,7 @@ const Workbench = lazy(async () => {
     ].map(async ([font, text]) => {
       const faces = await document.fonts.load(font, text);
       if (!faces.length)
-        throw new Error("内置字体未能加载，请重新安装 Claude Eden。");
+        throw new Error("内置字体未能加载，请重新安装 ClaudeEden。");
     }),
   );
   return import("./App.tsx");

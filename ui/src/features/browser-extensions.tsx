@@ -361,7 +361,7 @@ export function BrowserExtensions({
       mode === "remove" &&
       !(await onConfirm({
         title: "移除此扩展？",
-        body: "扩展将从 Claude Eden 浏览器中移除。本机 Edge 或 Chrome 中的扩展保持原状。",
+        body: "扩展将从 ClaudeEden 浏览器中移除。本机 Edge 或 Chrome 中的扩展保持原状。",
         confirm: "移除扩展",
       }))
     )
@@ -437,7 +437,7 @@ export function BrowserExtensions({
         aria-label="选择扩展 ZIP"
       />
       <p>
-        支持 Chromium Manifest V3 扩展。扩展运行在 Claude Eden
+        支持 Chromium Manifest V3 扩展。扩展运行在 ClaudeEden
         环境中，并按声明的权限访问网站。
       </p>
       {error && (

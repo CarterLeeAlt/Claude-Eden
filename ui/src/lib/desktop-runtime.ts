@@ -19,7 +19,7 @@ async function transportReady(): Promise<RuntimeTransport> {
   if (window.edenRuntimeTransport) return window.edenRuntimeTransport;
   if (!nativeAvailable())
     throw new Error(
-      "原生窗口连接不可用，请从 Claude Eden 桌面应用打开工作台。",
+      "原生窗口连接不可用，请从 ClaudeEden 桌面应用打开工作台。",
     );
   return new Promise((resolve) => {
     const accept = () => {

@@ -378,7 +378,7 @@ export function BrowserFavorites({
               </div>
               {data && (
                 <footer>
-                  {visible.length} 个收藏<span>保存在此 Claude Eden 环境</span>
+                  {visible.length} 个收藏<span>保存在此 ClaudeEden 环境</span>
                 </footer>
               )}
             </section>

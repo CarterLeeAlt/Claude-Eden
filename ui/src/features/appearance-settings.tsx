@@ -642,7 +642,7 @@ export function AppearanceSettings() {
               fontSize: appearance.codeFontSize,
             }}
           >
-            const workspace = "Claude Eden";
+            const workspace = "ClaudeEden";
           </code>
         </div>
         <h4>显示与交互</h4>

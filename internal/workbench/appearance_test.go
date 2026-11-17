@@ -9,7 +9,47 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/sylvinus/agent-vm/internal/uitheme"
 )
+
+func TestAppearanceDefaultUsesSharedClaudeEdenPalette(t *testing.T) {
+	var expected AppearanceTheme
+	if err := json.Unmarshal(uitheme.LightJSON, &expected); err != nil {
+		t.Fatal(err)
+	}
+	a := defaultAppearance()
+	if !reflect.DeepEqual(a.Light, expected) || a.UIFontSize != 14 || a.CodeFontSize != 13 {
+		t.Fatalf("controller default differs from bundled UI: %+v", a)
+	}
+	if a.Light.Preset != "eden" || a.Light.Colors["button"] != "#a64b32" || !a.Light.OpaqueWindows {
+		t.Fatal("default brand was replaced")
+	}
+	// Calls must not share a mutable colors map.
+	a.Light.Colors["button"] = "#000000"
+	if defaultAppearance().Light.Colors["button"] != "#a64b32" {
+		t.Fatal("default palette leaked a mutation")
+	}
+}
+
+func TestAppearanceSavedDerivedThemeDoesNotInheritBrandOverrides(t *testing.T) {
+	s := &Server{profile: t.TempDir()}
+	a := defaultAppearance()
+	a.Light.Preset, a.Light.Surface, a.Light.Colors = "custom", "#ffffff", nil
+	b, err := json.Marshal(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writePrivate(filepath.Join(s.profile, "appearance.json"), a); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	s.getAppearance(w, httptest.NewRequest("GET", "/api/appearance", nil))
+	var loaded Appearance
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &loaded) != nil || !reflect.DeepEqual(loaded, a) {
+		t.Fatalf("saved custom theme changed: %s (stored %s)", w.Body.String(), b)
+	}
+}
 
 func TestCodexAppearanceImportsOnlyAppearance(t *testing.T) {
 	dir := t.TempDir()

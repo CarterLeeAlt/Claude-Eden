@@ -35,7 +35,7 @@ func (manager *profileManager) activate(profile inputProcessorProfile) error {
 	return nil
 }
 
-func activatePinyinProfile() (func() error, error) {
+func activatePinyinProfile(report *NativeSelfTestReport) (func() error, error) {
 	ole := windows.NewLazySystemDLL("ole32.dll")
 	hr, _, _ := ole.NewProc("CoInitializeEx").Call(0, 2)
 	if int32(hr) < 0 {
@@ -128,16 +128,28 @@ func activatePinyinProfile() (func() error, error) {
 	// ActivateProfile's zero flags change only this thread. Never use its
 	// FORPROCESS/FORSESSION flags or change the user's default input method.
 	pinyin := inputProcessorProfile{Type: 1, Language: 0x0804, CLSID: windows.GUID{Data1: 0x81d4e9c9, Data2: 0x1d3b, Data3: 0x41bc, Data4: [8]byte{0x9e, 0x6c, 0x4b, 0x40, 0xbf, 0x79, 0xe3, 0x5e}}, Profile: windows.GUID{Data1: 0xfa550b04, Data2: 0x5ad7, Data3: 0x411f, Data4: [8]byte{0xa5, 0xac, 0xca, 0x03, 0x8e, 0xc5, 0x15, 0xd7}}}
+	// Prefer the host's already enabled Chinese TIP. The test must not enable
+	// Microsoft Pinyin or replace the user's installed/default input method.
+	if original.Type == 1 && original.Language == 0x0804 && original.Flags&2 != 0 {
+		pinyin = original
+	}
+	var enabled int32
+	enabledHR, _, _ := syscall.SyscallN(profiles.vtable[18], uintptr(unsafe.Pointer(profiles)), uintptr(unsafe.Pointer(&pinyin.CLSID)), uintptr(pinyin.Language), uintptr(unsafe.Pointer(&pinyin.Profile)), uintptr(unsafe.Pointer(&enabled)))
+	if enabledHR != 0 || enabled == 0 {
+		release()
+		return nil, fmt.Errorf("中文输入法未启用，拒绝修改宿主配置：CLSID=%s profile=%s HRESULT=0x%08x", pinyin.CLSID, pinyin.Profile, uint32(enabledHR))
+	}
+	report.Notes = append(report.Notes, fmt.Sprintf("真实中文输入法：CLSID=%s profile=%s；仅激活测试线程，不启用输入法或更改默认项", pinyin.CLSID, pinyin.Profile))
 	if err := changeLanguage(0x0804); err != nil {
 		return abortActivation(err)
 	}
 	if err := manager.activate(pinyin); err != nil {
-		return abortActivation(err)
+		return abortActivation(fmt.Errorf("激活中文输入法 CLSID=%s profile=%s：%w", pinyin.CLSID, pinyin.Profile, err))
 	}
 	var active inputProcessorProfile
 	hr, _, _ = syscall.SyscallN(manager.vtable[10], uintptr(unsafe.Pointer(manager)), uintptr(unsafe.Pointer(&category)), uintptr(unsafe.Pointer(&active)))
 	if hr != 0 || active.Type != pinyin.Type || active.CLSID != pinyin.CLSID || active.Profile != pinyin.Profile || active.Language != pinyin.Language {
-		return abortActivation(errors.New("TSF profile 激活回读不是指定的微软拼音"))
+		return abortActivation(errors.New("TSF profile 激活回读不是指定的中文输入法"))
 	}
 	return func() error { defer release(); return restoreOriginal() }, nil
 }
@@ -235,7 +247,7 @@ func exerciseRealPinyin(input *nativeInput, output string, report *NativeSelfTes
 	pumpNativeMessages(150 * time.Millisecond)
 	context, _, _ := immGetContext.Call(input.hwnd)
 	if context == 0 {
-		return errors.New("微软拼音没有为 EDIT 提供 IMM/TSF 输入上下文")
+		return errors.New("中文输入法没有为 EDIT 提供 IMM/TSF 输入上下文")
 	}
 	imm32.NewProc("ImmSetOpenStatus").Call(context, 1)
 	imm32.NewProc("ImmSetConversionStatus").Call(context, 1, 0)
@@ -254,7 +266,7 @@ func exerciseRealPinyin(input *nativeInput, output string, report *NativeSelfTes
 		pumpNativeMessages(50 * time.Millisecond)
 	}
 	if !input.composing {
-		return errors.New("真实微软拼音 nihao 按键未进入组合；不能以合成 IMM 消息替代通过")
+		return errors.New("真实中文输入法 nihao 按键未进入组合；不能以合成 IMM 消息替代通过")
 	}
 	compositionStart, updates := 0, 0
 	for _, event := range report.InputEvents[start:] {
@@ -282,7 +294,7 @@ func exerciseRealPinyin(input *nativeInput, output string, report *NativeSelfTes
 	report.Notes = append(report.Notes, note)
 	if !visible || visibilityError != nil {
 		_, diagnosticError := writeIMEWindowDiagnostics(input, output, report)
-		candidateError = errors.Join(errors.New("未观测到真实微软拼音可见候选条，候选框验收未通过"), visibilityError, diagnosticError)
+		candidateError = errors.Join(errors.New("未观测到真实中文输入法可见候选条，候选框验收未通过"), visibilityError, diagnosticError)
 	}
 	for index, window := range candidates {
 		name := fmt.Sprintf("Native_IME_Candidate_%02d.png", index+1)
@@ -303,15 +315,15 @@ func exerciseRealPinyin(input *nativeInput, output string, report *NativeSelfTes
 			committed += event.Text
 		}
 		if event.Kind == "input" && containsChinese(event.Text) {
-			return errors.New("微软拼音结果在 compositionend 后又通过 input 重复发送")
+			return errors.New("中文输入法结果在 compositionend 后又通过 input 重复发送")
 		}
 	}
 	if commits != 1 || committed != "你好" {
-		return errors.Join(candidateError, fmt.Errorf("真实微软拼音选词结果不符：commit=%d text=%q", commits, committed))
+		return errors.Join(candidateError, fmt.Errorf("真实中文输入法选词结果不符：commit=%d text=%q", commits, committed))
 	}
-	report.Checks = append(report.Checks, "真实微软拼音 TSF 激活、nihao 按键、空格选词“你好”仅提交一次")
+	report.Checks = append(report.Checks, "真实中文输入法 TSF 激活、nihao 按键、空格选词“你好”仅提交一次")
 	if candidateError == nil {
-		report.Checks = append(report.Checks, "真实微软拼音候选条已绘制到实际屏幕，排除 EDIT 像素后仍存在完整候选行；截图回读“你好”")
+		report.Checks = append(report.Checks, "真实中文输入法候选条已绘制到实际屏幕，排除 EDIT 像素后仍存在完整候选行；截图回读“你好”")
 	}
 	if err := verifyIMECandidateClosed(input, output, "Commit", report); err != nil {
 		return errors.Join(candidateError, err)
@@ -335,7 +347,7 @@ func exerciseRealPinyin(input *nativeInput, output string, report *NativeSelfTes
 			return errors.New("取消真实拼音组合时意外提交文本")
 		}
 	}
-	report.Checks = append(report.Checks, "真实微软拼音 Escape 取消不提交文本")
+	report.Checks = append(report.Checks, "真实中文输入法 Escape 取消不提交文本")
 	if err := verifyIMECandidateClosed(input, output, "Escape", report); err != nil {
 		return errors.Join(candidateError, err)
 	}
@@ -346,8 +358,23 @@ func exerciseRealPinyin(input *nativeInput, output string, report *NativeSelfTes
 	if !input.composing {
 		return errors.New("失焦测试未进入真实拼音组合")
 	}
+	var blurMessages []string
+	blurCallback := syscall.NewCallback(func(hwnd uintptr, message uint32, wParam, lParam, id, data uintptr) uintptr {
+		if message == 8 || message == 0x281 || message >= 0x10d && message <= 0x10f {
+			focused, _, _ := getFocus.Call()
+			blurMessages = append(blurMessages, fmt.Sprintf("msg=%x w=%x l=%x focusIsEdit=%t composing=%t resetting=%t", message, wParam, lParam, focused == input.hwnd, input.composing, input.resetting))
+		}
+		result, _, _ := defSubclassProc.Call(hwnd, uintptr(message), wParam, lParam)
+		return result
+	})
+	installed, _, nativeError := setWindowSubclass.Call(input.hwnd, blurCallback, 2, 0)
+	if installed == 0 {
+		return fmtNative("无法安装失焦消息诊断", nativeError)
+	}
+	defer removeWindowSubclass.Call(input.hwnd, blurCallback, 2)
 	setFocus.Call(input.parent)
 	pumpNativeMessages(200 * time.Millisecond)
+	report.Notes = append(report.Notes, "真实组合失焦消息顺序："+strings.Join(blurMessages, "; "))
 	deactivated := 0
 	for _, event := range report.InputEvents[start:] {
 		if event.Kind == "deactivated" {
@@ -360,7 +387,7 @@ func exerciseRealPinyin(input *nativeInput, output string, report *NativeSelfTes
 	if input.owner != "" || input.composing || deactivated != 1 {
 		return errors.New("真实拼音失焦未释放 owner/组合状态")
 	}
-	report.Checks = append(report.Checks, "真实微软拼音失焦取消、deactivated 单次和 owner 释放")
+	report.Checks = append(report.Checks, "真实中文输入法失焦取消、deactivated 单次和 owner 释放")
 	if err := verifyIMECandidateClosed(input, output, "Blur", report); err != nil {
 		return errors.Join(candidateError, err)
 	}

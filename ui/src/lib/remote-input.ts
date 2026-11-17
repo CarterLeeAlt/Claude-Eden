@@ -89,7 +89,7 @@ export function installRemoteInput(
     insertComposition,
     caretRect,
     surface,
-    inputLabel = "Claude Eden 网页输入",
+    inputLabel = "ClaudeEden 网页输入",
     tabId: getTargetId = () => "",
     pasteContent,
     preparePaste,
@@ -632,7 +632,7 @@ export function installRemoteInput(
       copyRequested = false;
       onFallback(
         lastText,
-        "未收到新的选中文本，可在这里复制 Claude Eden 剪贴板。",
+        "未收到新的选中文本，可在这里复制 ClaudeEden 剪贴板。",
       );
     }, 1600);
   };

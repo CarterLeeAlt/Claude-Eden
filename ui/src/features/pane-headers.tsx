@@ -457,7 +457,7 @@ export function BrowserHeader({
             onFocus={(e) => e.target.select()}
             placeholder={
               ready
-                ? "输入网址或搜索，在 Claude Eden 内打开"
+                ? "输入网址或搜索，在 ClaudeEden 内打开"
                 : "启动环境后浏览网页"
             }
             disabled={!ready}

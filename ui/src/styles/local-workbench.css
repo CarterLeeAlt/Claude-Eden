@@ -14,8 +14,9 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  padding: 32px;
+  gap: var(--space-4);
+  padding: var(--space-8);
+  background: var(--paper);
   text-align: center;
 }
 .local-workbench-connect > img {
@@ -27,6 +28,14 @@
   margin: 0;
   max-width: 560px;
 }
+.local-workbench-connect h1 {
+  font-size: var(--text-page);
+  line-height: var(--line-page);
+}
+.local-workbench-connect p {
+  font-size: var(--text-body);
+  line-height: var(--line-body);
+}
 .local-workbench-connect [role="status"],
 .local-workbench-connect > div {
   display: flex;
@@ -35,12 +44,12 @@
   gap: 12px;
 }
 .local-workbench-connect [role="alert"] {
-  color: var(--error, #b42318);
+  color: var(--danger);
   overflow-wrap: anywhere;
 }
 .local-workbench-error {
   padding: 12px 24px;
-  color: var(--error, #b42318);
+  color: var(--danger);
   overflow-wrap: anywhere;
 }
 .client-loading {

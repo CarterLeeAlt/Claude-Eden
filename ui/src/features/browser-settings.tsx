@@ -282,7 +282,7 @@ export function BrowserSettingsPage({
                       <option value="vertical">竖排（左侧）</option>
                     </InlineSelect>
                   </div>
-                  <p>浏览器设置页跟随 Claude Eden 当前的字体与配色。</p>
+                  <p>浏览器设置页跟随 ClaudeEden 当前的字体与配色。</p>
                 </>
               )}
               {item.id === "privacy" && (
@@ -323,7 +323,7 @@ export function BrowserSettingsPage({
               )}
               {item.id === "extensions" && (
                 <>
-                  <p>添加与管理 Claude Eden 浏览器使用的扩展。</p>
+                  <p>添加与管理 ClaudeEden 浏览器使用的扩展。</p>
                   <BrowserExtensions
                     onInternal={onInternal}
                     onOpenPage={onOpenPage}
@@ -334,8 +334,8 @@ export function BrowserSettingsPage({
               {item.id === "about" && (
                 <>
                   <p>
-                    Claude Eden 浏览器由环境内的 Chromium
-                    承载。网页、扩展和网站数据随当前 Claude Eden 环境保存。
+                    ClaudeEden 浏览器由环境内的 Chromium
+                    承载。网页、扩展和网站数据随当前 ClaudeEden 环境保存。
                   </p>
                   <div className="browser-setting-row">
                     <div>
@@ -349,7 +349,7 @@ export function BrowserSettingsPage({
                     </div>
                   </div>
                   <p>
-                    下载文件通过 Claude Eden
+                    下载文件通过 ClaudeEden
                     保存到下载暂存目录，可从下载面板另存为。
                   </p>
                 </>

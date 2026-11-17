@@ -47,7 +47,7 @@ export async function imagePayload(file: Blob): Promise<ClipboardContent> {
     canvas.height = image.naturalHeight;
     const context = canvas.getContext("2d");
     if (!context)
-      throw new Error("当前窗口无法转换图片，请重新打开 Claude Eden。");
+      throw new Error("当前窗口无法转换图片，请重新打开 ClaudeEden。");
     context.drawImage(image, 0, 0);
     const png = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, "image/png"),
@@ -77,7 +77,7 @@ export async function readClipboardContent(): Promise<ClipboardContent> {
         typeof value.text !== "string" &&
         typeof value.fileSelection !== "string")
     )
-      throw new Error("剪贴板读取失败，请重新打开新版 Claude Eden 后重试");
+      throw new Error("剪贴板读取失败，请重新打开新版 ClaudeEden 后重试");
     return {
       text: value.text ?? undefined,
       png: value.png,

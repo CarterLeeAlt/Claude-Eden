@@ -257,7 +257,7 @@ export async function uploadFile(
         cleanup();
         reject(
           new Error(
-            "上传文件失败：与 Claude Eden 后台的连接中断。请恢复连接后核对目标是否已收到文件，再重新选择文件。",
+            "上传文件失败：与 ClaudeEden 后台的连接中断。请恢复连接后核对目标是否已收到文件，再重新选择文件。",
           ),
         );
       };

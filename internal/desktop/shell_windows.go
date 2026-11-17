@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/sylvinus/agent-vm/internal/uitheme"
 	"github.com/sylvinus/agent-vm/internal/version"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -115,7 +116,16 @@ func (s *Shell) Run() error {
 		return err
 	}
 	s.fonts = fonts
-	s.menuTheme = &nativeMenuTheme{fonts: fonts, background: application.NewRGB(247, 247, 247), foreground: application.NewRGB(26, 28, 31), dpi: 96}
+	palette := uitheme.Default()
+	background, err := parseColour(palette.Surface)
+	if err != nil {
+		return err
+	}
+	foreground, err := parseColour(palette.Ink)
+	if err != nil {
+		return err
+	}
+	s.menuTheme = &nativeMenuTheme{fonts: fonts, background: background, foreground: foreground, dpi: 96}
 	defer fonts.close()
 	instance, second, err := acquireInstance(s.lifetime, s.backend.Root(), s.options.SmokeOutput != "", s.restore)
 	if err != nil {
@@ -148,7 +158,7 @@ func (s *Shell) Run() error {
 	browserArgs := append([]string(nil), s.selfTestBrowserArgs...)
 	browserArgs = append(browserArgs, additionalBrowserArgsFromEnvironment()...)
 	s.app = application.New(application.Options{
-		Name: "Claude Eden", Description: "本机隔离编码工作区", Icon: s.options.Icon,
+		Name: "ClaudeEden", Description: "本机隔离编码工作区", Icon: s.options.Icon,
 		Services: []application.Service{application.NewService(s.service)},
 		Assets:   application.AssetOptions{Handler: assets, DisableLogging: true}, Transport: s.options.Transport,
 		RawMessageHandler: func(window application.Window, message string, origin *application.OriginInfo) {
@@ -191,8 +201,8 @@ func (s *Shell) Run() error {
 		Logger: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
 	})
 	windowOptions := application.WebviewWindowOptions{
-		Name: "workbench", Title: "Claude Eden", Width: 1100, Height: 730, MinWidth: 820, MinHeight: 580,
-		URL: "/", BackgroundColour: application.NewRGB(247, 247, 247), DefaultContextMenuDisabled: true, Zoom: 1,
+		Name: "workbench", Title: "ClaudeEden", Width: 1100, Height: 730, MinWidth: 820, MinHeight: 580,
+		URL: "/", BackgroundColour: background, DefaultContextMenuDisabled: true, Zoom: 1,
 		Windows: application.WindowsWindow{Theme: application.Light, DisableMenu: true},
 		KeyBindings: map[string]func(application.Window){
 			"Ctrl+O": func(application.Window) { s.action("openProject") }, "Ctrl+T": func(application.Window) { s.action("newTab") },
@@ -301,6 +311,11 @@ func (s *Shell) createNativeControls() error {
 }
 
 func (s *Shell) intercept(hwnd uintptr, message uint32, wParam, lParam uintptr) (uintptr, bool) {
+	if s.startup != nil {
+		if result, handled := s.startup.colour(message, wParam, lParam); handled {
+			return result, true
+		}
+	}
 	if result, handled := s.menuTheme.hook(hwnd, message, wParam, lParam); handled {
 		return result, true
 	}
@@ -433,9 +448,9 @@ func (s *Shell) bootstrap(option string) {
 		}
 		s.webFailed.Store(false)
 	}
-	s.setStatus("starting_backend", "正在连接 Claude Eden 工作台…")
+	s.setStatus("starting_backend", "正在连接 ClaudeEden 工作台…")
 	if s.startup != nil {
-		application.InvokeSync(func() { s.startup.show("正在连接 Claude Eden 工作台…", false, false) })
+		application.InvokeSync(func() { s.startup.show("正在连接 ClaudeEden 工作台…", false, false) })
 	}
 	args := []string{"desktop", "--json"}
 	if option != "" {
@@ -478,9 +493,9 @@ func (s *Shell) bootstrap(option string) {
 	s.statusMu.Unlock()
 	s.setStatus("loading_workbench", "正在打开 Claude Eden 工作台…")
 	if s.controllerNeedsUpdate.Load() {
-		s.window.SetTitle("Claude Eden（更新待完成）")
+		s.window.SetTitle("ClaudeEden（更新待完成）")
 	} else {
-		s.window.SetTitle("Claude Eden")
+		s.window.SetTitle("ClaudeEden")
 	}
 	s.window.SetURL(entry.String())
 }
@@ -579,5 +594,6 @@ func (s *Shell) completeSmoke(ready bool, failure string) {
 
 // LoadingHTML is host-owned and escapes diagnostic text rather than executing it.
 func LoadingHTML(message string) string {
-	return "<!doctype html><meta charset=utf-8><title>Claude Eden</title><p>" + html.EscapeString(message) + "</p>"
+	palette := uitheme.Default()
+	return "<!doctype html><meta charset=utf-8><title>ClaudeEden</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:14px/1.6 'Inter','Noto Sans SC',sans-serif;background:" + palette.Surface + ";color:" + palette.Ink + "}p{margin:0;padding:24px;text-align:center}</style><p>" + html.EscapeString(message) + "</p>"
 }

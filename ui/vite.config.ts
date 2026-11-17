@@ -13,6 +13,7 @@ export default defineConfig({
       allow: [
         fileURLToPath(new URL(".", import.meta.url)),
         fileURLToPath(new URL("../assets/fonts", import.meta.url)),
+        fileURLToPath(new URL("../internal/uitheme", import.meta.url)),
       ],
     },
     proxy: { "/api": { target: "http://localhost:17777", ws: true } },

@@ -64,6 +64,7 @@ export async function createWorkbench({
   startupFailure = false,
   waitForReady = true,
   initialization = { required: false },
+  portable = false,
   clientContext = { mode: "local", connection_id: "local", client_platform: "windows", server_platform: "windows", connection: { state: "disconnected" } },
 } = {}) {
   const engines = require(
@@ -153,10 +154,12 @@ export async function createWorkbench({
     if (path === "/agent/native") return route.fulfill({ json: null });
     if (clientRequest && path.startsWith("/client/")) return clientRequest(route, path, body);
     if (path === "/client/context") return route.fulfill({ json: clientContext });
+    if (path === "/client/about" && request.method() === "GET") return route.fulfill({ json: { version: "fixture", modified: false } });
     if (path === "/environment/initialization") {
+      if (body?.action === "begin") state.initialization.tracked = true;
       if (body?.action === "install") state.initialization.started = true;
       if (body?.action === "complete") state.initialization.required = false;
-      return route.fulfill({ json: state.initialization });
+      return route.fulfill({ json: body ? { completed: !state.initialization.required } : state.initialization });
     }
     if (path === "/environment/guest-profile") return route.fulfill({ json: { profile: state.guestProfile, defaults: defaultGuestProfile, editable: !state.guestProfile && !state.status.vm_running, audio_models: [] } });
     if (path === "/environment/guest-profile/preview") return route.fulfill({ json: { ...defaultGuestProfile, ...body, hostname: body.hostname || "Test-PC" } });
@@ -247,7 +250,7 @@ export async function createWorkbench({
     else if (path === "/vault/browser") result = { available: false, origin: "", document: "", entries: [], candidates: [] };
     else if (path === "/claude-desktop") result = claudeDesktopView();
     else if (path === "/environment/versions") result = versionsView({ vm_running: state.status.vm_running });
-    else if (path === "/environment/storage") result = { directory: state.status.environment_directory, has_environment: !state.initialization.required || state.status.vm_running };
+    else if (path === "/environment/storage") result = { directory: state.status.environment_directory, portable, has_environment: !state.initialization.required || state.status.vm_running };
     else if (/^\/input\/files\/(browser|desktop)\/requests$/.test(path)) result = { available: false, uploads: [], downloads: [], opens: [] };
     else if (path === "/environment/resources") result = { running: state.status.vm_running, automatic: true, memory_gib: 4, cpus: 2, max_memory_gib: 16, max_cpus: 8, resource_error: "", recommended_memory_bytes: 4 * 2 ** 30, recommended_cpus: 2, configured_memory_bytes: 4 * 2 ** 30, configured_cpus: 2, restart_required: false, observation: null };
     else if (path === "/projects/refresh") {
@@ -433,7 +436,7 @@ export async function createWorkbench({
   });
   if (beforeNavigate) await beforeNavigate(page, state);
   await page.goto(url || process.env.EDEN_UI_URL || "http://127.0.0.1:5198");
-  if (waitForReady && !startupFailure && !state.status.vm_running && clientContext.mode !== "none") await page.getByRole("heading", { name: state.initialization.required ? state.initialization.started ? "安装并检查客机环境" : "为 Claude Eden 准备独立环境" : "先启动 Claude Eden 环境" }).waitFor();
+  if (waitForReady && !startupFailure && !state.status.vm_running && clientContext.mode !== "none") await page.getByRole("heading", { name: state.initialization.required ? state.initialization.started ? "安装并检查客机环境" : "为 ClaudeEden 准备独立环境" : "先启动 ClaudeEden 环境" }).waitFor();
   return { browser, context, page, state, errors };
 }
 

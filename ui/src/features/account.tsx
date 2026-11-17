@@ -369,11 +369,11 @@ export function AccountGate({ children }: React.PropsWithChildren) {
     <main className="account-gate">
       <div className="account-brand">
         <img src={logo} alt="" />
-        Claude Eden
+        ClaudeEden
       </div>
       <section
         className="account-entry"
-        aria-label={creating ? "创建本地账户" : "解锁 Claude Eden"}
+        aria-label={creating ? "创建本地账户" : "解锁 ClaudeEden"}
       >
         {creating ? (
           <img className="account-welcome-logo" src={logo} alt="" />
@@ -382,10 +382,10 @@ export function AccountGate({ children }: React.PropsWithChildren) {
         )}
         <h1>
           {creating
-            ? "注册 Claude Eden 账户"
+            ? "注册 ClaudeEden 账户"
             : account
               ? `欢迎回来，${account.username}`
-              : "正在连接 Claude Eden"}
+              : "正在连接 ClaudeEden"}
         </h1>
         <p className="account-entry-intro">
           {creating
@@ -488,7 +488,7 @@ export function AccountGate({ children }: React.PropsWithChildren) {
                   ? "正在解锁…"
                   : creating
                     ? "创建本地账户"
-                    : "解锁 Claude Eden"}
+                    : "解锁 ClaudeEden"}
               </button>
               {!creating && (
                 <button
@@ -537,7 +537,7 @@ export function AccountGate({ children }: React.PropsWithChildren) {
         >
           {account?.background_running
             ? "退出应用，后台继续运行"
-            : "退出 Claude Eden"}
+            : "退出 ClaudeEden"}
         </button>
       )}
     </main>
@@ -622,7 +622,7 @@ function RecoveryKeyScreen() {
         <p className="field-help">
           完整密钥仅在此处显示。关闭或刷新后，可验证账户密码重新生成；重新生成后旧密钥失效。
           {recovery.reset &&
-            "原来的资料和 Claude 登录状态已保留，Claude Eden 的记住我已关闭，请用新密码登录后重新设置。"}
+            "原来的资料和 Claude 登录状态已保留，ClaudeEden 的记住我已关闭，请用新密码登录后重新设置。"}
         </p>
         <label className="account-device-option check-line">
           <input
@@ -637,7 +637,7 @@ function RecoveryKeyScreen() {
           disabled={!saved}
           onClick={dismissRecovery}
         >
-          {recovery.reset ? "返回登录" : "继续使用 Claude Eden"}
+          {recovery.reset ? "返回登录" : "继续使用 ClaudeEden"}
         </button>
       </section>
     </main>
@@ -717,7 +717,7 @@ function AccountRecovery({
                 autoComplete="new-password"
               />
               <p className="field-help">
-                重置后会换发恢复密钥，旧密钥失效。Claude Eden 的记住我会关闭。
+                重置后会换发恢复密钥，旧密钥失效。ClaudeEden 的记住我会关闭。
               </p>
               {error && (
                 <p className="account-error" role="alert">
@@ -863,7 +863,7 @@ export function AccountMenu({
       action === "logout" &&
       !(await onConfirm({
         title: "退出本地账户？",
-        body: "这会停止 Claude Eden 环境与后台任务，并锁定登录凭据。请先保存文件。",
+        body: "这会停止 ClaudeEden 环境与后台任务，并锁定登录凭据。请先保存文件。",
         confirm: "停止环境并退出账户",
       }))
     )
@@ -912,7 +912,7 @@ export function AccountMenu({
             ].focus();
           }}
         >
-          <div className="account-menu-label">你的 Claude Eden</div>
+          <div className="account-menu-label">你的 ClaudeEden</div>
           <button
             role="menuitem"
             onClick={() => {
@@ -938,7 +938,7 @@ export function AccountMenu({
               <div className="account-menu-divider" />
               <button role="menuitem" onClick={() => perform("lock")}>
                 <LockKeyhole size={16} />
-                锁定 Claude Eden<small>任务继续运行</small>
+                锁定 ClaudeEden<small>任务继续运行</small>
               </button>
               <button
                 role="menuitem"
@@ -1025,7 +1025,7 @@ export function AccountSettings({
         await refresh();
         setPassword("");
         setConfirmation("");
-        setMessage("已设置密码，下次打开 Claude Eden 时使用密码登录。");
+        setMessage("已设置密码，下次打开 ClaudeEden 时使用密码登录。");
         return;
       }
       const value = await act(

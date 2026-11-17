@@ -226,7 +226,7 @@ export function EnvironmentCache({
       )}
       <p className="field-help">
         盘点、保护资料与可恢复清理的流程参考了 claude-post-ban-cleanup 和
-        Claude-Guardian，由 Claude Eden 独立实现。
+        Claude-Guardian，由 ClaudeEden 独立实现。
       </p>
     </section>
   );

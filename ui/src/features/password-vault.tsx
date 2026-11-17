@@ -353,12 +353,12 @@ export function PasswordVaultSettings({
     <section className="vault-settings">
       <div className="section-title">
         <h3>密码保险箱</h3>
-        <p>账号密码加密保存在这台设备，随 Claude Eden 一起解锁和锁定。</p>
+        <p>账号密码加密保存在这台设备，随 ClaudeEden 一起解锁和锁定。</p>
       </div>
       <div className="vault-note">
         <ShieldCheck size={17} />
         <span>
-          查看或复制密码需要再次验证 Claude Eden 账户密码。填充后由你提交登录。
+          查看或复制密码需要再次验证 ClaudeEden 账户密码。填充后由你提交登录。
         </span>
       </div>
       {error && (
@@ -473,7 +473,7 @@ export function PasswordVaultSettings({
             {verify.entry.origin} · {verify.entry.username}
           </p>
           <label>
-            Claude Eden 账户密码
+            ClaudeEden 账户密码
             <input
               type="password"
               autoComplete="off"
