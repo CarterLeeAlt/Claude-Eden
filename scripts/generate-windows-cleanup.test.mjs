@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import { generateWindowsCleanup } from './generate-windows-cleanup.mjs';
-import { prepareWorkspace } from './run-in-workspace.mjs';
+import { assertWorkspacePath, prepareWorkspace } from './run-in-workspace.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 prepareWorkspace(root, process.env, '.', { check: true });
@@ -18,6 +18,26 @@ const helperShells = process.platform === 'win32' ? [
   path.join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
   path.join(process.env.SystemRoot, 'SysWOW64/WindowsPowerShell/v1.0/powershell.exe'),
 ] : [];
+// The shared CI build writes this path. A direct Windows test invocation builds
+// the same thin CLI on demand using the configured workspace Go toolchain.
+const installHelper = process.env.EDEN_INSTALL_HELPER || path.join(root, '.tmp/tools/eden-install.exe');
+if (process.platform === 'win32') {
+  assert.ok(path.isAbsolute(installHelper), 'EDEN_INSTALL_HELPER must be an absolute workspace executable path.');
+  assertWorkspacePath(root, installHelper);
+  const helperInputs = ['go.mod', 'go.sum', ...['internal/installfiles', 'cmd/eden-install'].flatMap(directory => readdirSync(path.join(root, directory)).filter(name => name.endsWith('.go') && !name.endsWith('_test.go') || name.endsWith('.syso')).map(name => `${directory}/${name}`))];
+  const helperIsCurrent = existsSync(installHelper) && helperInputs.every(name => statSync(path.join(root, name)).mtimeMs <= statSync(installHelper).mtimeMs);
+  if (!process.env.EDEN_INSTALL_HELPER && !helperIsCurrent) {
+    const moduleGo = /^go (\S+)$/m.exec(readFileSync(path.join(root, 'go.mod'), 'utf8'))?.[1];
+    assert.ok(moduleGo, 'go.mod must declare its Go toolchain version.');
+    const go = path.join(process.env.GOROOT || path.join(root, `.tmp/toolchains/go-${moduleGo}/go`), 'bin/go.exe');
+    assertWorkspacePath(root, go);
+    assert.ok(existsSync(go), 'Provide the workspace Go toolchain through GOROOT, or build .tmp/tools/eden-install.exe first.');
+    mkdirSync(path.dirname(installHelper), { recursive: true });
+    const result = spawnSync(process.execPath, ['scripts/run-in-workspace.mjs', '--', go, 'build', '-trimpath', '-o', installHelper, './cmd/eden-install'], { cwd: root, encoding: 'utf8', timeout: 120_000, windowsHide: true });
+    assert.equal(result.status, 0, `Building the installation helper failed: ${result.stderr}`);
+  }
+  assert.ok(existsSync(installHelper), `Installation helper is missing: ${installHelper}`);
+}
 
 function fixture(t) {
   const directory = mkdtempSync(path.join(root, '.tmp', 'windows-cleanup-'));
@@ -27,6 +47,7 @@ function fixture(t) {
   for (const [name, text] of Object.entries({
     'Eden.exe': 'fixture desktop, never executed',
     'resources/eden.exe': 'fixture backend, never executed',
+    'resources/eden-install.exe': 'fixture installation helper inventory, never executed',
     'resources/licenses/LICENSE.txt': 'third-party attribution',
     'resources/资料 _ [beta] `file`.txt': 'Unicode and Markdown punctuation',
     'version.txt': '1.2.3-test.1',
@@ -59,7 +80,8 @@ test('full package covers every actual file, generated items and optional runtim
   assert.ok(appendix.includes('Uninstall.exe'));
   assert.ok(!existsSync(path.join(app, 'Uninstall.exe')));
   assert.ok(!manifest.files.some(file => file.path === 'Uninstall.exe'));
-  for (const marker of ['clipboard-ownership', 'trusted-local', 'DOTNET_BUNDLE_EXTRACT_BASE_DIR', 'Eden-preserved-files', 'controller-instance.json', 'cli-sessions', 'TMPDIR', 'Server.Dir', 'workbench-zram-device', '.cache-maintenance-recovery', 'host-system-source.json']) assert.ok(guide.includes(marker), marker);
+  for (const marker of ['clipboard-ownership', 'trusted-local', 'resources/eden-install.exe', 'Eden-preserved-files', 'controller-instance.json', 'cli-sessions', 'TMPDIR', 'Server.Dir', 'workbench-zram-device', '.cache-maintenance-recovery', 'host-system-source.json']) assert.ok(guide.includes(marker), marker);
+  assert.ok(!guide.includes('DOTNET_BUNDLE_EXTRACT_BASE_DIR'));
   assert.doesNotMatch(guide, /Android|Ubuntu|mobile|remote-hosts|remote-downloads|cloud-host|container-engine|Eden\.client-id/);
   assert.doesNotMatch(guide, /Windows 客[户]?机|HyperVManager|Virtual Machines Cache|ComponentMaintenance|PacketBridge|GuestBridge|windows-guest|setupadmin|DefaultPassword|scripts\/guest-os/);
   assert.ok(!guide.includes(directory));
@@ -197,11 +219,15 @@ test('installation helper adds the actual uninstaller hash without changing the 
     await generateWindowsCleanup(app);
     const guide = readFileSync(path.join(app, guideName));
     writeFileSync(path.join(app, 'Uninstall.exe'), 'fixture uninstaller, never executed');
-    const result = spawnSync(shell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', path.join(root, 'packaging/windows/installation-files.ps1'), '-Operation', 'prepare', '-Target', app, '-Receipt', path.join(directory, 'installation.json')], { cwd: root, encoding: 'utf8', timeout: 15_000 });
+    const receipt = path.join(directory, 'installation.json');
+    const result = spawnSync(shell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', path.join(root, 'packaging/windows/installation-files.ps1'), '-Helper', installHelper, '-Operation', 'prepare', '-Target', app, '-Receipt', receipt], { cwd: root, encoding: 'utf8', timeout: 15_000, windowsHide: true });
     assert.equal(result.status, 0, `${shell}: ${result.stderr}`);
     assert.deepEqual(readFileSync(path.join(app, guideName)), guide);
     const manifest = JSON.parse(readFileSync(path.join(app, manifestName), 'utf8').replace(/^\uFEFF/, ''));
     for (const name of [guideName, 'Uninstall.exe']) assert.equal(manifest.files.find(file => file.path === name).sha256, hash(readFileSync(path.join(app, name))));
+    const complete = spawnSync(installHelper, ['-Operation', 'complete', '-Target', app, '-Receipt', receipt], { cwd: root, encoding: 'utf8', timeout: 15_000, windowsHide: true });
+    assert.equal(complete.status, 0, complete.stderr);
+    assert.ok(!existsSync(receipt));
   }
 });
 
@@ -213,7 +239,7 @@ test('existing uninstall helper removes the hash-matching guide and retains a mo
     copyFileSync(path.join(app, manifestName), embedded);
     if (modified) writeFileSync(path.join(app, guideName), 'user-maintained cleanup notes');
     writeFileSync(path.join(app, 'user-project.txt'), 'keep user data');
-    const result = spawnSync(shell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', path.join(root, 'packaging/windows/installation-files.ps1'), '-Operation', 'uninstall', '-Target', app, '-Manifest', embedded], { cwd: root, encoding: 'utf8', timeout: 15_000 });
+    const result = spawnSync(shell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', path.join(root, 'packaging/windows/installation-files.ps1'), '-Helper', installHelper, '-Operation', 'uninstall', '-Target', app, '-Manifest', embedded], { cwd: root, encoding: 'utf8', timeout: 15_000, windowsHide: true });
     assert.equal(result.status, 0, `${shell}: ${result.stderr}`);
     assert.equal(existsSync(path.join(app, guideName)), modified);
     assert.equal(readFileSync(path.join(app, 'user-project.txt'), 'utf8'), 'keep user data');

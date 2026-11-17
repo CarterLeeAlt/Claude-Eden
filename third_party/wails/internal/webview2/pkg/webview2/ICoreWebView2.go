@@ -165,7 +165,7 @@ func (i *ICoreWebView2) RemoveNavigationStarting(token EventRegistrationToken) e
 
 	hr, _, _ := i.Vtbl.RemoveNavigationStarting.Call(
 		uintptr(unsafe.Pointer(i)),
-		uintptr(unsafe.Pointer(&token)),
+		uintptr(token.value),
 	)
 	if windows.Handle(hr) != windows.S_OK {
 		return syscall.Errno(hr)
@@ -354,7 +354,7 @@ func (i *ICoreWebView2) RemoveScriptDialogOpening(token EventRegistrationToken) 
 
 	hr, _, _ := i.Vtbl.RemoveScriptDialogOpening.Call(
 		uintptr(unsafe.Pointer(i)),
-		uintptr(unsafe.Pointer(&token)),
+		uintptr(token.value),
 	)
 	if windows.Handle(hr) != windows.S_OK {
 		return syscall.Errno(hr)
@@ -703,7 +703,7 @@ func (i *ICoreWebView2) RemoveNewWindowRequested(token EventRegistrationToken) e
 
 	hr, _, _ := i.Vtbl.RemoveNewWindowRequested.Call(
 		uintptr(unsafe.Pointer(i)),
-		uintptr(unsafe.Pointer(&token)),
+		uintptr(token.value),
 	)
 	if windows.Handle(hr) != windows.S_OK {
 		return syscall.Errno(hr)

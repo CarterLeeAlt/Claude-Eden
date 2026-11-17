@@ -1,0 +1,46 @@
+.session-account {
+  min-width: 0;
+  font-size: var(--text-help);
+}
+.session-account-options {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper);
+}
+.session-account-options p {
+  margin: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.session-account-options > label:not(.check-line) {
+  display: grid;
+  gap: 4px;
+}
+.session-account-options .check-line {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+}
+.session-account-options input[type="checkbox"] {
+  flex: none;
+}
+.session-account--compact {
+  padding: 8px 12px;
+  flex: none;
+  max-height: 65%;
+  overflow-y: auto;
+}
+.session-account > button {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}

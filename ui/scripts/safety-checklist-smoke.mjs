@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, gateView } from "./workbench-fixture.mjs";
 
 const failure = "联网检查未通过：浏览器语言未通过。语言与已保存的设置不一致。请核对语言设置后重新检测。外网保持关闭。";
 const output = process.env.EDEN_SAFETY_SCREENSHOTS || "../.tmp/guest-neutralization/ui-eden/safety-checklist";
@@ -42,10 +42,10 @@ for (const platform of platforms) {
       ready: true, vm_running: true,
       job: { id: "failed-check", kind: "safety", running: false, error: failure, message: "环境检查未完成", log: "fixture check log" },
       safety: {
-        gate: { mode: "closed", reason: failure }, error: failure,
-        report: { created_at: new Date().toISOString(), checks: [
-          { id: "dns", title: "加密 DNS", critical: true, state: "passed", evidence: "DNS 通过指定代理" },
-          { id: "browser", title: "浏览器语言", critical: true, state: "failed", evidence: "语言与已保存的设置不一致", remedy: "请核对语言设置后重新检测" },
+        gate: gateView({ mode: "closed", reason: failure }), error: failure,
+        report: { policy: "fixture", id: "fixture", run_id: "fixture", check_id: "fixture", configuration: "fixture", created_at: new Date().toISOString(), checks: [
+          { id: "dns", title: "加密 DNS", critical: true, state: "passed", evidence: "DNS 通过指定代理", checked_at: new Date().toISOString() },
+          { id: "browser", title: "浏览器语言", critical: true, state: "failed", evidence: "语言与已保存的设置不一致", remedy: "请核对语言设置后重新检测", checked_at: new Date().toISOString() },
         ] },
       },
     });
@@ -129,5 +129,8 @@ for (const platform of platforms) {
     assert.equal(state.status.safety.gate.mode, "closed");
     assert.deepEqual(errors, []);
     console.log(`PASS ${platform}: home, notification, details, setup, settings, proxy, project, keyboard, return focus, compact layout and no mutations`);
+  } catch (error) {
+    console.error({ errors, body: await page.locator("body").innerText() });
+    throw error;
   } finally { await browser.close(); }
 }

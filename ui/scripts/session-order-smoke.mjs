@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, sessionView, terminalView } from "./workbench-fixture.mjs";
 
 const engine = process.env.EDEN_TEST_BROWSER || "chromium";
 const output = process.env.EDEN_TEST_CAPTURE || "../.tmp/guest-neutralization/ui-eden/session-order";
@@ -9,15 +9,15 @@ const sessions = [
   { id:"order-idle", title:"已打开的空闲会话", updated_at:"2026-11-07T10:00:00Z" },
   { id:"order-active", title:"正在执行的会话", active:true, updated_at:"2026-11-07T09:00:00Z" },
   { id:"order-saved", title:"保存的会话", updated_at:"2026-11-07T08:00:00Z" },
-];
+].map(sessionView);
 const fixture = await createWorkbench({ url: process.env.EDEN_UI_URL || "http://127.0.0.1:5217",
   cliRequest: async (route, path) => {
     if (path === "/cli/sessions") return route.fulfill({json:{sessions}});
-    if (path.endsWith("/account")) return route.fulfill({json:{session:{},supported:false,candidates:[]}});
+    if (path.endsWith("/account")) return route.fulfill({json:{session:sessionView(),source_id:"",switch_policy:"ask",supported:false,candidates:[]}});
     const session = sessions.find(s => path.includes(s.id));
     if (path.endsWith("/open")) {
       opens++;
-      const terminal = {id:"opened-history", workspace:state.settings.workspace, title:session.title, cli_session_id:session.id};
+      const terminal = terminalView({id:"opened-history", workspace:state.settings.workspace, title:session.title, cli_session_id:session.id});
       state.terminals.push(terminal);
       return route.fulfill({json:{...session,desktop_terminal_id:terminal.id}});
     }
@@ -29,7 +29,7 @@ const {page,browser,errors} = fixture;
 try {
   sessions.forEach(session => {session.workspace = state.settings.workspace;});
   state.status.ready = state.status.vm_running = true;
-  state.terminals = [{id:"idle", workspace:state.settings.workspace, title:sessions[0].title, cli_session_id:sessions[0].id}];
+  state.terminals = [terminalView({id:"idle", workspace:state.settings.workspace, title:sessions[0].title, cli_session_id:sessions[0].id})];
   const project = page.getByRole("region",{name:"项目 .claude-eden-workspace",exact:true});
   const order = () => project.locator(".sidebar-tab").evaluateAll(rows => rows.map(row => row.querySelector(":scope > button").textContent));
   const saved = project.getByRole("button",{name:"保存的会话",exact:true});

@@ -2,12 +2,14 @@
 // with an in-memory socket; this does not replace native IME/guest acceptance.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { installNativeFixture } from "./native-fixture.mjs";
 const require = createRequire(import.meta.url);
 const { chromium } = require(
   process.env.EDEN_PLAYWRIGHT_MODULE || "playwright",
 );
 const browser = await chromium.launch({ headless: true, executablePath: process.env.EDEN_TEST_BROWSER_PATH });
 const page = await browser.newPage();
+await installNativeFixture(page);
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
 const origin = process.env.EDEN_UI_URL || "http://127.0.0.1:5173";
@@ -18,13 +20,23 @@ try {
       body: '<div id="remote"><canvas tabindex="-1"></canvas></div><input aria-label="本机地址栏">',
     }),
   );
-  await page.goto(origin + "/remote-input-smoke");
+  await page.route("**/api/**", route => {
+    if (new URL(route.request().url()).pathname === "/api/diagnostics/events") {
+      errors.push(route.request().postDataJSON().message);
+      return route.fulfill({ json: {} });
+    }
+    errors.push(`Unexpected fixture API request: ${route.request().url()}`);
+    return route.abort();
+  });
+  await page.goto(origin + "/remote-input-smoke#isolated-keyboard-fixture");
   await page.evaluate(async () => {
+    const fixtureTransport = window.edenRuntimeTransport;
+    delete window.edenRuntimeTransport;
     const [{ default: RFB }, { default: Keyboard }, { installRemoteInput }] =
       await Promise.all([
         import("/.generated/novnc/core/rfb.js"),
         import("/.generated/novnc/core/input/keyboard.js"),
-        import("/src/remote-input.js"),
+        import("/src/lib/remote-input.ts"),
       ]);
     const container = document.querySelector("#remote");
     const rfb = new EventTarget();
@@ -117,9 +129,12 @@ try {
         this.compositions.length = 0;
         this.nativeRequests = [];
         window.edenNativeIMEAvailable = true;
-        window.edenNativeBridge = { postMessage: async value => {
-          this.nativeRequests.push(value); return true;
-        } };
+        window.edenRuntimeTransport = fixtureTransport;
+        const defaultRequest = window.edenTestNativeRequest;
+        window.edenTestNativeRequest = async value => {
+          if (value.action !== "remoteInput") return defaultRequest(value);
+          this.nativeRequests.push(value); return { accepted: true, returnedFocus: false };
+        };
         options.insertComposition = (id, value) => rfb._workbenchQueueInput(() => { this.compositions.push({ id, ...value }); });
         this.input = install(); rfb.focus();
       },
@@ -368,9 +383,7 @@ try {
   await page.evaluate(() => {
     const owner = probe.nativeRequests.find(value => value.operation === "activate").owner;
     for (const kind of ["keydown", "keyup"]) {
-      window.dispatchEvent(new CustomEvent("eden-native-input", {
-        detail: { owner, kind, key: "Enter", code: "Enter", shiftKey: true },
-      }));
+      window.emitTestDesktopEvent("eden-native-input", { owner, kind, key: "Enter", code: "Enter", shiftKey: true });
     }
   });
   assert.deepEqual((await keys()).map(({ sym, down }) => [sym, down]), [
@@ -379,14 +392,14 @@ try {
   await clear();
   await page.evaluate(() => {
     const owner = probe.nativeRequests.find(value => value.operation === "activate").owner;
-    const emit = value => window.dispatchEvent(new CustomEvent("eden-native-input", { detail: { owner, ...value } }));
+    const emit = value => window.emitTestDesktopEvent("eden-native-input", { owner, ...value });
     emit({kind:"compositionstart"});
     emit({kind:"compositionupdate",text:"ni'hao",selectionStart:3,selectionEnd:6});
     emit({kind:"compositionend",text:"你好"});
     emit({kind:"input",text:"？"});
     emit({kind:"keydown",key:"?",code:"Slash",textKey:true});
     emit({kind:"keyup",key:"?",code:"Slash"});
-    window.dispatchEvent(new CustomEvent("eden-native-input", {detail:{owner:"stale",kind:"input",text:"误写"}}));
+    window.emitTestDesktopEvent("eden-native-input", {owner:"stale",kind:"input",text:"误写"});
   });
   assert.deepEqual((await page.evaluate(() => probe.compositions)).map(({mode})=>mode), ["begin","update","commit"]);
   assert.deepEqual(await texts(), ["？"], "native direct punctuation is committed exactly once");

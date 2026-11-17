@@ -3,6 +3,7 @@
 package application
 
 import (
+	"errors"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -312,9 +313,7 @@ func (m *windowSaveFileDialog) show() (chan string, error) {
 	}
 
 	// Original PR for v2 by @almas1992: https://github.com/wailsapp/wails/pull/3205
-	if len(m.dialog.filters) > 0 {
-		config.DefaultExtension = strings.TrimPrefix(strings.Split(m.dialog.filters[0].Pattern, ";")[0], "*")
-	}
+	config.DefaultExtension = windowsDialogDefaultExtension(m.dialog.filters)
 
 	result, err := showCfdDialog(
 		func() (cfd.Dialog, error) {
@@ -333,6 +332,22 @@ func (m *windowSaveFileDialog) show() (chan string, error) {
 		close(files)
 	}()
 	return files, err
+}
+
+func windowsDialogDefaultExtension(filters []FileFilter) string {
+	if len(filters) == 0 {
+		return ""
+	}
+	pattern := strings.TrimSpace(strings.Split(filters[0].Pattern, ";")[0])
+	if !strings.HasPrefix(pattern, "*.") {
+		return ""
+	}
+	extension := strings.TrimPrefix(pattern, "*.")
+	if strings.ContainsAny(extension, "*?") {
+		return ""
+	}
+	// IFileDialog::SetDefaultExtension requires "zip", not ".zip".
+	return extension
 }
 
 // messageDialogUserIconFlags converts standard message dialog flags for use
@@ -398,6 +413,9 @@ func showCfdDialog(newDlg func() (cfd.Dialog, error), isMultiSelect bool, parent
 
 	if multi, _ := dlg.(cfd.OpenMultipleFilesDialog); multi != nil && isMultiSelect {
 		paths, err := multi.ShowAndGetResults()
+		if errors.Is(err, cfd.ErrorCancelled) {
+			return []string(nil), nil
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -409,6 +427,9 @@ func showCfdDialog(newDlg func() (cfd.Dialog, error), isMultiSelect bool, parent
 	}
 
 	path, err := dlg.ShowAndGetResult()
+	if errors.Is(err, cfd.ErrorCancelled) {
+		return "", nil
+	}
 	if err != nil {
 		return nil, err
 	}

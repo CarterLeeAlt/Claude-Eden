@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { assertWorkspacePath } from '../../scripts/run-in-workspace.mjs';
-import { createWorkbench, chooseInline } from './workbench-fixture.mjs';
+import { createWorkbench, chooseInline, terminalView } from './workbench-fixture.mjs';
 
 const engine = process.env.EDEN_TEST_BROWSER || 'chromium';
 const output = process.env.EDEN_TEST_CAPTURE
@@ -35,8 +35,8 @@ try {
   ];
   state.active = 'page-one';
   state.terminals = [
-    { id: 'terminal-one', title: '工作终端一', workspace: state.settings.workspace },
-    { id: 'terminal-two', title: '工作终端二', workspace: state.settings.workspace },
+    terminalView({ id: 'terminal-one', title: '工作终端一', workspace: state.settings.workspace }),
+    terminalView({ id: 'terminal-two', title: '工作终端二', workspace: state.settings.workspace }),
   ];
   await page.reload();
   await home.waitFor();

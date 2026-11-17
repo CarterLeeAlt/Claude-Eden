@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { createWorkbench, defaultGuestProfile } from "./workbench-fixture.mjs";
+import { createWorkbench, defaultGuestProfile, jobView } from "./workbench-fixture.mjs";
 
 const output = process.env.EDEN_TEST_CAPTURE;
 if (output) await fs.mkdir(output, { recursive: true });
@@ -29,7 +29,7 @@ const fixture = await createWorkbench({ initialization: { required: true, tracke
       assert.equal(input.guest_profile.webgl, "disabled");
       saved = { version: 1, ...input.guest_profile, extension_suffix: "0123456789abcdef" };
     } else assert.deepEqual(input, { guest_system: "debian-13" });
-    state.status.job = { id: "profile-install-" + starts, kind: "guest-install", running: true, setup_progress: { phase: "image", system: "debian-13", label: "正在准备镜像" } };
+    state.status.job = jobView({ id: "profile-install-" + starts, kind: "guest-install", running: true, setup_progress: { phase: "image", system: "debian-13", label: "正在准备镜像" } });
     return route.fulfill({ json: state.status.job });
   });
 } });
@@ -76,8 +76,11 @@ try {
   await page.getByRole("button", { name: "开始安装", exact: true }).click();
   await page.getByText("正在准备镜像", { exact: true }).waitFor();
   assert.equal(starts, 1);
-  state.status.job = { id: "stopped-profile", kind: "stop", running: false };
+  state.status.job = jobView({ id: "stopped-profile", kind: "stop" });
   await page.reload();
+  await page.getByRole("button", { name: "继续安装", exact: true }).waitFor();
+  await page.getByRole("button", { name: "上一步", exact: true }).click();
+  await page.getByRole("button", { name: "上一步", exact: true }).click();
   await profile.getByText("创建配置已保存，继续安装将复用以下设置。").waitFor();
   assert.equal(await profile.getByLabel("工作账户", { exact: true }).inputValue(), "alex");
   assert.equal(await profile.getByLabel("工作账户", { exact: true }).isDisabled(), true);
@@ -89,6 +92,9 @@ try {
   assert.equal(starts, 2);
   assert.deepEqual(errors, []);
   console.log("PASS guest profile: loading failure/retry, fixed defaults, random preview, manual validation, render options, three widths, back navigation and locked saved resume");
+} catch (error) {
+  console.error({ saved, initialization: fixture.state.initialization, errors: fixture.errors, body: await fixture.page.locator("body").innerText() });
+  throw error;
 } finally { await fixture.browser.close(); }
 
 {

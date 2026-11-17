@@ -30,6 +30,12 @@ jobs:
         run: node scripts/run-in-workspace.mjs -- go test ./scripts/check-test-paths
       - name: Shared guest identity and catalog
         run: node scripts/run-in-workspace.mjs --cwd shared/guestidentity -- go test ./...
+      - name: Build the Windows installation helper for inventory tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path .tmp/tools -Force | Out-Null
+          node scripts/run-in-workspace.mjs -- go build -trimpath -o .tmp/tools/eden-install.exe ./cmd/eden-install
       - name: Cleanup inventory, payload hashes and Windows helper integration
         run: node scripts/run-in-workspace.mjs -- node --test scripts/generate-windows-cleanup.test.mjs
   workflow-checks:
@@ -76,11 +82,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-go@v5
         with:
-          dotnet-version: 10.0.403
+          go-version-file: go.mod
       - name: Install the verified NSIS compiler
         run: node scripts/run-in-workspace.mjs -- pwsh -NoProfile -File scripts/install-nsis.ps1
+      - name: Prepare the pinned desktop resource tool
+        run: node scripts/run-in-workspace.mjs -- node scripts/prepare-desktop.mjs --resources
       - name: Disposable system integration — install verified WebView2
         run: |
           node scripts/run-in-workspace.mjs -- pwsh -NoProfile -Command @'
@@ -101,7 +109,12 @@ jobs:
           } finally { $process.Dispose() }
           '@
       - name: Disposable system integration — certificates, update and rollback
-        run: node scripts/run-in-workspace.mjs -- pwsh -NoProfile -File scripts/test-windows-update-flow.ps1 -DisposableMachine
+        run: |
+          node scripts/run-in-workspace.mjs -- pwsh -NoProfile -Command @'
+          $env:GOROOT = (go env GOROOT).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Could not resolve the selected Go toolchain.' }
+          & scripts/test-windows-update-flow.ps1 -DisposableMachine
+          '@
       - uses: actions/upload-artifact@v4
         if: always()
         with:

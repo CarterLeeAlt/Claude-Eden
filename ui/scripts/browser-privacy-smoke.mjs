@@ -6,7 +6,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { createWorkbench } from './workbench-fixture.mjs';
 import { createPrivacyController } from '../../scripts/browser-privacy-fixture.mjs';
 
-const output = new URL('../../docs/test-reports/2026-11-07-browser-privacy/', import.meta.url);
+const output = new URL('../../.tmp/ui-migration/prerequisites/browser-privacy/', import.meta.url);
 const engine = process.env.EDEN_TEST_BROWSER || 'chromium';
 await mkdir(output, { recursive: true });
 const controller = await createPrivacyController();

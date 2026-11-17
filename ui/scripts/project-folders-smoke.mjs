@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { createServer } from "vite";
+import { createServer } from "./isolated-vite.mjs";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({root, configFile:`${root}/vite.config.js`, server:{host:"127.0.0.1",port:0}});
+const vite = await createServer({root, configFile:`${root}/vite.config.ts`, server:{host:"127.0.0.1",port:0}});
 await vite.listen();
 const url = `http://127.0.0.1:${vite.httpServer.address().port}`;
-const screenshots = fileURLToPath(new URL("../../output/project-folders/", import.meta.url));
+const screenshots = fileURLToPath(new URL("../../.tmp/ui-migration/project-folders/", import.meta.url));
 await mkdir(screenshots, {recursive:true});
 try {
   for (const platform of ["windows"]) {

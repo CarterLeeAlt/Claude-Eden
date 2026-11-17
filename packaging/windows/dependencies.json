@@ -1,8 +1,5 @@
 {
   "architecture": "amd64",
-  "dotnet": {
-    "runtimeVersion": "10.0.14"
-  },
   "mihomo": {
     "version": "v1.19.33",
     "file": "mihomo-windows-amd64-compatible-v1.19.33.zip",

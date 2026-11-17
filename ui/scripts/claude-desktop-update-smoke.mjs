@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, claudeDesktopView } from "./workbench-fixture.mjs";
 
 const { browser, page, state, errors } = await createWorkbench();
-const desktop = { installed: true, running: true, version: "4.4212.0", failed: false };
+const desktop = claudeDesktopView({ installed: true, running: true, version: "4.4212.0" });
 const actions = [];
 let failUpdate = true;
 await page.route("**/api/claude-desktop**", async route => {

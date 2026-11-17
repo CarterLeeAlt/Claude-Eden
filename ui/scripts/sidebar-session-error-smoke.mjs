@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, sessionView } from "./workbench-fixture.mjs";
 
 const output = process.env.EDEN_TEST_CAPTURE || "../.tmp/guest-neutralization/ui-eden/sidebar-session-error";
 await mkdir(output, { recursive: true });
@@ -21,7 +21,7 @@ for (const [platform, guestSystem] of [["windows", "debian-13"]]) {
       requests++;
       if (pending) await new Promise(resolve => { release = resolve; });
       if (httpFailure) return route.fulfill({ status: 503, contentType: "text/plain; charset=utf-8", body: message });
-      return route.fulfill({ json: { sessions: [{ id: "error-history", title: "保留的历史会话", workspace: "C:/Users/developer/.claude-eden-workspace" }], notice: message } });
+      return route.fulfill({ json: { sessions: [sessionView({ id: "error-history", title: "保留的历史会话", workspace: "C:/Users/developer/.claude-eden-workspace" })], notice: message } });
     },
   });
   const { page, browser, errors } = fixture;

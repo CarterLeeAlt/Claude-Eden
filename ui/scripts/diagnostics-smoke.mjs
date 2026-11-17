@@ -12,7 +12,9 @@ const { chromium } = require(process.env.EDEN_PLAYWRIGHT_MODULE || "playwright")
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "eden-diagnostics-"));
 const profile = path.join(root, "profile");
 const env = { ...process.env, EDEN_CONFIG: path.join(profile, "config.json") };
-let browser;
+await fs.mkdir(profile, { mode: 0o700 });
+await fs.writeFile(path.join(profile, "initialization.json"), JSON.stringify({ version: 1, completed: true }), { mode: 0o600 });
+let browser, page;
 const reportDirectory = process.env.EDEN_DIAGNOSTIC_REPORT
   ? path.resolve(process.env.EDEN_DIAGNOSTIC_REPORT)
   : await fs.mkdtemp(path.join(os.tmpdir(), "eden-diagnostics-report-"));
@@ -21,14 +23,21 @@ try {
   const { stdout } = await run(eden, ["desktop", "--json"], { env });
   const entry = JSON.parse(stdout);
   assert.equal(entry.status, "ready");
-  browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ acceptDownloads: true, viewport: { width: 1280, height: 900 } });
+  browser = await chromium.launch({ headless: true, executablePath: process.env.EDEN_TEST_BROWSER_PATH });
+  page = await browser.newPage({ acceptDownloads: true, viewport: { width: 1280, height: 900 } });
   await page.goto(entry.url);
   await page.getByRole("heading", { name: "注册 Claude Eden 账户", exact: true }).waitFor();
   await page.getByLabel("用户名", { exact: true }).fill("diagnostics_qa");
   await page.getByLabel("设置密码", { exact: true }).fill("Test-only-password-8712");
   await page.getByLabel("确认密码", { exact: true }).fill("Test-only-password-8712");
+  await page.getByRole("checkbox", { name: /^记住我/ }).uncheck();
   await page.getByRole("button", { name: "创建本地账户", exact: true }).click();
+  const recovery = page.getByRole("region", { name: "保存恢复密钥", exact: true });
+  const keyDownload = page.waitForEvent("download");
+  await recovery.getByRole("button", { name: "下载密钥文件", exact: true }).click();
+  await (await keyDownload).saveAs(path.join(root, "recovery.txt"));
+  await recovery.getByRole("checkbox", { name: "我已安全保存完整恢复密钥" }).check();
+  await recovery.getByRole("button", { name: "继续使用 Claude Eden", exact: true }).click();
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await page.getByRole("button", { name: "环境与恢复", exact: true }).click();
   await page.getByRole("heading", { name: "日志与诊断" }).waitFor();
@@ -71,6 +80,12 @@ try {
   checks.push("real browser settings export", "frontend error and rejection captured", "offline CLI export", "no user files/config/terminal content");
   await fs.writeFile(path.join(reportDirectory, "browser-result.json"), JSON.stringify({ success: true, checks }, null, 2));
   console.log(JSON.stringify({ success: true, reportDirectory, checks }));
+} catch (error) {
+  if (page && !page.isClosed()) {
+    await page.screenshot({ path: path.join(reportDirectory, "failure.png"), mask: [page.locator("input,textarea")] });
+    console.error((await page.locator("body").innerText()).replace(/(?:[A-Fa-f0-9]{8}[-\s]){7}[A-Fa-f0-9]{8}/g, "[recovery secret]"));
+  }
+  throw error;
 } finally {
   await browser?.close();
   await run(eden, ["prepare-update", "--json"], { env }).catch(() => {});

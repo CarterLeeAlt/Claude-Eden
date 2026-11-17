@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sylvinus/agent-vm/internal/host"
@@ -28,6 +29,7 @@ type Store struct {
 	maxBytes, fileBytes int64
 	retention           time.Duration
 	now                 func() time.Time
+	rotationSequence    uint64
 }
 
 type Event struct {
@@ -267,7 +269,7 @@ func (s *Store) appendEvents(events []Event) error {
 					}
 					f = nil
 				}
-				next := filepath.Join(s.dir, fmt.Sprintf("events-%d-%d.jsonl", s.now().UnixNano(), os.Getpid()))
+				next := filepath.Join(s.dir, fmt.Sprintf("events-%d-%d-%d.jsonl", s.now().UnixNano(), os.Getpid(), atomic.AddUint64(&s.rotationSequence, 1)))
 				if err := os.Rename(path, next); err != nil {
 					return err
 				}

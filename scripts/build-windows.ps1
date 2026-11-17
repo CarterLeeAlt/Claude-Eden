@@ -6,6 +6,7 @@ param(
     [switch]$SkipUI,
     # Reuse Linux helper binaries; the Debian template closure is always refreshed.
     [switch]$SkipVMAssets,
+    [switch]$VerifyDesktop,
     [string]$OutputDirectory,
     [string]$DependencyCache
 )
@@ -19,7 +20,6 @@ $version = Get-EdenVersion $repository
 $signed = $Release -or $Sign
 if ($signed) { Assert-WindowsSigningConfiguration }
 $go = Get-BuildCommand @('go')
-$dotnet = Get-BuildCommand @('dotnet')
 $node = Get-BuildCommand @('node')
 $npm = Join-Path (Split-Path $node -Parent) 'node_modules/npm/bin/npm-cli.js'
 if (-not (Test-Path -LiteralPath $npm -PathType Leaf)) { throw 'The selected workspace Node toolchain must include node_modules/npm/bin/npm-cli.js.' }
@@ -30,6 +30,7 @@ $savedGoOS, $savedGoArch, $savedCGO = $env:GOOS, $env:GOARCH, $env:CGO_ENABLED
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 Push-Location $repository
 try {
+    Invoke-BuildTool $node @('scripts/prepare-desktop.mjs', '--resources')
     if (-not $SkipUI) {
         Invoke-BuildTool $node @($npm, '--prefix', 'ui', 'ci', '--no-audit', '--no-fund')
         Invoke-BuildTool $node @($npm, 'run', '--prefix', 'ui', 'build')
@@ -79,10 +80,8 @@ try {
     Invoke-BuildTool $go @('build', '-trimpath', '-tags', $tags, '-ldflags', $ldflags, '-o', (Join-Path $resources 'eden.exe'), './cmd/eden')
     Invoke-BuildTool (Join-Path $resources 'eden.exe') @('verify-vm-assets')
     Invoke-BuildTool (Join-Path $resources 'eden.exe') @('verify-web-assets')
-    $dotnetArtifacts = Join-Path $repository '_output/windows-dotnet'
-    Invoke-BuildTool $dotnet @('publish', 'desktop/windows/Eden.Windows.csproj', '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '--artifacts-path', $dotnetArtifacts,
-        '-p:EnableWindowsTargeting=true', '-p:PublishSingleFile=true', '-p:RestoreLockedMode=true', "-p:Version=$version", "-p:InformationalVersion=$version", '-o', $app)
-    Get-ChildItem -LiteralPath $app -File | Where-Object { $_.Extension -in @('.pdb', '.xml') } | Remove-Item -Force
+    Invoke-BuildTool $go @('build', '-trimpath', '-tags', 'production', '-ldflags', "$ldflags -H windowsgui", '-o', (Join-Path $app 'Eden.exe'), './cmd/eden-desktop')
+    Invoke-BuildTool $go @('build', '-trimpath', '-ldflags', $ldflags, '-o', (Join-Path $resources 'eden-install.exe'), './cmd/eden-install')
     $coreArchive = Get-VerifiedDependency $dependencies.mihomo $DependencyCache
     $core = Join-Path $stage 'mihomo'
     Expand-BuildArchive $coreArchive $core $sevenZip
@@ -144,25 +143,6 @@ try {
     New-Item -ItemType Directory -Path $coreNotices -Force | Out-Null
     Copy-Item -LiteralPath $coreLicense -Destination (Join-Path $coreNotices 'LICENSE')
     [IO.File]::WriteAllText((Join-Path $coreNotices 'NOTICE'), "Mihomo $($dependencies.mihomo.version), unmodified separate executable.`nSource: $($dependencies.mihomo.source)`nLicense: GPL-3.0; corresponding source accompanies the installer.`n")
-    # Runtime packs and WebView2 are absent from the frontend license collector.
-    $resolvedAssets = Get-Content -LiteralPath (Join-Path $dotnetArtifacts 'obj/Eden.Windows/project.assets.json') -Raw | ConvertFrom-Json
-    $nuget = @($resolvedAssets.packageFolders.PSObject.Properties.Name)[0]
-    $runtimeVersion = $dependencies.dotnet.runtimeVersion
-    $runtimePacks = @($resolvedAssets.project.frameworks.PSObject.Properties.Value.downloadDependencies |
-        Where-Object { $_.name -in @('Microsoft.NETCore.App.Runtime.win-x64', 'Microsoft.WindowsDesktop.App.Runtime.win-x64') })
-    if ($runtimePacks.Count -ne 2 -or @($runtimePacks | Where-Object { $_.version -ne "[$runtimeVersion, $runtimeVersion]" }).Count -ne 0) {
-        throw 'Resolved .NET runtime differs from packaging/windows/dependencies.json. Use SDK 10.0.403 or review and update the runtime pin.'
-    }
-    $webviewVersion = ((Get-Content -LiteralPath 'desktop/windows/packages.lock.json' -Raw | ConvertFrom-Json).dependencies.PSObject.Properties.Value |
-        ForEach-Object { $_.PSObject.Properties } | Where-Object { $_.Name -eq 'Microsoft.Web.WebView2' } | Select-Object -First 1).Value.resolved
-    foreach ($package in @("microsoft.netcore.app.runtime.win-x64/$runtimeVersion", "microsoft.windowsdesktop.app.runtime.win-x64/$runtimeVersion", "microsoft.web.webview2/$webviewVersion")) {
-        $source = Join-Path $nuget $package
-        $target = Join-Path $resources "licenses/nuget/$package"
-        New-Item -ItemType Directory -Path $target -Force | Out-Null
-        $notices = @(Get-ChildItem -LiteralPath $source -File | Where-Object { $_.Name -match '^(LICENSE|NOTICE|THIRD.?PARTY)' })
-        if ($notices.Count -eq 0) { throw "Missing runtime license: $package" }
-        $notices | Copy-Item -Destination $target
-    }
     Copy-Item -LiteralPath 'packaging/windows/dependencies.json' -Destination (Join-Path $resources 'dependencies.json')
     Copy-Item -LiteralPath 'packaging/windows/README.txt' -Destination (Join-Path $app 'README.txt')
     Copy-Item -LiteralPath 'LICENSE' -Destination (Join-Path $app 'LICENSE.txt')
@@ -170,11 +150,11 @@ try {
     [IO.File]::WriteAllText((Join-Path $app 'version.txt'), $version)
     if ($signed) {
         $signTool = Get-SigningTool
-        foreach ($file in @('Eden.exe', 'resources/eden.exe', 'resources/mihomo.exe')) { Sign-EdenFile (Join-Path $app $file) $signTool }
+        foreach ($file in @('Eden.exe', 'resources/eden.exe', 'resources/eden-install.exe', 'resources/mihomo.exe')) { Sign-EdenFile (Join-Path $app $file) $signTool }
     } else {
         [IO.File]::WriteAllText((Join-Path $app 'DEVELOPMENT-BUILD.txt'), "Unsigned development build. Automatic update installation is disabled. Runtime acceptance on the target Windows 10 system is still required.`n")
     }
-    Assert-WindowsWorkbench $app
+    if ($VerifyDesktop) { Assert-WindowsWorkbench $app }
     Invoke-BuildTool $node @('scripts/generate-windows-cleanup.mjs', $app)
     $previousOutput = $null
     if (Test-Path -LiteralPath $OutputDirectory) {

@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { smokeCaptureDirectory } from "./smoke-captures.mjs";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, versionsView, jobView } from "./workbench-fixture.mjs";
 
 const output = await smokeCaptureDirectory("recovery-ui");
 const calls = [];
-let update = { phase: "available", currentVersion: "0.2.0-alpha.1", latestVersion: "0.2.0-alpha.2", message: "发现新版本，可下载更新", retryable: true };
+let update = { phase: "available", currentVersion: "0.2.0-alpha.1", latestVersion: "0.2.0-alpha.2", message: "发现新版本，可下载更新", retryable: true, retryAt: "" };
 const fixture = await createWorkbench({ nativeRequest: async (body) => {
   calls.push(body);
   if (body.action === "workbenchReady") return true;
@@ -29,7 +29,7 @@ try {
   await page.getByRole("progressbar", { name: "更新下载进度" }).waitFor();
   assert.equal(await page.getByRole("progressbar").getAttribute("aria-valuenow"), "50");
   assert.equal(await page.getByRole("dialog", { name: "Claude Eden 更新" }).count(), 0);
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent("eden-app-update", { detail: { phase: "failed", latestVersion: "0.2.0-alpha.2", message: "更新源暂不可访问，仓库尚未公开", retryable: true } })));
+  await page.evaluate(() => window.emitTestDesktopEvent("eden-app-update", { phase: "failed", latestVersion: "0.2.0-alpha.2", message: "更新源暂不可访问，仓库尚未公开", retryable: true }));
   await page.getByRole("button", { name: "重试更新", exact: true }).waitFor();
   await page.getByRole("alert").filter({ hasText: "更新源暂不可访问，仓库尚未公开" }).waitFor();
   checks.push("bottom-left update affordance", "single install request without a dialog", "inline ring progress", "private source failure visible");
@@ -48,11 +48,11 @@ try {
     editorRestarts++;
     return route.fulfill({ json: { ok: true } });
   });
-  await page.route("**/api/environment/versions", (route) => route.fulfill({ json: {
+   await page.route("**/api/environment/versions", (route) => route.fulfill({ json: versionsView({
     vm_running: true, controller: { version: "0.2.0-alpha.2" }, components: { status: "update_required", update_required: true },
     tools: { chromium: { current: "156", required: "系统安全更新" }, code_server: { current: "4.100", required: "4.144.0" } }, tools_update_allowed: false,
-  } }));
-  await page.route("**/api/environment/update", (route) => { componentUpdates++; return route.fulfill({ json: { id: "qa-components" } }); });
+   }) }));
+   await page.route("**/api/environment/update", (route) => { componentUpdates++; return route.fulfill({ json: jobView({ id: "qa-components", kind: "update" }) }); });
   await page.getByRole("button", { name: "启动 Claude Eden 环境", exact: true }).click();
   await page.getByRole("heading", { name: "Claude Eden 环境已就绪", exact: true }).waitFor();
   await page.getByRole("button", { name: "打开浏览器", exact: true }).click();
@@ -89,7 +89,8 @@ try {
 let prematureReady = false;
 const broken = await createWorkbench({ startupFailure: true, nativeRequest: async (body) => {
   if (body.action === "workbenchReady") prematureReady = true;
-  return { phase: "current", currentVersion: "0.2.0-alpha.2" };
+  if (body.action === "appUpdate") return { phase: "current", currentVersion: "0.2.0-alpha.2", message: "", retryable: false, retryAt: "" };
+  return undefined;
 } });
 try {
   await broken.page.waitForResponse((response) => response.url().endsWith("/api/status") && response.status() === 503);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import { chooseInline, createWorkbench } from "./workbench-fixture.mjs";
+import { chooseInline, createWorkbench, claudeDesktopView } from "./workbench-fixture.mjs";
 import { startDisplay } from "./rfb-wire-fixture.mjs";
 
 const display = await startDisplay(process.env.EDEN_UI_URL || "http://127.0.0.1:5198", { frameInterval: 1000 });
@@ -12,7 +12,7 @@ const output = process.env.EDEN_DISPLAY_REPORT || "../.tmp/guest-neutralization/
 const requests = [], actions = [];
 let failResize = false;
 let runningDensity; // Existing guests/servers omit the density field.
-const desktop = { installed: true, running: true, managed: true, version: "fixture" };
+const desktop = claudeDesktopView({ installed: true, running: true, managed: true, version: "fixture" });
 await page.route("**/api/claude-desktop**", async (route) => {
   const path = new URL(route.request().url()).pathname;
   if (path.endsWith("/vnc-credentials")) return route.fulfill({ json: { password: "fixture", display_scale: runningDensity } });

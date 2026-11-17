@@ -28,6 +28,12 @@ ManifestSupportedOS all
   !error "OUTPUT_FILE is required"
 !endif
 
+!ifdef NSIS_WIN32_MAKENSIS
+  !define INSTALL_HELPER_SOURCE "${APP_DIR}\resources\eden-install.exe"
+!else
+  !define INSTALL_HELPER_SOURCE "${APP_DIR}/resources/eden-install.exe"
+!endif
+
 !define APP_ID "io.github.carterleealt.claude-eden"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\ClaudeEden"
 !define WEBVIEW2_APP_ID "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
@@ -335,7 +341,7 @@ Function .onInstSuccess
 FunctionEnd
 
 !macro AcquireInstallationMutex
-  ; NSIS and UpdateInstaller both reject an existing named object and keep
+  ; NSIS and the Go update helper reject an existing named object and keep
   ; their handle until the transaction ends. No caller waits for ownership.
   System::Call 'kernel32::CreateMutexW(p 0, i 0, w "Global\Eden.Installation") p.r0 ?e'
   Pop $1
@@ -578,7 +584,7 @@ Function CheckDestination
 FunctionEnd
 
 Function RestorePreservedFiles
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\installation-files.ps1" -Operation restore -Target "$BackupDir" -Source "$StageDir" -Receipt "$TransactionRecord" $DiagnosticArguments'
+  nsExec::ExecToStack '"$PLUGINSDIR\eden-install.exe" -Operation restore -Target "$BackupDir" -Source "$StageDir" -Receipt "$TransactionRecord" $DiagnosticArguments'
   Pop $0
   Pop $1
   ${If} $0 != 0
@@ -587,7 +593,7 @@ Function RestorePreservedFiles
     Abort "安装恢复尚未完成。文件分别保留在 $BackupDir 和 $StageDir，请保留这两个目录后重试。"
   ${EndIf}
   ; The installation folder was kept, so the previous entries move back into it.
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\installation-files.ps1" -Operation attach -Target "$INSTDIR" -Source "$BackupDir" $DiagnosticArguments'
+  nsExec::ExecToStack '"$PLUGINSDIR\eden-install.exe" -Operation attach -Target "$INSTDIR" -Source "$BackupDir" $DiagnosticArguments'
   Pop $0
   Pop $1
   ${If} $0 != 0
@@ -595,7 +601,7 @@ Function RestorePreservedFiles
     SetErrorLevel 2
     Abort "原安装目录未能恢复。文件保留在 $BackupDir，新程序保留在 $StageDir。"
   ${EndIf}
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\installation-files.ps1" -Operation complete -Target "$INSTDIR" -Receipt "$TransactionRecord" $DiagnosticArguments'
+  nsExec::ExecToStack '"$PLUGINSDIR\eden-install.exe" -Operation complete -Target "$INSTDIR" -Receipt "$TransactionRecord" $DiagnosticArguments'
   Pop $0
   Pop $1
   ${If} $0 != 0
@@ -668,13 +674,12 @@ Section "Claude Eden" Main
   ${EndIf}
   InitPluginsDir
   SetOutPath "$PLUGINSDIR"
-  File /oname=installation-files.ps1 "installation-files.ps1"
-  File /oname=verified-file-deletion.cs "verified-file-deletion.cs"
+  File /oname=eden-install.exe "${INSTALL_HELPER_SOURCE}"
   DetailPrint "正在检查并保留已有项目和修改文件…"
   !insertmacro InstallPhase "preparing_file_transaction"
   ; EdenData is the default storage of a packaged Windows installation. It
   ; stays in place: a VM registered on it keeps its paths and open handles.
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\installation-files.ps1" -Operation prepare -Target "$StageDir" -Source "$INSTDIR" -Backup "$BackupDir" -Receipt "$TransactionRecord" -KeepInPlace EdenData $DiagnosticArguments'
+  nsExec::ExecToStack '"$PLUGINSDIR\eden-install.exe" -Operation prepare -Target "$StageDir" -Source "$INSTDIR" -Backup "$BackupDir" -Receipt "$TransactionRecord" -KeepInPlace EdenData $DiagnosticArguments'
   Pop $0
   Pop $1
   StrCpy $HelperExit $0
@@ -691,14 +696,14 @@ Section "Claude Eden" Main
     !insertmacro InstallPhase "moving_previous_application"
     ; The installation folder itself stays; only its program and personal
     ; entries move, so kept data and open handles below it are untouched.
-    nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\installation-files.ps1" -Operation detach -Target "$BackupDir" -Source "$INSTDIR" -Receipt "$TransactionRecord" $DiagnosticArguments'
+    nsExec::ExecToStack '"$PLUGINSDIR\eden-install.exe" -Operation detach -Target "$BackupDir" -Source "$INSTDIR" -Receipt "$TransactionRecord" $DiagnosticArguments'
     Pop $0
     Pop $1
     StrCpy $HelperExit $0
     Call WriteInstallDiagnostic
     ${If} $0 != 0
       DetailPrint "$1"
-      nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\installation-files.ps1" -Operation complete -Target "$INSTDIR" -Receipt "$TransactionRecord" $DiagnosticArguments'
+      nsExec::ExecToStack '"$PLUGINSDIR\eden-install.exe" -Operation complete -Target "$INSTDIR" -Receipt "$TransactionRecord" $DiagnosticArguments'
       Pop $0
       Pop $1
       RMDir /r "$StageDir"
@@ -707,7 +712,7 @@ Section "Claude Eden" Main
     ${EndIf}
     DetailPrint "正在迁入个人文件并保留原有链接…"
     !insertmacro InstallPhase "moving_personal_files"
-    nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\installation-files.ps1" -Operation move -Target "$StageDir" -Source "$BackupDir" -Receipt "$TransactionRecord" $DiagnosticArguments'
+    nsExec::ExecToStack '"$PLUGINSDIR\eden-install.exe" -Operation move -Target "$StageDir" -Source "$BackupDir" -Receipt "$TransactionRecord" $DiagnosticArguments'
     Pop $0
     Pop $1
     StrCpy $HelperExit $0
@@ -726,7 +731,7 @@ Section "Claude Eden" Main
   ClearErrors
   ${If} $BackupDir != ""
     ; The kept installation folder receives the staged entries one by one.
-    nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\installation-files.ps1" -Operation attach -Target "$INSTDIR" -Source "$StageDir" $DiagnosticArguments'
+    nsExec::ExecToStack '"$PLUGINSDIR\eden-install.exe" -Operation attach -Target "$INSTDIR" -Source "$StageDir" $DiagnosticArguments'
     Pop $0
     Pop $1
     StrCpy $HelperExit $0
@@ -749,7 +754,7 @@ Section "Claude Eden" Main
   ${If} $BackupDir != ""
     !insertmacro InstallPhase "cleaning_previous_application"
     DetailPrint "正在清理已核对的旧程序文件…"
-    nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\installation-files.ps1" -Operation cleanup -Target "$INSTDIR" -Source "$BackupDir" -Receipt "$TransactionRecord" $DiagnosticArguments'
+    nsExec::ExecToStack '"$PLUGINSDIR\eden-install.exe" -Operation cleanup -Target "$INSTDIR" -Source "$BackupDir" -Receipt "$TransactionRecord" $DiagnosticArguments'
     Pop $0
     Pop $1
     StrCpy $HelperExit $0
@@ -762,7 +767,7 @@ Section "Claude Eden" Main
     ${EndIf}
   ${Else}
     !insertmacro InstallPhase "completing_file_transaction"
-    nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\installation-files.ps1" -Operation complete -Target "$INSTDIR" -Receipt "$TransactionRecord" $DiagnosticArguments'
+    nsExec::ExecToStack '"$PLUGINSDIR\eden-install.exe" -Operation complete -Target "$INSTDIR" -Receipt "$TransactionRecord" $DiagnosticArguments'
     Pop $0
     Pop $1
     StrCpy $HelperExit $0
@@ -845,14 +850,12 @@ Section "Uninstall"
   ${EndIf}
   InitPluginsDir
   SetOutPath "$PLUGINSDIR"
-  File /oname=installation-files.ps1 "installation-files.ps1"
-  File /oname=verified-file-deletion.cs "verified-file-deletion.cs"
+  File /oname=eden-install.exe "${INSTALL_HELPER_SOURCE}"
   File /oname=install-files.json "${FILE_MANIFEST}"
-  ; PowerShell 5.1 Add-Type must not resolve NSIS's native System.dll as a
-  ; managed compiler reference from the plugin working directory.
+  ; Run the embedded Go helper outside the application being removed.
   SetOutPath "$TEMP"
   !insertmacro UninstallPhase "removing_owned_files"
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\installation-files.ps1" -Operation uninstall -Target "$INSTDIR" -Manifest "$PLUGINSDIR\install-files.json" $DiagnosticArguments'
+  nsExec::ExecToStack '"$PLUGINSDIR\eden-install.exe" -Operation uninstall -Target "$INSTDIR" -Manifest "$PLUGINSDIR\install-files.json" $DiagnosticArguments'
   Pop $0
   Pop $1
   StrCpy $HelperExit $0

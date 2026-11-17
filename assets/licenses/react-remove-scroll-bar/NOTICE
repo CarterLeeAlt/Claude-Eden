@@ -1,0 +1,7 @@
+react-remove-scroll-bar 2.3.8
+Author: Anton Korzunov
+License: MIT, as declared by the package metadata and its README.
+The npm archive omits the license text. The accompanying LICENSE is the
+upstream repository's license notice at commit:
+7301c160fda44cb8cf2b9fdfde61efad35736196
+Source: https://github.com/theKashey/react-remove-scroll-bar/blob/7301c160fda44cb8cf2b9fdfde61efad35736196/LICENSE

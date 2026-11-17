@@ -1,20 +1,20 @@
 import assert from "node:assert/strict";
-import {createWorkbench} from "./workbench-fixture.mjs";
+import {createWorkbench, claudeAccountView, claudePanelView, sessionView, terminalView} from "./workbench-fixture.mjs";
 import {smokeCaptureDirectory} from "./smoke-captures.mjs";
 
 const out=await smokeCaptureDirectory("account-scheduling");
 const scheduling={mode:"balanced",switch_policy:"ask"};
-let profiles=[{id:"a",label:"账号 A",email:"a@example.invalid",status:"ready",enabled:true},{id:"b",label:"账号 B",email:"b@example.invalid",status:"ready",enabled:true}];
+let profiles=[{id:"a",label:"账号 A",email:"a@example.invalid",status:"ready",enabled:true},{id:"b",label:"账号 B",email:"b@example.invalid",status:"ready",enabled:true}].map(claudeAccountView);
 const sid="12345678-1234-4321-aaaa-123456789abc";
-  const session={id:sid,workspace:"C:/Users/developer/.claude-eden-workspace",title:"调度验证",terminal_available:true,desktop_terminal_id:"first",can_send:true,revision:1,account_id:"a",account_label:"账号 A",switch_policy:"ask",turns:[]};
+  const session=sessionView({id:sid,workspace:"C:/Users/developer/.claude-eden-workspace",title:"调度验证",terminal_available:true,desktop_terminal_id:"first",can_send:true,revision:1,account_id:"a",account_label:"账号 A",switch_policy:"ask",turns:[]});
 let switchCalls=[];
 const account=(route,body)=>{
   if(body?.action==="policy")session.switch_policy=body.policy;
   if(body?.action==="switch"){
     switchCalls.push(body);session.account_id="b";session.account_label="账号 B";session.desktop_terminal_id="second";
-    session.account_switch={id:body.request_id,phase:"completed",target_label:"账号 B"};
+    session.account_switch={id:body.request_id,phase:"completed",target:"b",target_label:"账号 B"};
   }
-  return route.fulfill({json:{session,source_id:"12345678-1234-4321-aaaa-123456789abd",switch_policy:session.switch_policy,supported:true,candidates:[{id:"b",label:"账号 B"}]}});
+   return route.fulfill({json:{session,source_id:"12345678-1234-4321-aaaa-123456789abd",switch_policy:session.switch_policy,supported:true,candidates:[claudeAccountView({id:"b",label:"账号 B"})]}});
 };
 const fixture=await createWorkbench();
 const {browser,page,state,errors}=fixture;
@@ -26,7 +26,7 @@ try{
       if(body.order)profiles=body.order.map(id=>profiles.find(a=>a.id===id));
     }
     if(body?.action==="update")Object.assign(profiles.find(a=>a.id===body.id),body);
-    return route.fulfill({json:{accounts:profiles,scheduling,detection_status:"offline"}});
+    return route.fulfill({json:claudePanelView({accounts:profiles,scheduling,detection_status:"offline"})});
   });
 
   await page.getByRole("button",{name:"Claude 账号管理",exact:true}).click();
@@ -54,7 +54,7 @@ try{
 
   await page.getByRole("button",{name:"工作台",exact:true}).click();
   state.status.ready=state.status.vm_running=true;
-  state.terminals=[{id:"first",kind:"claude",workspace:session.workspace,title:session.title,cli_session_id:sid}];
+   state.terminals=[terminalView({id:"first",kind:"claude",workspace:session.workspace,title:session.title,cli_session_id:sid})];
   await page.route("**/api/cli/sessions",route=>route.fulfill({json:{sessions:[session]}}));
   await page.route(`**/api/cli/sessions/${sid}/account`,route=>account(route,route.request().postDataJSON()));
   await page.getByRole("tab",{name:session.title,exact:true}).click();

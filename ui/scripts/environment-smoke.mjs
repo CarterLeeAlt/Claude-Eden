@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
 const output = new URL(
-  "../../docs/test-reports/2026-10-31-environment/",
+  "../../.tmp/ui-migration/environment/",
   import.meta.url,
 );
 await fs.mkdir(output, { recursive: true });
@@ -17,7 +17,7 @@ const shot = (name) =>
 try {
   assert.equal(
     await page.getByRole("button", { name: "添加项目", exact: true }).isDisabled(),
-    true,
+    false,
   );
   assert.equal(
     await page.getByRole("button", { name: /^打开浏览器/ }).isDisabled(),

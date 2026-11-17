@@ -14,7 +14,7 @@ for (const platform of ["windows"]) {
     nativeRequest: async body => {
       if (body.action !== "appUpdate") return null;
       calls.push(body.operation);
-      if (body.operation === "check") update = { phase: "current", currentVersion: "0.1.0", retryAt: "" };
+      if (body.operation === "check") update = { phase: "current", currentVersion: "0.1.0", retryAt: "", message: "", retryable: false };
       return update;
     },
   });

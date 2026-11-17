@@ -2,6 +2,9 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
+[Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
 
 function Assert-WorkspaceEnvironment {
     & (Join-Path $PSScriptRoot 'assert-workspace.ps1')
@@ -40,15 +43,15 @@ function Assert-WindowsWorkbenchReport {
     if (-not (Test-Path -LiteralPath $Report -PathType Leaf)) { throw "Claude Eden workbench acceptance failed ($ExitCode). No smoke report: $Report" }
     if ((Get-Item -LiteralPath $Report).Length -gt 65536) { throw 'Claude Eden smoke report exceeds the bounded diagnostic size.' }
     $result = Get-Content -LiteralPath $Report -Raw | ConvertFrom-Json -AsHashtable
-    $safe = @{ phase = ConvertTo-SmokeSafeText $result['phase']; nativeStatus = ConvertTo-SmokeSafeText $result['nativeStatus']; errors = @(); jsErrors = @() }
+    $safe = @{ phase = ConvertTo-SmokeSafeText $result['phase']; nativeStatus = ConvertTo-SmokeSafeText $result['nativeStatus']; errors = @(); pageErrors = @() }
     if ($result['errors']) {
         $safe.errors = @($result['errors'] | Select-Object -First 8 | ForEach-Object { ConvertTo-SmokeSafeText $_ })
     }
     if ($result['prepareExit'] -is [int] -or $result['prepareExit'] -is [long]) { $safe.prepareExit = $result['prepareExit'] }
     if ($result['prepareStatus'] -in @('prepared', 'stop_required', 'error', 'unexpected')) { $safe.prepareStatus = $result['prepareStatus'] }
     if ($result['prepareMessage'] -is [string]) { $safe.prepareMessage = ConvertTo-SmokeSafeText $result['prepareMessage'] }
-    if ($result['page'] -is [System.Collections.IDictionary] -and $result['page']['errors']) {
-        $safe.jsErrors = @($result['page']['errors'] | Select-Object -First 8 | ForEach-Object {
+    if ($result['pageErrors']) {
+        $safe.pageErrors = @($result['pageErrors'] | Select-Object -First 8 | ForEach-Object {
             if ($_ -isnot [System.Collections.IDictionary]) { return }
             @{
                 type = ConvertTo-SmokeSafeText $_['type']
@@ -61,7 +64,7 @@ function Assert-WindowsWorkbenchReport {
     # Log only these already-bounded fields, even when the process failed. Do
     # not print launch entries, page URLs, account data or the raw report.
     Write-Host ('Claude Eden smoke diagnostic: ' + ($safe | ConvertTo-Json -Depth 6 -Compress))
-    if ($ExitCode -ne 0 -or $result['success'] -ne $true -or $result['nativeBridgeReady'] -ne $true -or $safe.errors.Count -gt 0 -or $safe.jsErrors.Count -gt 0) {
+    if ($ExitCode -ne 0 -or $result['success'] -ne $true -or $result['nativeBridgeReady'] -ne $true -or $safe.errors.Count -gt 0 -or $safe.pageErrors.Count -gt 0) {
         throw "Claude Eden workbench/bridge acceptance failed ($ExitCode), phase $($safe.phase): $($safe.nativeStatus). Diagnostics: $Report"
     }
 }

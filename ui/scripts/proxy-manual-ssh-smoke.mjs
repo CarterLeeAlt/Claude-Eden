@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { createWorkbench, chooseInline } from "./workbench-fixture.mjs";
+import { createWorkbench, chooseInline, proxyView, jobView } from "./workbench-fixture.mjs";
 
 const output = path.resolve(process.env.EDEN_SSH_QA_OUTPUT || "../.tmp/guest-neutralization/ui-eden/manual-ssh");
 await fs.mkdir(output, { recursive: true });
@@ -17,7 +17,7 @@ for (const platform of ["windows"]) {
     clientContext: { mode: "local", connection_id: "local", client_platform: platform, server_platform: platform, connection: { state: "disconnected" } },
   });
   const { page, state } = f;
-    const saved = { active: false, selected: "", nodes: [], port: 17896, core_available: true, state_label: "尚未配置" };
+    const saved = proxyView({ state_label: "尚未配置" });
   const submissions = [];
   let fail = false;
   try {
@@ -26,18 +26,18 @@ for (const platform of ["windows"]) {
       const body = r.request().postDataJSON();
       const node = body.node;
       submissions.push({ body, node });
-      const job = { id: "manual-" + submissions.length, running: false, error: fail ? "测试核心拒绝配置" : "", message: "已保存" };
+      const job = jobView({ id: "manual-" + submissions.length, kind: "proxy", error: fail ? "测试核心拒绝配置" : "", message: "已保存" });
       state.status.job = job;
       if (!fail) {
         const { password, private_key, private_key_passphrase, ...metadata } = node;
-        saved.nodes.push({ ...metadata, id: job.id, has_password: Boolean(password), has_private_key: Boolean(private_key), has_private_key_passphrase: Boolean(private_key_passphrase) });
+        saved.nodes.push({ username: "", auth_method: "", host_key: [], ...metadata, id: job.id, has_password: Boolean(password), has_private_key: Boolean(private_key), has_private_key_passphrase: Boolean(private_key_passphrase) });
       }
       return r.fulfill({ json: job });
     });
     await page.route("**/api/proxy/edit", r => {
       const body = r.request().postDataJSON();
       submissions.push({ body, node: body.node });
-      state.status.job = { id: "edit-" + submissions.length, running: false, error: "", message: "已保存" };
+      state.status.job = jobView({ id: "edit-" + submissions.length, kind: "proxy", message: "已保存" });
       return r.fulfill({ json: state.status.job });
     });
     await page.getByRole("button", { name: /^设置/ }).click();

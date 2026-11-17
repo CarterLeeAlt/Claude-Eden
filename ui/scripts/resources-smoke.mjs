@@ -13,7 +13,7 @@ await page.route("**/api/environment/resources", async (route) => {
     if (body.allocation) allocation = body.allocation.automatic ? { automatic: true, memory_gib: 12, cpus: 5 } : body.allocation;
     return route.fulfill({ json: { ok: true } });
   }
-  return route.fulfill({ json: { ...allocation, running: false, recommended_memory_bytes: 12 * 2 ** 30, recommended_cpus: 5, max_memory_gib: 12, max_cpus: 5 } });
+  return route.fulfill({ json: { ...allocation, running: false, resource_error: "", configured_memory_bytes: allocation.memory_gib * 2 ** 30, configured_cpus: allocation.cpus, restart_required: false, observation: null, recommended_memory_bytes: 12 * 2 ** 30, recommended_cpus: 5, max_memory_gib: 12, max_cpus: 5 } });
 });
 async function open() {
   await page.getByRole("button", { name: "设置", exact: true }).click();

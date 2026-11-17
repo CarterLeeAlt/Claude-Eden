@@ -1,0 +1,1315 @@
+diff --git a/internal/webview2/pkg/edge/ICoreWebView2NavigationCompletedEventArgs.go b/internal/webview2/pkg/edge/ICoreWebView2NavigationCompletedEventArgs.go
+index 5dc41ea..e998172 100644
+--- a/internal/webview2/pkg/edge/ICoreWebView2NavigationCompletedEventArgs.go
++++ b/internal/webview2/pkg/edge/ICoreWebView2NavigationCompletedEventArgs.go
+@@ -44,3 +44,12 @@ func (i *ICoreWebView2NavigationCompletedEventArgs) GetIsSuccess() (bool, error)
+ 	}
+ 	return _resultInt != 0, nil
+ }
++
++func (i *ICoreWebView2NavigationCompletedEventArgs) GetWebErrorStatus() (uint32, error) {
++	var result uint32
++	hr, _, _ := i.vtbl.GetWebErrorStatus.Call(uintptr(unsafe.Pointer(i)), uintptr(unsafe.Pointer(&result)))
++	if windows.Handle(hr) != windows.S_OK {
++		return 0, windows.Errno(hr)
++	}
++	return result, nil
++}
+diff --git a/internal/webview2/pkg/edge/chromium.go b/internal/webview2/pkg/edge/chromium.go
+index b9e29fb..d3a722d 100644
+--- a/internal/webview2/pkg/edge/chromium.go
++++ b/internal/webview2/pkg/edge/chromium.go
+@@ -92,12 +92,15 @@ type Chromium struct {
+ 	globalPermission *CoreWebView2PermissionState
+ 
+ 	// Callbacks
+-	MessageCallback                          func(message string, sender *ICoreWebView2, args *ICoreWebView2WebMessageReceivedEventArgs)
+-	MessageWithAdditionalObjectsCallback     func(message string, sender *ICoreWebView2, args *ICoreWebView2WebMessageReceivedEventArgs)
+-	WebResourceRequestedCallback             func(request *ICoreWebView2WebResourceRequest, args *ICoreWebView2WebResourceRequestedEventArgs)
+-	NavigationStartingCallback               func(sender *ICoreWebView2)
+-	NavigationCompletedCallback              func(sender *ICoreWebView2, args *ICoreWebView2NavigationCompletedEventArgs)
+-	ProcessFailedCallback                    func(sender *ICoreWebView2, args *ICoreWebView2ProcessFailedEventArgs)
++	MessageCallback                      func(message string, sender *ICoreWebView2, args *ICoreWebView2WebMessageReceivedEventArgs)
++	MessageWithAdditionalObjectsCallback func(message string, sender *ICoreWebView2, args *ICoreWebView2WebMessageReceivedEventArgs)
++	WebResourceRequestedCallback         func(request *ICoreWebView2WebResourceRequest, args *ICoreWebView2WebResourceRequestedEventArgs)
++	NavigationStartingCallback           func(sender *ICoreWebView2)
++	NavigationCompletedCallback          func(sender *ICoreWebView2, args *ICoreWebView2NavigationCompletedEventArgs)
++	ProcessFailedCallback                func(sender *ICoreWebView2, args *ICoreWebView2ProcessFailedEventArgs)
++	// PermissionErrorCallback lets an enforcing host close the controller if
++	// WebView2 rejects its permission decision instead of using browser defaults.
++	PermissionErrorCallback                  func(error)
+ 	ContainsFullScreenElementChangedCallback func(sender *ICoreWebView2, args *ICoreWebView2ContainsFullScreenElementChangedEventArgs)
+ 	AcceleratorKeyCallback                   func(uint) bool
+ 	// MoveFocusRequestedCallback is called when the user tabs (or shift+tabs)
+@@ -175,6 +178,7 @@ func (e *Chromium) ShuttingDown() {
+ 	e.NavigationStartingCallback = nil
+ 	e.NavigationCompletedCallback = nil
+ 	e.ProcessFailedCallback = nil
++	e.PermissionErrorCallback = nil
+ 	e.ContainsFullScreenElementChangedCallback = nil
+ 	e.AcceleratorKeyCallback = nil
+ 	e.MoveFocusRequestedCallback = nil
+@@ -851,6 +855,9 @@ func (e *Chromium) PermissionRequested(_ *ICoreWebView2, args *iCoreWebView2Perm
+ 	if err != nil {
+ 		// WebView2 then applies its default handling to this request.
+ 		log.Printf("[WebView2] PermissionRequested failed to set state: %v", err)
++		if e.PermissionErrorCallback != nil {
++			e.PermissionErrorCallback(err)
++		}
+ 	}
+ 	return 0
+ }
+diff --git a/internal/webview2/pkg/edge/policy_permissions_windows_test.go b/internal/webview2/pkg/edge/policy_permissions_windows_test.go
+new file mode 100644
+index 0000000..085e3d6
+--- /dev/null
++++ b/internal/webview2/pkg/edge/policy_permissions_windows_test.go
+@@ -0,0 +1,54 @@
++//go:build windows
++
++package edge
++
++import (
++	"testing"
++	"unsafe"
++)
++
++// Only COM-shaped memory callbacks run here; no WebView or Windows permission
++// UI is created. The enforcing global policy must also cover future enum kinds.
++func TestPolicyGlobalDenyCoversUnknownPermissionsAndEnforcementErrors(t *testing.T) {
++	for _, test := range []struct {
++		name   string
++		kindHR uintptr
++		putHR  uintptr
++	}{
++		{"unknown kind", 0, 0},
++		{"unreadable kind", runtimeFailure, 0},
++		{"deny cannot be applied", 0, runtimeFailure},
++	} {
++		t.Run(test.name, func(t *testing.T) {
++			var applied CoreWebView2PermissionState
++			callbacks := 0
++			args := &iCoreWebView2PermissionRequestedEventArgs{vtbl: &iCoreWebView2PermissionRequestedEventArgsVtbl{
++				GetPermissionKind: NewComProc(func(_ uintptr, out uintptr) uintptr {
++					*(*int32)(unsafe.Pointer(out)) = 0x7fffffff
++					return test.kindHR
++				}),
++				PutState: NewComProc(func(_ uintptr, state uintptr) uintptr {
++					applied = CoreWebView2PermissionState(state)
++					return test.putHR
++				}),
++			}}
++			deny := CoreWebView2PermissionStateDeny
++			chromium := fatalOnErrorCallback(t)
++			chromium.globalPermission = &deny
++			chromium.PermissionErrorCallback = func(err error) {
++				if err == nil {
++					t.Fatal("enforcement failure lost the original COM error")
++				}
++				callbacks++
++			}
++			chromium.PermissionRequested(nil, args)
++			wantCallbacks := 0
++			if test.putHR != 0 {
++				wantCallbacks = 1
++			}
++			if applied != deny || callbacks != wantCallbacks {
++				t.Fatalf("global deny=%v, enforcement callbacks=%d", applied, callbacks)
++			}
++		})
++	}
++}
+diff --git a/internal/webview2/pkg/webview2/ICoreWebView2.go b/internal/webview2/pkg/webview2/ICoreWebView2.go
+index 9b0af89..05e5ef0 100644
+--- a/internal/webview2/pkg/webview2/ICoreWebView2.go
++++ b/internal/webview2/pkg/webview2/ICoreWebView2.go
+@@ -165,7 +165,7 @@ func (i *ICoreWebView2) RemoveNavigationStarting(token EventRegistrationToken) e
+ 
+ 	hr, _, _ := i.Vtbl.RemoveNavigationStarting.Call(
+ 		uintptr(unsafe.Pointer(i)),
+-		uintptr(unsafe.Pointer(&token)),
++		uintptr(token.value),
+ 	)
+ 	if windows.Handle(hr) != windows.S_OK {
+ 		return syscall.Errno(hr)
+@@ -354,7 +354,7 @@ func (i *ICoreWebView2) RemoveScriptDialogOpening(token EventRegistrationToken)
+ 
+ 	hr, _, _ := i.Vtbl.RemoveScriptDialogOpening.Call(
+ 		uintptr(unsafe.Pointer(i)),
+-		uintptr(unsafe.Pointer(&token)),
++		uintptr(token.value),
+ 	)
+ 	if windows.Handle(hr) != windows.S_OK {
+ 		return syscall.Errno(hr)
+@@ -703,7 +703,7 @@ func (i *ICoreWebView2) RemoveNewWindowRequested(token EventRegistrationToken) e
+ 
+ 	hr, _, _ := i.Vtbl.RemoveNewWindowRequested.Call(
+ 		uintptr(unsafe.Pointer(i)),
+-		uintptr(unsafe.Pointer(&token)),
++		uintptr(token.value),
+ 	)
+ 	if windows.Handle(hr) != windows.S_OK {
+ 		return syscall.Errno(hr)
+diff --git a/internal/webview2/pkg/webview2/ICoreWebView2DownloadOperation.go b/internal/webview2/pkg/webview2/ICoreWebView2DownloadOperation.go
+index c26339b..479a5ef 100644
+--- a/internal/webview2/pkg/webview2/ICoreWebView2DownloadOperation.go
++++ b/internal/webview2/pkg/webview2/ICoreWebView2DownloadOperation.go
+@@ -127,7 +127,7 @@ func (i *ICoreWebView2DownloadOperation) GetUri() (string, error) {
+ 
+ 	hr, _, _ := i.Vtbl.GetUri.Call(
+ 		uintptr(unsafe.Pointer(i)),
+-		uintptr(unsafe.Pointer(_uri)),
++		uintptr(unsafe.Pointer(&_uri)),
+ 	)
+ 	if windows.Handle(hr) != windows.S_OK {
+ 		return "", syscall.Errno(hr)
+diff --git a/internal/webview2/pkg/webview2/ICoreWebView2NavigationStartingEventArgs.go b/internal/webview2/pkg/webview2/ICoreWebView2NavigationStartingEventArgs.go
+index ba9cbe9..fc4c3ff 100644
+--- a/internal/webview2/pkg/webview2/ICoreWebView2NavigationStartingEventArgs.go
++++ b/internal/webview2/pkg/webview2/ICoreWebView2NavigationStartingEventArgs.go
+@@ -34,7 +34,7 @@ func (i *ICoreWebView2NavigationStartingEventArgs) GetUri() (string, error) {
+ 
+ 	hr, _, _ := i.Vtbl.GetUri.Call(
+ 		uintptr(unsafe.Pointer(i)),
+-		uintptr(unsafe.Pointer(_uri)),
++		uintptr(unsafe.Pointer(&_uri)),
+ 	)
+ 	if windows.Handle(hr) != windows.S_OK {
+ 		return "", syscall.Errno(hr)
+diff --git a/internal/webview2/pkg/webview2/ICoreWebView2NewWindowRequestedEventArgs.go b/internal/webview2/pkg/webview2/ICoreWebView2NewWindowRequestedEventArgs.go
+index 05e4cfc..5c7e197 100644
+--- a/internal/webview2/pkg/webview2/ICoreWebView2NewWindowRequestedEventArgs.go
++++ b/internal/webview2/pkg/webview2/ICoreWebView2NewWindowRequestedEventArgs.go
+@@ -35,7 +35,7 @@ func (i *ICoreWebView2NewWindowRequestedEventArgs) GetUri() (string, error) {
+ 
+ 	hr, _, _ := i.Vtbl.GetUri.Call(
+ 		uintptr(unsafe.Pointer(i)),
+-		uintptr(unsafe.Pointer(_uri)),
++		uintptr(unsafe.Pointer(&_uri)),
+ 	)
+ 	if windows.Handle(hr) != windows.S_OK {
+ 		return "", syscall.Errno(hr)
+diff --git a/internal/webview2/pkg/webview2/ICoreWebView2ScriptDialogOpeningEventArgs.go b/internal/webview2/pkg/webview2/ICoreWebView2ScriptDialogOpeningEventArgs.go
+index 30de940..203e32a 100644
+--- a/internal/webview2/pkg/webview2/ICoreWebView2ScriptDialogOpeningEventArgs.go
++++ b/internal/webview2/pkg/webview2/ICoreWebView2ScriptDialogOpeningEventArgs.go
+@@ -35,7 +35,7 @@ func (i *ICoreWebView2ScriptDialogOpeningEventArgs) GetUri() (string, error) {
+ 
+ 	hr, _, _ := i.Vtbl.GetUri.Call(
+ 		uintptr(unsafe.Pointer(i)),
+-		uintptr(unsafe.Pointer(_uri)),
++		uintptr(unsafe.Pointer(&_uri)),
+ 	)
+ 	if windows.Handle(hr) != windows.S_OK {
+ 		return "", syscall.Errno(hr)
+@@ -66,7 +66,7 @@ func (i *ICoreWebView2ScriptDialogOpeningEventArgs) GetMessage() (string, error)
+ 
+ 	hr, _, _ := i.Vtbl.GetMessage.Call(
+ 		uintptr(unsafe.Pointer(i)),
+-		uintptr(unsafe.Pointer(_message)),
++		uintptr(unsafe.Pointer(&_message)),
+ 	)
+ 	if windows.Handle(hr) != windows.S_OK {
+ 		return "", syscall.Errno(hr)
+@@ -94,7 +94,7 @@ func (i *ICoreWebView2ScriptDialogOpeningEventArgs) GetDefaultText() (string, er
+ 
+ 	hr, _, _ := i.Vtbl.GetDefaultText.Call(
+ 		uintptr(unsafe.Pointer(i)),
+-		uintptr(unsafe.Pointer(_defaultText)),
++		uintptr(unsafe.Pointer(&_defaultText)),
+ 	)
+ 	if windows.Handle(hr) != windows.S_OK {
+ 		return "", syscall.Errno(hr)
+diff --git a/internal/webview2/pkg/webview2/ICoreWebView2_4.go b/internal/webview2/pkg/webview2/ICoreWebView2_4.go
+index 49941a9..c906ade 100644
+--- a/internal/webview2/pkg/webview2/ICoreWebView2_4.go
++++ b/internal/webview2/pkg/webview2/ICoreWebView2_4.go
+@@ -83,7 +83,7 @@ func (i *ICoreWebView2_4) RemoveDownloadStarting(token EventRegistrationToken) e
+ 
+ 	hr, _, _ := i.Vtbl.RemoveDownloadStarting.Call(
+ 		uintptr(unsafe.Pointer(i)),
+-		uintptr(unsafe.Pointer(&token)),
++		uintptr(token.value),
+ 	)
+ 	if windows.Handle(hr) != windows.S_OK {
+ 		return syscall.Errno(hr)
+diff --git a/internal/webview2/pkg/webview2/policy_abi_windows_test.go b/internal/webview2/pkg/webview2/policy_abi_windows_test.go
+new file mode 100644
+index 0000000..b577c24
+--- /dev/null
++++ b/internal/webview2/pkg/webview2/policy_abi_windows_test.go
+@@ -0,0 +1,60 @@
++//go:build windows
++
++package webview2
++
++import (
++	"runtime"
++	"testing"
++	"unsafe"
++
++	"golang.org/x/sys/windows"
++)
++
++// Pure native-ABI fixtures: no WebView, clipboard, visible HWND, input or disk
++// mutations. CoTaskMemAlloc is used only to match the API's string ownership.
++func TestPolicyStringOutParameters(t *testing.T) {
++	const value = "http://localhost:4123/中文"
++	text, _ := windows.UTF16FromString(value)
++	getter := NewComProc(func(this, out uintptr) uintptr {
++		if out == 0 {
++			return 0x80070057
++		}
++		memory, _, _ := windows.NewLazySystemDLL("ole32.dll").NewProc("CoTaskMemAlloc").Call(uintptr(len(text) * 2))
++		copy(unsafe.Slice((*uint16)(unsafe.Pointer(memory)), len(text)), text)
++		*(*uintptr)(unsafe.Pointer(out)) = memory
++		return 0
++	})
++	for _, test := range []struct {
++		name string
++		get  func() (string, error)
++	}{
++		{"navigation", (&ICoreWebView2NavigationStartingEventArgs{Vtbl: &ICoreWebView2NavigationStartingEventArgsVtbl{GetUri: getter}}).GetUri},
++		{"new window", (&ICoreWebView2NewWindowRequestedEventArgs{Vtbl: &ICoreWebView2NewWindowRequestedEventArgsVtbl{GetUri: getter}}).GetUri},
++		{"download", (&ICoreWebView2DownloadOperation{Vtbl: &ICoreWebView2DownloadOperationVtbl{GetUri: getter}}).GetUri},
++		{"dialog URI", (&ICoreWebView2ScriptDialogOpeningEventArgs{Vtbl: &ICoreWebView2ScriptDialogOpeningEventArgsVtbl{GetUri: getter}}).GetUri},
++		{"dialog message", (&ICoreWebView2ScriptDialogOpeningEventArgs{Vtbl: &ICoreWebView2ScriptDialogOpeningEventArgsVtbl{GetMessage: getter}}).GetMessage},
++		{"dialog default", (&ICoreWebView2ScriptDialogOpeningEventArgs{Vtbl: &ICoreWebView2ScriptDialogOpeningEventArgsVtbl{GetDefaultText: getter}}).GetDefaultText},
++	} {
++		t.Run(test.name, func(t *testing.T) {
++			actual, err := test.get()
++			if err != nil || actual != value {
++				t.Fatalf("out pointer incorrect: %q %v", actual, err)
++			}
++		})
++	}
++	runtime.KeepAlive(text)
++}
++
++func TestPolicyEventRemovalTokenIsByValue(t *testing.T) {
++	token := EventRegistrationToken{value: 0x1122334455667788}
++	var actual uintptr
++	remove := NewComProc(func(this, value uintptr) uintptr { actual = value; return 0 })
++	view := &ICoreWebView2{Vtbl: &ICoreWebView2Vtbl{RemoveNavigationStarting: remove, RemoveNewWindowRequested: remove, RemoveScriptDialogOpening: remove}}
++	view4 := &ICoreWebView2_4{Vtbl: &ICoreWebView2_4Vtbl{RemoveDownloadStarting: remove}}
++	for _, call := range []func(EventRegistrationToken) error{view.RemoveNavigationStarting, view.RemoveNewWindowRequested, view.RemoveScriptDialogOpening, view4.RemoveDownloadStarting} {
++		actual = 0
++		if err := call(token); err != nil || actual != uintptr(token.value) {
++			t.Fatalf("event token was not passed by value: %x %v", actual, err)
++		}
++	}
++}
+diff --git a/pkg/application/dialogs_cancellation_windows_test.go b/pkg/application/dialogs_cancellation_windows_test.go
+new file mode 100644
+index 0000000..65b437f
+--- /dev/null
++++ b/pkg/application/dialogs_cancellation_windows_test.go
+@@ -0,0 +1,88 @@
++//go:build windows && !server
++
++package application
++
++import (
++	"errors"
++	"fmt"
++	"path/filepath"
++	"reflect"
++	"testing"
++
++	"github.com/wailsapp/wails/v3/internal/go-common-file-dialog/cfd"
++)
++
++// This fixture implements the dialog boundary without creating COM objects or
++// HWNDs. Both single and multiple cancellation must become an empty selection.
++type cancellationDialogFixture struct {
++	cfd.OpenMultipleFilesDialog
++	path     string
++	paths    []string
++	err      error
++	released int
++}
++
++func (d *cancellationDialogFixture) ShowAndGetResult() (string, error) {
++	return d.path, d.err
++}
++func (d *cancellationDialogFixture) ShowAndGetResults() ([]string, error) {
++	return d.paths, d.err
++}
++func (d *cancellationDialogFixture) Release() error { d.released++; return nil }
++
++func TestWindowsFileDialogCancellationReturnsEmptySelection(t *testing.T) {
++	for _, multiple := range []bool{false, true} {
++		for _, cancellation := range []error{cfd.ErrorCancelled, fmt.Errorf("dialog: %w", cfd.ErrorCancelled)} {
++			dialog := &cancellationDialogFixture{err: cancellation}
++			result, err := showCfdDialog(func() (cfd.Dialog, error) { return dialog, nil }, multiple, nil)
++			if err != nil || dialog.released != 1 {
++				t.Fatalf("cancellation leaked an error or dialog: %v, released=%d", err, dialog.released)
++			}
++			if multiple {
++				if paths, ok := result.([]string); !ok || len(paths) != 0 {
++					t.Fatalf("cancelled multi-selection = %#v", result)
++				}
++			} else if result != "" {
++				t.Fatalf("cancelled single-selection = %#v; must not become '.'", result)
++			}
++		}
++	}
++}
++
++func TestWindowsFileDialogSuccessAndErrorsRemainDistinct(t *testing.T) {
++	root := t.TempDir()
++	path := filepath.Join(root, "selected.txt")
++	for _, multiple := range []bool{false, true} {
++		dialog := &cancellationDialogFixture{path: path, paths: []string{path}}
++		result, err := showCfdDialog(func() (cfd.Dialog, error) { return dialog, nil }, multiple, nil)
++		var want any = path
++		if multiple {
++			want = []string{path}
++		}
++		if err != nil || !reflect.DeepEqual(result, want) || dialog.released != 1 {
++			t.Fatalf("selection changed: %#v, %v", result, err)
++		}
++		dialog.err = errors.New("dialog fixture failure")
++		if _, err = showCfdDialog(func() (cfd.Dialog, error) { return dialog, nil }, multiple, nil); err != dialog.err || dialog.released != 2 {
++			t.Fatal("non-cancellation error was hidden or dialog was not released")
++		}
++		if _, err = showCfdDialog(func() (cfd.Dialog, error) { return nil, dialog.err }, multiple, nil); err != dialog.err {
++			t.Fatal("dialog creation error was hidden")
++		}
++	}
++}
++
++func TestWindowsFileDialogDefaultExtensionMatchesWin32Contract(t *testing.T) {
++	if windowsDialogDefaultExtension(nil) != "" {
++		t.Fatal("missing file filter invented a default extension")
++	}
++	for _, test := range []struct{ pattern, extension string }{
++		{"*.zip", "zip"}, {"*.json", "json"}, {"*.txt", "txt"}, {"*.tar.gz;*.zip", "tar.gz"},
++		{" *.png ; *.jpg", "png"}, {"*.*", ""}, {"*", ""}, {"*.?xt", ""}, {"README", ""},
++	} {
++		actual := windowsDialogDefaultExtension([]FileFilter{{Pattern: test.pattern}})
++		if actual != test.extension {
++			t.Fatalf("filter %q produced extension %q, want %q", test.pattern, actual, test.extension)
++		}
++	}
++}
+diff --git a/pkg/application/dialogs_windows.go b/pkg/application/dialogs_windows.go
+index 5d6fa82..f1687e4 100644
+--- a/pkg/application/dialogs_windows.go
++++ b/pkg/application/dialogs_windows.go
+@@ -3,6 +3,7 @@
+ package application
+ 
+ import (
++	"errors"
+ 	"path/filepath"
+ 	"runtime"
+ 	"strings"
+@@ -312,9 +313,7 @@ func (m *windowSaveFileDialog) show() (chan string, error) {
+ 	}
+ 
+ 	// Original PR for v2 by @almas1992: https://github.com/wailsapp/wails/pull/3205
+-	if len(m.dialog.filters) > 0 {
+-		config.DefaultExtension = strings.TrimPrefix(strings.Split(m.dialog.filters[0].Pattern, ";")[0], "*")
+-	}
++	config.DefaultExtension = windowsDialogDefaultExtension(m.dialog.filters)
+ 
+ 	result, err := showCfdDialog(
+ 		func() (cfd.Dialog, error) {
+@@ -335,6 +334,22 @@ func (m *windowSaveFileDialog) show() (chan string, error) {
+ 	return files, err
+ }
+ 
++func windowsDialogDefaultExtension(filters []FileFilter) string {
++	if len(filters) == 0 {
++		return ""
++	}
++	pattern := strings.TrimSpace(strings.Split(filters[0].Pattern, ";")[0])
++	if !strings.HasPrefix(pattern, "*.") {
++		return ""
++	}
++	extension := strings.TrimPrefix(pattern, "*.")
++	if strings.ContainsAny(extension, "*?") {
++		return ""
++	}
++	// IFileDialog::SetDefaultExtension requires "zip", not ".zip".
++	return extension
++}
++
+ // messageDialogUserIconFlags converts standard message dialog flags for use
+ // with MB_USERICON. The user icon replaces the standard one, so the MB_ICON*
+ // bits are stripped — but the button configuration is preserved: forcing
+@@ -398,6 +413,9 @@ func showCfdDialog(newDlg func() (cfd.Dialog, error), isMultiSelect bool, parent
+ 
+ 	if multi, _ := dlg.(cfd.OpenMultipleFilesDialog); multi != nil && isMultiSelect {
+ 		paths, err := multi.ShowAndGetResults()
++		if errors.Is(err, cfd.ErrorCancelled) {
++			return []string(nil), nil
++		}
+ 		if err != nil {
+ 			return nil, err
+ 		}
+@@ -409,6 +427,9 @@ func showCfdDialog(newDlg func() (cfd.Dialog, error), isMultiSelect bool, parent
+ 	}
+ 
+ 	path, err := dlg.ShowAndGetResult()
++	if errors.Is(err, cfd.ErrorCancelled) {
++		return "", nil
++	}
+ 	if err != nil {
+ 		return nil, err
+ 	}
+diff --git a/pkg/application/webview_policy.go b/pkg/application/webview_policy.go
+new file mode 100644
+index 0000000..4f24c69
+--- /dev/null
++++ b/pkg/application/webview_policy.go
+@@ -0,0 +1,44 @@
++package application
++
++// WindowsWebViewPolicy supplies native WebView2 policy decisions. Policies are
++// installed before the first navigation and reapplied to replacement controllers.
++// Navigation/new-window/download callbacks run on the UI thread and must return
++// promptly. ScriptDialog runs off the UI thread with a native deferral held.
++type WindowsWebViewPolicy struct {
++	// DocumentStartScript is registered before navigation and on replacement
++	// controllers. Initialized runs only after its registration has completed.
++	DocumentStartScript  string
++	AllowNavigation      func(WebViewNavigation) bool
++	BlockNewWindow       func(string) bool
++	CancelDownload       func(string) bool
++	ScriptDialog         func(WebViewScriptDialog) (WebViewScriptDialogResult, error)
++	Initialized          func(recovering bool) error
++	InitializationFailed func(error)
++	NavigationCompleted  func(WebViewNavigationResult)
++	ProcessFailed        func(WebViewProcessFailure)
++}
++
++type WebViewNavigation struct {
++	URL           string
++	UserInitiated bool
++	Redirected    bool
++}
++type WebViewNavigationResult struct {
++	URL            string
++	Success        bool
++	WebErrorStatus uint32
++}
++type WebViewProcessFailure struct {
++	Kind              uint32
++	RecoveryAvailable bool
++}
++type WebViewScriptDialog struct {
++	URL         string
++	Kind        uint32
++	Message     string
++	DefaultText string
++}
++type WebViewScriptDialogResult struct {
++	Accept bool
++	Text   string
++}
+diff --git a/pkg/application/webview_policy_windows.go b/pkg/application/webview_policy_windows.go
+new file mode 100644
+index 0000000..2be464b
+--- /dev/null
++++ b/pkg/application/webview_policy_windows.go
+@@ -0,0 +1,396 @@
++//go:build windows && !server
++
++package application
++
++import (
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"unsafe"
++
++	"github.com/wailsapp/wails/v3/internal/webview2/pkg/combridge"
++	"github.com/wailsapp/wails/v3/internal/webview2/pkg/webview2"
++)
++
++type policyDocumentScriptRegistrar interface {
++	CallDevTools(string, string, func(string, error)) error
++}
++
++func registerPolicyDocumentStartScript(chromium policyDocumentScriptRegistrar, script string, done func(error)) {
++	if script == "" {
++		done(nil)
++		return
++	}
++	params, err := json.Marshal(map[string]string{"source": script})
++	if err != nil {
++		done(err)
++		return
++	}
++	if err := chromium.CallDevTools("Page.addScriptToEvaluateOnNewDocument", string(params), func(result string, err error) {
++		if err == nil {
++			var value struct{ Identifier string }
++			err = json.Unmarshal([]byte(result), &value)
++			if err == nil && value.Identifier == "" {
++				err = errors.New("webview2: document-start script registration returned no identifier")
++			}
++		}
++		done(err)
++	}); err != nil {
++		done(err)
++	}
++}
++
++func (w *windowsWebviewWindow) startWebViewPolicy(recovering bool) {
++	policy := w.parent.options.Windows.WebViewPolicy
++	var script string
++	if policy != nil {
++		script = policy.DocumentStartScript
++	}
++	hooks := w.policyHooks
++	registerPolicyDocumentStartScript(w.chromium, script, func(err error) {
++		if w.parent.isDestroyed() || hooks != nil && hooks.closed {
++			return
++		}
++		if err == nil {
++			w.documentStartReady = true
++		}
++		if err == nil && policy != nil && policy.Initialized != nil {
++			err = policy.Initialized(recovering)
++		}
++		if err != nil {
++			w.documentStartReady = false
++			w.setupChromiumConfigError(recovering, err)
++			hooks.close()
++			w.policyHooks = nil
++			w.chromium.Close()
++			return
++		}
++		w.startRequestCancellation(w.navigateInitialPage)
++	})
++}
++
++type policyNavigationHandler interface {
++	Invoke(*webview2.ICoreWebView2, *webview2.ICoreWebView2NavigationStartingEventArgs) uintptr
++}
++type policyNewWindowHandler interface {
++	Invoke(*webview2.ICoreWebView2, *webview2.ICoreWebView2NewWindowRequestedEventArgs) uintptr
++}
++type policyDownloadHandler interface {
++	Invoke(*webview2.ICoreWebView2, *webview2.ICoreWebView2DownloadStartingEventArgs) uintptr
++}
++type policyDialogHandler interface {
++	Invoke(*webview2.ICoreWebView2, *webview2.ICoreWebView2ScriptDialogOpeningEventArgs) uintptr
++}
++
++type policyNavigationFunc func(*webview2.ICoreWebView2NavigationStartingEventArgs) uintptr
++
++func (f policyNavigationFunc) Invoke(_ *webview2.ICoreWebView2, args *webview2.ICoreWebView2NavigationStartingEventArgs) uintptr {
++	return f(args)
++}
++
++type policyNewWindowFunc func(*webview2.ICoreWebView2NewWindowRequestedEventArgs) uintptr
++
++func (f policyNewWindowFunc) Invoke(_ *webview2.ICoreWebView2, args *webview2.ICoreWebView2NewWindowRequestedEventArgs) uintptr {
++	return f(args)
++}
++
++type policyDownloadFunc func(*webview2.ICoreWebView2DownloadStartingEventArgs) uintptr
++
++func (f policyDownloadFunc) Invoke(_ *webview2.ICoreWebView2, args *webview2.ICoreWebView2DownloadStartingEventArgs) uintptr {
++	return f(args)
++}
++
++type policyDialogFunc func(*webview2.ICoreWebView2ScriptDialogOpeningEventArgs) uintptr
++
++func (f policyDialogFunc) Invoke(_ *webview2.ICoreWebView2, args *webview2.ICoreWebView2ScriptDialogOpeningEventArgs) uintptr {
++	return f(args)
++}
++
++func init() {
++	combridge.RegisterVTable[combridge.IUnknown, policyNavigationHandler]("{9adbe429-f36d-432b-9ddc-f8881fbd76e3}", func(this uintptr, sender *webview2.ICoreWebView2, args *webview2.ICoreWebView2NavigationStartingEventArgs) uintptr {
++		return combridge.Resolve[policyNavigationHandler](this).Invoke(sender, args)
++	})
++	combridge.RegisterVTable[combridge.IUnknown, policyNewWindowHandler]("{d4c185fe-c81c-4989-97af-2d3fa7ab5651}", func(this uintptr, sender *webview2.ICoreWebView2, args *webview2.ICoreWebView2NewWindowRequestedEventArgs) uintptr {
++		return combridge.Resolve[policyNewWindowHandler](this).Invoke(sender, args)
++	})
++	combridge.RegisterVTable[combridge.IUnknown, policyDownloadHandler]("{efedc989-c396-41ca-83f7-07f845a55724}", func(this uintptr, sender *webview2.ICoreWebView2, args *webview2.ICoreWebView2DownloadStartingEventArgs) uintptr {
++		return combridge.Resolve[policyDownloadHandler](this).Invoke(sender, args)
++	})
++	combridge.RegisterVTable[combridge.IUnknown, policyDialogHandler]("{ef381bf9-afa8-4e37-91c4-8ac48524bdfb}", func(this uintptr, sender *webview2.ICoreWebView2, args *webview2.ICoreWebView2ScriptDialogOpeningEventArgs) uintptr {
++		return combridge.Resolve[policyDialogHandler](this).Invoke(sender, args)
++	})
++}
++
++type windowsWebViewPolicyHooks struct {
++	closed    bool
++	removers  []func() error
++	callbacks []io.Closer
++	pending   map[uintptr]func()
++}
++
++func (h *windowsWebViewPolicyHooks) close() {
++	if h == nil || h.closed {
++		return
++	}
++	h.closed = true
++	for key, complete := range h.pending {
++		complete()
++		delete(h.pending, key)
++	}
++	for index := len(h.removers) - 1; index >= 0; index-- {
++		_ = h.removers[index]()
++	}
++	for _, callback := range h.callbacks {
++		_ = callback.Close()
++	}
++	h.removers = nil
++	h.callbacks = nil
++}
++
++func (w *windowsWebviewWindow) installWebViewPolicy() (err error) {
++	policy := w.parent.options.Windows.WebViewPolicy
++	if policy == nil {
++		return nil
++	}
++	controller := w.chromium.GetController()
++	if controller == nil {
++		return errors.New("webview2: policy requires a controller")
++	}
++	core, err := controller.GetCoreWebView2()
++	if err != nil {
++		return err
++	}
++	defer core.Release()
++	// Both internal packages model the same documented WebView2 ABI; the cast is
++	// confined to the framework. Application callbacks receive only Go values.
++	view := (*webview2.ICoreWebView2)(unsafe.Pointer(core))
++	hooks := &windowsWebViewPolicyHooks{pending: make(map[uintptr]func())}
++	defer func() {
++		if err != nil {
++			hooks.close()
++		} else {
++			w.policyHooks = hooks
++		}
++	}()
++	if policy.AllowNavigation != nil {
++		callback := combridge.New[policyNavigationHandler](policyNavigationFunc(func(args *webview2.ICoreWebView2NavigationStartingEventArgs) uintptr {
++			if hooks.closed {
++				return 0
++			}
++			defer handlePanic()
++			// Set cancellation first: unreadable metadata, a panic or a rejected
++			// redirect cannot fall through to a permissive browser default.
++			if err := args.PutCancel(true); err != nil {
++				globalApplication.handleError(err)
++				return 0
++			}
++			uri, err := args.GetUri()
++			if err != nil {
++				globalApplication.handleError(err)
++				return 0
++			}
++			user, err := args.GetIsUserInitiated()
++			if err != nil {
++				globalApplication.handleError(err)
++				return 0
++			}
++			redirected, err := args.GetIsRedirected()
++			if err != nil {
++				globalApplication.handleError(err)
++				return 0
++			}
++			if policy.AllowNavigation(WebViewNavigation{uri, user, redirected}) {
++				if err := args.PutCancel(false); err != nil {
++					globalApplication.handleError(err)
++				}
++			}
++			return 0
++		}))
++		hooks.callbacks = append(hooks.callbacks, callback)
++		token, e := view.AddNavigationStarting((*webview2.ICoreWebView2NavigationStartingEventHandler)(unsafe.Pointer(callback.Ref())))
++		if e != nil {
++			return e
++		}
++		hooks.removers = append(hooks.removers, func() error { return view.RemoveNavigationStarting(token) })
++	}
++	if policy.BlockNewWindow != nil {
++		callback := combridge.New[policyNewWindowHandler](policyNewWindowFunc(func(args *webview2.ICoreWebView2NewWindowRequestedEventArgs) uintptr {
++			if hooks.closed {
++				return 0
++			}
++			defer handlePanic()
++			if err := args.PutHandled(true); err != nil {
++				globalApplication.handleError(err)
++				return 0
++			}
++			uri, err := args.GetUri()
++			if err != nil {
++				globalApplication.handleError(err)
++				return 0
++			}
++			if !policy.BlockNewWindow(uri) {
++				if err := args.PutHandled(false); err != nil {
++					globalApplication.handleError(err)
++				}
++			}
++			return 0
++		}))
++		hooks.callbacks = append(hooks.callbacks, callback)
++		token, e := view.AddNewWindowRequested((*webview2.ICoreWebView2NewWindowRequestedEventHandler)(unsafe.Pointer(callback.Ref())))
++		if e != nil {
++			return e
++		}
++		hooks.removers = append(hooks.removers, func() error { return view.RemoveNewWindowRequested(token) })
++	}
++	if policy.CancelDownload != nil {
++		view4 := view.GetICoreWebView2_4()
++		if view4 == nil {
++			return errors.New("webview2: DownloadStarting policy is unsupported by the installed runtime")
++		}
++		hooks.removers = append(hooks.removers, func() error { view4.Vtbl.Release.Call(uintptr(unsafe.Pointer(view4))); return nil })
++		callback := combridge.New[policyDownloadHandler](policyDownloadFunc(func(args *webview2.ICoreWebView2DownloadStartingEventArgs) uintptr {
++			if hooks.closed {
++				return 0
++			}
++			defer handlePanic()
++			if err := args.PutCancel(true); err != nil {
++				globalApplication.handleError(err)
++				return 0
++			}
++			operation, err := args.GetDownloadOperation()
++			if err != nil {
++				globalApplication.handleError(err)
++				return 0
++			}
++			defer operation.Vtbl.Release.Call(uintptr(unsafe.Pointer(operation)))
++			uri, err := operation.GetUri()
++			if err != nil {
++				globalApplication.handleError(err)
++				return 0
++			}
++			if !policy.CancelDownload(uri) {
++				if err := args.PutCancel(false); err != nil {
++					globalApplication.handleError(err)
++				}
++			}
++			return 0
++		}))
++		hooks.callbacks = append(hooks.callbacks, callback)
++		token, e := view4.AddDownloadStarting((*webview2.ICoreWebView2DownloadStartingEventHandler)(unsafe.Pointer(callback.Ref())))
++		if e != nil {
++			return e
++		}
++		hooks.removers = append(hooks.removers, func() error { return view4.RemoveDownloadStarting(token) })
++	}
++	if policy.ScriptDialog != nil {
++		settings, e := w.chromium.GetSettings()
++		if e != nil {
++			return e
++		}
++		e = settings.PutAreDefaultScriptDialogsEnabled(false)
++		settings.Release()
++		if e != nil {
++			return e
++		}
++		callback := combridge.New[policyDialogHandler](policyDialogFunc(func(args *webview2.ICoreWebView2ScriptDialogOpeningEventArgs) uintptr {
++			if hooks.closed {
++				return 0
++			}
++			defer handlePanic()
++			uri, err := args.GetUri()
++			if err != nil {
++				globalApplication.handleError(err)
++				return 0
++			}
++			kind, err := args.GetKind()
++			if err != nil {
++				globalApplication.handleError(err)
++				return 0
++			}
++			message, err := args.GetMessage()
++			if err != nil {
++				globalApplication.handleError(err)
++				return 0
++			}
++			text, err := args.GetDefaultText()
++			if err != nil {
++				globalApplication.handleError(err)
++				return 0
++			}
++			deferral, err := args.GetDeferral()
++			if err != nil {
++				globalApplication.handleError(err)
++				return 0
++			}
++			args.AddRef()
++			key := uintptr(unsafe.Pointer(args))
++			hooks.pending[key] = func() {
++				_ = deferral.Complete()
++				args.Vtbl.Release.Call(uintptr(unsafe.Pointer(args)))
++				deferral.Vtbl.Release.Call(uintptr(unsafe.Pointer(deferral)))
++			}
++			go func() {
++				var result WebViewScriptDialogResult
++				var dialogError error
++				defer func() {
++					if recovered := recover(); recovered != nil {
++						dialogError = fmt.Errorf("webview2 script dialog panic: %v", recovered)
++					}
++					InvokeAsync(func() {
++						complete, live := hooks.pending[key]
++						if !live {
++							return
++						}
++						delete(hooks.pending, key)
++						defer complete()
++						if dialogError != nil {
++							globalApplication.handleError(dialogError)
++							return
++						}
++						if hooks.closed {
++							return
++						}
++						if result.Accept {
++							if kind == 2 {
++								if err := args.PutResultText(result.Text); err != nil {
++									globalApplication.handleError(err)
++									return
++								}
++							}
++							if err := args.Accept(); err != nil {
++								globalApplication.handleError(err)
++							}
++						}
++					})
++				}()
++				result, dialogError = policy.ScriptDialog(WebViewScriptDialog{uri, uint32(kind), message, text})
++			}()
++			return 0
++		}))
++		hooks.callbacks = append(hooks.callbacks, callback)
++		token, e := view.AddScriptDialogOpening((*webview2.ICoreWebView2ScriptDialogOpeningEventHandler)(unsafe.Pointer(callback.Ref())))
++		if e != nil {
++			return e
++		}
++		hooks.removers = append(hooks.removers, func() error { return view.RemoveScriptDialogOpening(token) })
++	}
++	return nil
++}
++
++// RecoverWebView explicitly retries a failed Windows controller. It preserves
++// the native HWND and reapplies all options/policies before loading content.
++func (window *WebviewWindow) RecoverWebView() error {
++	return InvokeSyncWithError(func() error {
++		w, ok := window.impl.(*windowsWebviewWindow)
++		if !ok || w.hwnd == 0 || window.isDestroyed() {
++			return errors.New("webview2: window is unavailable")
++		}
++		w.resetWebviewRecoveryBudget()
++		w.rebuildWebView()
++		if w.chromium.GetController() == nil {
++			return errors.New("webview2: controller recovery did not complete")
++		}
++		return nil
++	})
++}
+diff --git a/pkg/application/webview_policy_windows_test.go b/pkg/application/webview_policy_windows_test.go
+new file mode 100644
+index 0000000..bdd9904
+--- /dev/null
++++ b/pkg/application/webview_policy_windows_test.go
+@@ -0,0 +1,119 @@
++//go:build windows && !server
++
++package application
++
++import (
++	"encoding/json"
++	"errors"
++	"io"
++	"log/slog"
++	"reflect"
++	"testing"
++	"unsafe"
++
++	"github.com/wailsapp/wails/v3/internal/webview2/pkg/combridge"
++	"github.com/wailsapp/wails/v3/internal/webview2/pkg/webview2"
++)
++
++type policyScriptFixture struct {
++	t        *testing.T
++	callback func(string, error)
++	err      error
++}
++
++func (f *policyScriptFixture) CallDevTools(method, params string, callback func(string, error)) error {
++	f.t.Helper()
++	var request struct{ Source string }
++	if method != "Page.addScriptToEvaluateOnNewDocument" || json.Unmarshal([]byte(params), &request) != nil || request.Source != "fixture script" {
++		f.t.Fatal("document-start registration used the wrong native command or script")
++	}
++	f.callback = callback
++	return f.err
++}
++
++func TestWindowsPolicyDocumentScriptWaitsForRegistrationAndPreservesFailures(t *testing.T) {
++	for _, test := range []struct {
++		name, result          string
++		immediate, completion error
++		wantError             bool
++	}{
++		{name: "success", result: `{"identifier":"registered"}`},
++		{name: "native registration failure", immediate: errors.New("registration failure"), wantError: true},
++		{name: "asynchronous failure", completion: errors.New("async registration failure"), wantError: true},
++		{name: "missing identifier", result: `{}`, wantError: true},
++		{name: "invalid result", result: `broken`, wantError: true},
++	} {
++		t.Run(test.name, func(t *testing.T) {
++			fixture := &policyScriptFixture{t: t, err: test.immediate}
++			calls := 0
++			var result error
++			registerPolicyDocumentStartScript(fixture, "fixture script", func(err error) { calls++; result = err })
++			if test.immediate == nil {
++				if calls != 0 {
++					t.Fatal("navigation may start before registration completes")
++				}
++				fixture.callback(test.result, test.completion)
++			}
++			if calls != 1 || (result != nil) != test.wantError {
++				t.Fatalf("callback count=%d, error=%v", calls, result)
++			}
++			if test.immediate != nil && result != test.immediate || test.completion != nil && result != test.completion {
++				t.Fatal("native registration error was replaced")
++			}
++		})
++	}
++	called := false
++	registerPolicyDocumentStartScript(nil, "", func(err error) { called = err == nil })
++	if !called {
++		t.Fatal("empty script changed ordinary startup")
++	}
++}
++
++func TestWindowsPolicyDefersApplicationURLUntilDocumentScriptIsRegistered(t *testing.T) {
++	window := &windowsWebviewWindow{parent: &WebviewWindow{options: WebviewWindowOptions{Windows: WindowsWindow{WebViewPolicy: &WindowsWebViewPolicy{DocumentStartScript: "fixture script"}}}}}
++	// A nil Chromium is intentional: even a backend that resolves before the
++	// browser exists must only update the pending URL, never navigate early.
++	for _, url := range []string{"http://localhost:7654/", "http://localhost:7654/current"} {
++		window.setURL(url)
++		if window.lastNavigatedURL != url || window.documentStartReady {
++			t.Fatal("application navigation bypassed pending document script registration")
++		}
++	}
++}
++
++type policyCloseFunc func() error
++
++func (f policyCloseFunc) Close() error { return f() }
++
++func TestWindowsPolicyHookCleanupIsReverseAndIdempotent(t *testing.T) {
++	var calls []string
++	hooks := &windowsWebViewPolicyHooks{removers: []func() error{func() error { calls = append(calls, "release core"); return nil }, func() error { calls = append(calls, "remove event"); return nil }}, callbacks: []io.Closer{policyCloseFunc(func() error { calls = append(calls, "close callback"); return nil })}, pending: map[uintptr]func(){1: func() { calls = append(calls, "complete dialog") }}}
++	hooks.close()
++	hooks.close()
++	if !reflect.DeepEqual(calls, []string{"complete dialog", "remove event", "release core", "close callback"}) {
++		t.Fatalf("cleanup order: %v", calls)
++	}
++}
++
++func TestWindowsPolicyInitializationFailureCanRemainNative(t *testing.T) {
++	previous := globalApplication
++	globalApplication = &App{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
++	t.Cleanup(func() { globalApplication = previous })
++	var actual error
++	w := &windowsWebviewWindow{parent: &WebviewWindow{options: WebviewWindowOptions{Windows: WindowsWindow{WebViewPolicy: &WindowsWebViewPolicy{InitializationFailed: func(err error) { actual = err }}}}}}
++	want := errors.New("policy fixture")
++	if w.setupChromiumConfigError(false, want) || actual != want {
++		t.Fatal("initial policy failure was not propagated without terminating")
++	}
++}
++
++func TestWindowsPolicyNavigationCOMBridge(t *testing.T) {
++	called := false
++	callback := combridge.New[policyNavigationHandler](policyNavigationFunc(func(args *webview2.ICoreWebView2NavigationStartingEventArgs) uintptr { called = true; return 0 }))
++	defer callback.Close()
++	view := (*webview2.ICoreWebView2NavigationStartingEventHandler)(unsafe.Pointer(callback.Ref()))
++	result, _, _ := view.Vtbl.Invoke.Call(callback.Ref(), 0, 0)
++	if result != 0 || !called {
++		t.Fatal("native COM trampoline did not invoke policy")
++	}
++}
+diff --git a/pkg/application/webview_window_options.go b/pkg/application/webview_window_options.go
+index 4f7c75f..081155c 100644
+--- a/pkg/application/webview_window_options.go
++++ b/pkg/application/webview_window_options.go
+@@ -354,6 +354,11 @@ const (
+ )
+ 
+ type WindowsWindow struct {
++	// WebViewPolicy installs native navigation, download and dialog policies.
++	WebViewPolicy *WindowsWebViewPolicy
++	// GlobalPermission overrides per-kind permissions, including future unknown
++	// WebView2 kinds. Nil preserves the existing per-kind/default behaviour.
++	GlobalPermission *CoreWebView2PermissionState
+ 	// Select the type of translucent backdrop. Requires Windows 11 22621 or later.
+ 	// Only used when window's `BackgroundType` is set to `BackgroundTypeTranslucent`.
+ 	// Default: Auto
+diff --git a/pkg/application/webview_window_windows.go b/pkg/application/webview_window_windows.go
+index 797c3e4..778186c 100644
+--- a/pkg/application/webview_window_windows.go
++++ b/pkg/application/webview_window_windows.go
+@@ -55,6 +55,7 @@ type windowsWebviewWindow struct {
+ 
+ 	// Webview
+ 	chromium                   *edge.Chromium
++	policyHooks                *windowsWebViewPolicyHooks
+ 	webviewNavigationCompleted bool
+ 	// monitorScaleDetectionOn records that ShouldDetectMonitorScaleChanges
+ 	// was successfully re-enabled on the controller, making WebView2 the
+@@ -68,7 +69,8 @@ type windowsWebviewWindow struct {
+ 	// webview cannot be queried at that point (its COM objects are dead),
+ 	// so the last host-requested navigation is the only reliable record.
+ 	// Main-thread only, like the rest of the webview state.
+-	lastNavigatedURL string
++	lastNavigatedURL   string
++	documentStartReady bool
+ 	// webviewRecoveryAttempts counts consecutive process-failure recoveries
+ 	// that have not yet produced a completed navigation. navigationCompleted
+ 	// resets it, so a recovery that works costs nothing; a controller that
+@@ -425,6 +427,12 @@ func (w *windowsWebviewWindow) setURL(url string) {
+ 	// Navigate to the given URL in the webview
+ 	w.webviewNavigationCompleted = false
+ 	w.lastNavigatedURL = url
++	if policy := w.parent.options.Windows.WebViewPolicy; policy != nil && policy.DocumentStartScript != "" && !w.documentStartReady {
++		// ApplicationStarted can supply a backend URL while asynchronous script
++		// registration is still pending. navigateInitialPage consumes this URL
++		// after registration, rather than letting SetURL bypass the barrier.
++		return
++	}
+ 	w.chromium.Navigate(url)
+ }
+ 
+@@ -494,6 +502,22 @@ func (w *windowsWebviewWindow) newChromium() *edge.Chromium {
+ 	chromium.NonClientRegionSupportEnabled = options.Windows.NonClientRegionSupport
+ 	chromium.CompositionControllerEnabled = options.Windows.WebView2CompositionHosting
+ 	chromium.SetCursorChangedCallback(w.applyCompositionCursor)
++	if options.Windows.GlobalPermission != nil {
++		chromium.PermissionErrorCallback = func(err error) {
++			go InvokeAsync(func() {
++				if w.chromium != chromium {
++					return
++				}
++				w.policyHooks.close()
++				w.policyHooks = nil
++				chromium.Close()
++				if policy := options.Windows.WebViewPolicy; policy != nil && policy.InitializationFailed != nil {
++					policy.InitializationFailed(fmt.Errorf("webview2 permission enforcement failed: %w", err))
++				}
++				globalApplication.handleError(err)
++			})
++		}
++	}
+ 	if globalApplication.options.ErrorHandler != nil {
+ 		chromium.SetErrorCallback(globalApplication.options.ErrorHandler)
+ 	}
+@@ -972,6 +996,7 @@ func (w *windowsWebviewWindow) setRelativePosition(x int, y int) {
+ }
+ 
+ func (w *windowsWebviewWindow) destroy() {
++	w.policyHooks.close()
+ 	w.requestCancellation.close()
+ 	// Re-enable parent window if this was a modal window
+ 	if w.parentHWND != 0 {
+@@ -2475,6 +2500,9 @@ func (w *windowsWebviewWindow) processMessage(message string, sender *edge.ICore
+ 		originInfo: &OriginInfo{
+ 			Origin:    senderSource,
+ 			TopOrigin: topSource,
++			// ICoreWebView2.WebMessageReceived is top-document only. Frame
++			// messages require separate ICoreWebView2Frame subscriptions.
++			IsMainFrame: true,
+ 		},
+ 	}
+ }
+@@ -2553,6 +2581,12 @@ func (w *windowsWebviewWindow) processRequest(
+ // discarded and retried within the existing attempt budget, rather than a
+ // single failed settings COM call taking down the whole host (#6167).
+ func (w *windowsWebviewWindow) setupChromiumConfigError(recovering bool, err error) bool {
++	if w.parent != nil && w.parent.options.Windows.WebViewPolicy != nil && w.parent.options.Windows.WebViewPolicy.InitializationFailed != nil {
++		policy := w.parent.options.Windows.WebViewPolicy
++		policy.InitializationFailed(err)
++		globalApplication.error("webview2: controller configuration failed: %v", err)
++		return false
++	}
+ 	if !recovering {
+ 		globalApplication.handleFatalError(err)
+ 		return false
+@@ -2563,8 +2597,11 @@ func (w *windowsWebviewWindow) setupChromiumConfigError(recovering bool, err err
+ 
+ func (w *windowsWebviewWindow) setupChromium(recovering bool) (ready bool) {
+ 	chromium := w.chromium
++	w.documentStartReady = false
+ 	defer func() {
+-		if recovering && !ready {
++		if !ready && (recovering || w.parent.options.Windows.WebViewPolicy != nil) {
++			w.policyHooks.close()
++			w.policyHooks = nil
+ 			chromium.Close()
+ 		}
+ 	}()
+@@ -2577,7 +2614,7 @@ func (w *windowsWebviewWindow) setupChromium(recovering bool) (ready bool) {
+ 	)
+ 	if err != nil {
+ 		globalApplication.error("error getting WebView2 version: %w", err)
+-		return false
++		return w.setupChromiumConfigError(recovering, err)
+ 	}
+ 	globalApplication.capabilities = capabilities.NewCapabilities(webview2version)
+ 
+@@ -2632,10 +2669,12 @@ func (w *windowsWebviewWindow) setupChromium(recovering bool) (ready bool) {
+ 	chromium.MoveFocusRequestedCallback = w.moveFocusRequested
+ 	chromium.ProcessFailedCallback = w.processFailed
+ 
+-	if recovering {
++	if opts.GlobalPermission != nil {
++		chromium.SetGlobalPermission(edge.CoreWebView2PermissionState(*opts.GlobalPermission))
++	}
++	if recovering || opts.WebViewPolicy != nil {
+ 		if err := chromium.EmbedWithError(w.hwnd); err != nil {
+-			globalApplication.error("webview2: controller recovery failed: %v", err)
+-			return false
++			return w.setupChromiumConfigError(recovering, err)
+ 		}
+ 	} else if !chromium.Embed(w.hwnd) {
+ 		return false
+@@ -2811,13 +2850,24 @@ func (w *windowsWebviewWindow) setupChromium(recovering bool) (ready bool) {
+ 	// Permissions map and a configured PermissionDeny would be ignored. When a
+ 	// policy is present, unset kinds fall through to PermissionDefault (the
+ 	// platform's native prompt).
+-	if !hasPermissionPolicy {
++	if !hasPermissionPolicy && opts.GlobalPermission == nil {
+ 		chromium.SetGlobalPermission(edge.CoreWebView2PermissionStateAllow)
+ 	}
+ 	if err := chromium.AddWebResourceRequestedFilterWithError("*", edge.COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL); err != nil {
+ 		return w.setupChromiumConfigError(recovering, err)
+ 	}
+-
++	if err := w.installWebViewPolicy(); err != nil {
++		return w.setupChromiumConfigError(recovering, err)
++	}
++	if opts.WebViewPolicy != nil && opts.WebViewPolicy.DocumentStartScript != "" {
++		w.startWebViewPolicy(recovering)
++		return true
++	}
++	if opts.WebViewPolicy != nil && opts.WebViewPolicy.Initialized != nil {
++		if err := opts.WebViewPolicy.Initialized(recovering); err != nil {
++			return w.setupChromiumConfigError(recovering, err)
++		}
++	}
+ 	w.startRequestCancellation(w.navigateInitialPage)
+ 	return true
+ }
+@@ -2896,6 +2946,17 @@ func (w *windowsWebviewWindow) navigationCompleted(
+ 	if shouldResetWebviewRecoveryBudget(isSuccess, navigationErr) {
+ 		w.resetWebviewRecoveryBudget()
+ 	}
++	if policy := w.parent.options.Windows.WebViewPolicy; policy != nil && policy.NavigationCompleted != nil {
++		uri, err := sender.GetSource()
++		if err != nil {
++			globalApplication.handleError(err)
++		}
++		status, statusErr := args.GetWebErrorStatus()
++		if statusErr != nil {
++			globalApplication.handleError(statusErr)
++		}
++		policy.NavigationCompleted(WebViewNavigationResult{URL: uri, Success: isSuccess && navigationErr == nil, WebErrorStatus: status})
++	}
+ 
+ 	// Inject runtime core and window-specific flags together so side-effect
+ 	// runtime modules see a consistent _wails configuration at startup.
+@@ -3359,6 +3420,9 @@ func (w *windowsWebviewWindow) processFailed(_ *edge.ICoreWebView2, args *edge.I
+ 	}
+ 
+ 	action := webviewRecoveryActionFor(kind)
++	if policy := w.parent.options.Windows.WebViewPolicy; policy != nil && policy.ProcessFailed != nil {
++		policy.ProcessFailed(WebViewProcessFailure{Kind: uint32(kind), RecoveryAvailable: action != webviewRecoveryNone && w.webviewRecoveryAttempts < maxWebviewRecoveryAttempts})
++	}
+ 	if action == webviewRecoveryNone {
+ 		globalApplication.info("webview2: process failed (kind=%d); leaving recovery to the browser process", kind)
+ 		return
+@@ -3438,6 +3502,8 @@ func (w *windowsWebviewWindow) rebuildWebView() {
+ 		// silently falls back to windowed hosting, so a WebView2CompositionHosting
+ 		// window would come back with the wrong hosting mode.
+ 		w.requestCancellation.close()
++		w.policyHooks.close()
++		w.policyHooks = nil
+ 		w.chromium.Close()
+ 		w.chromium = w.newChromium()
+ 		if w.setupChromium(true) {
+diff --git a/pkg/w32/system_colors_windows_test.go b/pkg/w32/system_colors_windows_test.go
+new file mode 100644
+index 0000000..8873521
+--- /dev/null
++++ b/pkg/w32/system_colors_windows_test.go
+@@ -0,0 +1,48 @@
++//go:build windows
++
++package w32
++
++import (
++	"go/ast"
++	"go/parser"
++	gotoken "go/token"
++	"path/filepath"
++	"runtime"
++	"testing"
++)
++
++// Validate the Win32 ABI without allocating native objects on the test host.
++// The VM acceptance entry independently compares actual system brush handles
++// and reads the rendered dialog pixels through the production wrapper.
++func TestGetSysColorBrushPassesOnlyTheRequestedColorIndex(t *testing.T) {
++	_, testFile, _, ok := runtime.Caller(0)
++	if !ok {
++		t.Fatal("locate system_colors_windows_test.go")
++	}
++	file, err := parser.ParseFile(gotoken.NewFileSet(), filepath.Join(filepath.Dir(testFile), "user32.go"), nil, 0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	function := findFunctionDeclaration(t, file, "GetSysColorBrush")
++	var invocation *ast.CallExpr
++	ast.Inspect(function.Body, func(node ast.Node) bool {
++		call, ok := node.(*ast.CallExpr)
++		if !ok {
++			return true
++		}
++		selector, ok := call.Fun.(*ast.SelectorExpr)
++		if !ok || selector.Sel.Name != "Call" {
++			return true
++		}
++		procedure, ok := selector.X.(*ast.Ident)
++		if ok && procedure.Name == "procGetSysColorBrush" {
++			invocation = call
++			return false
++		}
++		return true
++	})
++	if invocation == nil || len(invocation.Args) != 1 {
++		t.Fatal("GetSysColorBrush must pass exactly one native argument: the requested color index")
++	}
++	assertUintptrIdent(t, invocation.Args[0], "nIndex")
++}
+diff --git a/pkg/w32/user32.go b/pkg/w32/user32.go
+index 98563cc..3171864 100644
+--- a/pkg/w32/user32.go
++++ b/pkg/w32/user32.go
+@@ -850,10 +850,7 @@ func GetSystemMetricsForDpi(index int, dpi UINT) int {
+ }
+ 
+ func GetSysColorBrush(nIndex int) HBRUSH {
+-	ret, _, _ := procGetSysColorBrush.Call(1,
+-		uintptr(nIndex),
+-		0,
+-		0)
++	ret, _, _ := procGetSysColorBrush.Call(uintptr(nIndex))
+ 
+ 	return HBRUSH(ret)
+ }

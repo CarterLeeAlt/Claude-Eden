@@ -5,7 +5,7 @@ import { createWorkbench } from "./workbench-fixture.mjs";
 import { startDisplay } from "./rfb-wire-fixture.mjs";
 
 const engine = process.env.EDEN_TEST_BROWSER || "chromium";
-const output = new URL(`../../docs/test-reports/2026-11-07-browser-vertical-tabs/${engine}/`, import.meta.url);
+const output = new URL(`../../.tmp/ui-migration/browser-vertical-tabs/${engine}/`, import.meta.url);
 await fs.mkdir(output, { recursive: true });
 const display = await startDisplay(process.env.EDEN_UI_URL || "http://127.0.0.1:5198", { frameInterval: 200 });
 const { browser, page, state, errors } = await createWorkbench({ url: display.url, mockWebSockets: engine === "webkit" });

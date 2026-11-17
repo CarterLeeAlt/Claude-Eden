@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { AudioControls, useAudioOutput } from "../src/audio";
-import "../src/style.css";
+import { AudioControls, useAudioOutput } from "../src/features/audio.tsx";
+import "../src/styles/style.css";
 function Fixture() {
   const [enabled, setEnabled] = useState(true);
   const audio = useAudioOutput(enabled);

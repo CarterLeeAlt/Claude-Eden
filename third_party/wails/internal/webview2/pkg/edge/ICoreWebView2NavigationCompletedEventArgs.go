@@ -44,3 +44,12 @@ func (i *ICoreWebView2NavigationCompletedEventArgs) GetIsSuccess() (bool, error)
 	}
 	return _resultInt != 0, nil
 }
+
+func (i *ICoreWebView2NavigationCompletedEventArgs) GetWebErrorStatus() (uint32, error) {
+	var result uint32
+	hr, _, _ := i.vtbl.GetWebErrorStatus.Call(uintptr(unsafe.Pointer(i)), uintptr(unsafe.Pointer(&result)))
+	if windows.Handle(hr) != windows.S_OK {
+		return 0, windows.Errno(hr)
+	}
+	return result, nil
+}

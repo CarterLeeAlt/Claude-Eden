@@ -7,6 +7,7 @@ import path from "node:path";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { createRequire } from "node:module";
+import { installNativeFixture } from "./native-fixture.mjs";
 
 const eden = process.argv[2];
 assert.ok(path.isAbsolute(eden || ""), "Supply an absolute Eden helper path");
@@ -21,9 +22,10 @@ const env = { ...process.env, EDEN_CONFIG: path.join(profile, "config.json") };
 const require = createRequire(import.meta.url);
 const engines = require(process.env.EDEN_PLAYWRIGHT_MODULE || "playwright");
 const engine = engines[process.env.EDEN_TEST_BROWSER || "chromium"];
-const browser = await engine.launch({ headless: true });
+const browser = await engine.launch({ headless: true, executablePath: process.env.EDEN_TEST_BROWSER_PATH });
 let context, page, service;
 const errors = [];
+const nativeFixturePages = new WeakSet();
 const output = process.env.EDEN_RECOVERY_OUTPUT;
 if (output) await fs.mkdir(output, { recursive: true });
 const command = async (...args) => JSON.parse((await run(eden, args, { env, timeout: 60000 })).stdout);
@@ -32,16 +34,30 @@ const restart = async () => {
   await command("prepare-update", "--json");
   service = spawn(eden, ["serve"], { env, stdio: "ignore", windowsHide: true });
   let entry;
-  for (let attempt = 0; attempt < 100; attempt++) {
-    try { entry = await command("server-entry", "--json"); break; }
-    catch { if (service.exitCode !== null) throw new Error("Isolated controller exited before readiness"); }
-    await new Promise((resolve) => setTimeout(resolve, 100));
+  const deadline = Date.now() + 60000;
+  while (Date.now() < deadline) {
+    if (service.exitCode !== null) throw new Error("Isolated controller exited before readiness");
+    let control;
+    try { control = JSON.parse(await fs.readFile(path.join(profile, "control.json"), "utf8")); }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+    if (!control) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      continue;
+    }
+    const origin = `http://localhost:${control.port}`;
+    const response = await fetch(origin + "/api/launch", {
+      method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ token: control.token }),
+    });
+    assert.equal(response.status, 200, "Isolated controller refused its launch token");
+    entry = await response.json();
+    break;
   }
   assert.ok(entry, "Isolated controller did not become ready");
   context = await browser.newContext({ acceptDownloads: true });
   page = await context.newPage();
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto(`${entry.origin}/#${entry.ticket}`);
+  await page.goto(entry.url);
 };
 const menu = () => page.getByRole("button", { name: /^账户菜单，/ });
 const call = (endpoint, body) => page.evaluate(async ({ endpoint, body }) => {
@@ -58,9 +74,10 @@ const saveKey = async (reset = false) => {
   assert.equal(await proceed.isDisabled(), true);
   // Exercise the UI/native contract separately from the browser download.
   // The real native implementations are built/checked by platform checks.
+  if (!nativeFixturePages.has(page)) { await installNativeFixture(page); nativeFixturePages.add(page); }
   await page.evaluate(() => {
     window.recoverySaveMode = "cancel";
-    window.edenNativeBridge = { async postMessage(request) {
+    window.edenTestNativeRequest = async request => {
       const key = document.querySelector('textarea[aria-label="恢复密钥"]').value;
       if (request.action === "saveRecoveryKey") {
         if (request.key !== key) throw new Error("保存内容不完整");
@@ -72,7 +89,7 @@ const saveKey = async (reset = false) => {
         return true;
       }
       return false;
-    } };
+    };
   });
   const saveNative = region.getByRole("button", { name: "下载密钥文件", exact: true });
   await saveNative.click();
@@ -85,7 +102,7 @@ const saveKey = async (reset = false) => {
   await region.getByRole("status").filter({ hasText: "恢复密钥文件已保存" }).waitFor();
   await region.getByRole("button", { name: "复制恢复密钥", exact: true }).click();
   await region.getByRole("status").filter({ hasText: "恢复密钥已复制" }).waitFor();
-  await page.evaluate(() => { delete window.edenNativeBridge; delete window.recoverySaveMode; });
+  await page.evaluate(() => { delete window.edenRuntimeTransport; delete window.recoverySaveMode; });
   const downloadEvent = page.waitForEvent("download");
   await region.getByRole("button", { name: "下载密钥文件", exact: true }).click();
   const download = await downloadEvent;

@@ -14,7 +14,7 @@
 | `C`、`P` | `C` 为配置文件，`P` 为其父目录。读取启动参数与 `EDEN_CONFIG`；默认 `%USERPROFILE%\.eden\config.json`，自定义文件名和位置以实际启动记录为准。 |
 | `S` | 环境存储物理根。读取 `P\environment-storage.json` 的 `directory`、`id`、`backups` 和未完成迁移记录。打包入口可默认使用 `I\EdenData`。 |
 | `T` | 文件传输根。读取 `P\environment.json` 的 `directory`、`identity_directory`；默认是 `P` 的路径后加 `-downloads`。默认 `.eden` 内的嵌套 profile 映射到 `%USERPROFILE%\.eden-downloads\<相对profile路径>`。 |
-| 用户目录、临时目录 | 按运行实例的 Windows 用户、进程环境和 Known Folder 实际值确定。桌面、开始菜单、`TEMP`、`TMP` 和 `.NET` 解压位置都可能重定向。 |
+| 用户目录、临时目录 | 按运行实例的 Windows 用户、进程环境和 Known Folder 实际值确定。桌面、开始菜单、`TEMP` 和 `TMP` 都可能重定向。 |
 
 先保存工作，导出需要保留的恢复密钥、项目、下载和客机资料。读取配置、存储回执、实例身份及所属进程，形成准确路径表；凭据不贴入公开日志。
 
@@ -35,7 +35,7 @@
 
 哈希清单只证明程序文件归属，不授权删除整个安装目录。`I\EdenData`、用户放入的项目、链接和保留副本可在正常卸载后继续存在。
 
-依据：`packaging/windows/Eden.nsi`、`installation-files.ps1`、`desktop/windows/Backend.cs`。
+依据：`packaging/windows/Eden.nsi`、`internal/installfiles/`、`internal/desktop/`。
 
 ## 安装、更新与恢复事务
 
@@ -48,7 +48,7 @@
 | `P\updates\` | 下载目录、更新助手 `helper-<UUID>.exe`、`launch-<UUID>.json`、`last-result.json` 和 `previous-<确认ID>` 回滚副本。先核对进程与事务状态。 |
 | 系统临时目录的 NSIS 辅助目录 | `$PLUGINSDIR`、`ns*.tmp`、`~nsu*.tmp\Un.exe` 等由 NSIS 分配。按产品、签名、进程、时间和回执核对，不能按同名前缀批量清理。 |
 
-依据：`desktop/windows/{AppUpdater.cs,UpdateInstaller.cs,UpdateRecovery.cs}`、`internal/appupdate/update.go`。
+依据：`internal/desktopupdate/`、`internal/appupdate/update.go`。
 
 ## 每个 profile 的配置与工作台数据
 
@@ -103,7 +103,6 @@
 | `%LOCALAPPDATA%\Eden\trusted-local\<64位ID>.json` | 本机记住登录凭据。系统 DPAPI 主密钥及其他软件凭据不属于本程序。 |
 | 实际临时根下 `eden-gate-*`、`eden-proxy-<profileHash>`、`eden-vm-assets-*` | 网络门禁、代理和嵌入资源临时项，按 profile、进程、时间和句柄确认。 |
 | 目标旁 `.eden-download-*.part`、`.eden-agent-response-*`、`.eden-diagnostics-*.zip` | 下载、Agent 响应或诊断临时项；完成的用户导出单独保留。 |
-| `%TEMP%\.net\<应用名>\<bundle标识>\` | `.NET` 单文件解压缓存。`DOTNET_BUNDLE_EXTRACT_BASE_DIR` 可覆盖；只核对此应用和更新助手子树，不能清空共享 `.net` 根。 |
 
 源码工作区 `.tmp/`、`_output/` 和工具链缓存不是普通安装的运行数据。清理开发环境需另定范围，不能顺带删除用户全局 Go、npm、NuGet 或 Python 环境。
 

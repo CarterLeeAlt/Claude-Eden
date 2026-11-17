@@ -1,13 +1,53 @@
 // Isolated browser fixture. No request from this page reaches the running Eden service.
 import { createRequire } from "node:module";
-import { defaultAppearance, presets } from "../src/appearance-state.mjs";
+import assert from "node:assert/strict";
+import { setTimeout as delay } from "node:timers/promises";
+import { defaultAppearance, presets } from "../src/lib/appearance-state.ts";
+import { installNativeFixture } from "./native-fixture.mjs";
 const require = createRequire(import.meta.url);
+export async function waitForFixture(predicate) {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    if (await predicate()) return;
+    await delay(10);
+  }
+  assert.fail("The isolated fixture did not reach its expected state");
+}
 export const defaultGuestProfile = {
   mode: "default", hostname: "", username: "developer", browser_username: "browser",
   audio_name: "workbench_output", audio_description: "Workbench", display_width: 2880,
   display_height: 1800, browser_width: 1440, browser_height: 900,
   extension_name: "Workbench browser panes", graphics_backend: "auto", webgl: "native", canvas: "native",
+  work_home: "/home/developer", browser_home: "/home/browser", audio_model: "ich9-intel-hda",
 };
+export const jobView = value => ({ id: "", kind: "", running: false, message: "", ...value });
+export const gateView = value => ({
+  epoch: 1, policy_verified: true, policy: "fixture", run_id: "fixture", configuration: "fixture",
+  fault: false, reason: "", connections: 0, mode: "closed", until: "",
+  counters: { tcp_denied: 0, udp_denied: 0, ipv6_denied: 0, private_denied: 0, dns_denied: 0, probe_tcp: 0, probe_dns: 0, fault_tcp: 0, fault_dns: 0 },
+  ...value,
+});
+export const proxyView = value => ({
+  active: false, selected: "", nodes: [], port: 17896, core_available: true, running: false,
+  state: "prepared", state_label: "待启动环境", network_open: false, version: "fixture", revision: "fixture-proxy-revision",
+  bootstrap_dns: "", udp_blocked: true, ipv6_blocked: true, ...value,
+});
+export const terminalView = value => ({
+  id: "", title: "", closed: false, workspace: "", kind: "shell", claude_account_id: "",
+  claude_account_source: "", cli_session_id: "", cli_starting: false, ...value,
+});
+export const sessionView = value => ({
+  id: "", generation: "fixture", workspace: "", title: "", pinned: false, active: false,
+  running: false, metadata_set: false, revision: 1, updated_at: "2026-11-07T08:00:00Z", turns: [], ...value,
+});
+export const claudeAccountView = value => ({ id: "", label: "", source: "profile", enabled: true, status: "ready", ...value });
+export const claudePanelView = value => ({ scheduling: { mode: "balanced", switch_policy: "ask" }, usage_panel_running: false, accounts: [], detection_status: "none", ...value });
+export const claudeDesktopView = value => ({ installed: false, running: false, managed: false, version: "", failed: false, ...value });
+export const versionsView = (value = {}) => ({
+  vm_running: false, busy: false, controller: { version: "fixture" }, tools: {}, tools_update_allowed: false, error: "", ...value,
+  components: { status: "current", update_required: false, required: { protocol: 1, revision: "fixture", app_version: "fixture" }, current: null, ...value.components },
+});
+const accountDefaults = { recovery_ready: true, device_binding: "fixture-device", require_authentication: false };
 export async function createWorkbench({
   viewport = { width: 1280, height: 850 },
   recordVideo,
@@ -53,13 +93,15 @@ export async function createWorkbench({
     saves: [],
     requests: [],
     terminalConnections: 0,
-    initialization: structuredClone(initialization),
+    initialization: { started: false, tracked: true, prepared: true, ...structuredClone(initialization) },
     guestProfile: null,
-    account: { exists: true, unlocked: true, username: "林间工作室", avatar: "" },
+    account: { ...accountDefaults, exists: true, unlocked: true, username: "林间工作室", avatar: "", guest_system: initialization.required && !initialization.started ? "" : "debian-13" },
     accountPassword: "fixture-password",
     failAccountSave: false,
     settings: {
       balanced_display: false,
+      project_file_cache: false,
+      claude_terminal_command: "claude",
       workspace: "C:/Users/developer/.claude-eden-workspace",
       browser_home_url: "https://www.bing.com/",
       dns_url: "https://cloudflare-dns.com/dns-query",
@@ -73,31 +115,23 @@ export async function createWorkbench({
     },
     status: {
       environment_directory: "C:/Users/developer/.claude-eden-workspace",
-      environment_workspace: true,
+      environment_identity_directory: "C:/Users/developer/.claude-eden-workspace",
+      local_vm_storage: true, project_error: "", project_errors: [], storage_recovery: { required: false },
       projects: ["C:/Users/developer/.claude-eden-workspace"],
       ready: false,
       vm_running: false,
       keyboard: "native",
-      job: { running: false },
+      job: jobView(),
       can_restore: true,
+      auto_timezone: true, location: null,
+      network_error: "", safety: {}, environment_update_required: false, environment_update_error: "",
     },
     tabs: [],
     terminals: [],
     active: "",
     sequence: 0,
   };
-  await page.exposeFunction("chooseTestFolder", () => state.chosenFolder);
-  await page.exposeFunction("requestNativeForTest", async (body) => nativeRequest ? nativeRequest(body) : null);
-  await page.addInitScript(() => {
-    window.edenNativeBridge = {
-      postMessage: async (body) => {
-        const { action } = body;
-        if (action === "chooseFolder") return window.chooseTestFolder();
-        if (action === "clipboardRead") return "fixture clipboard";
-        return window.requestNativeForTest(body);
-      },
-    };
-  });
+  await installNativeFixture(page, body => body.action === "chooseFolder" ? state.chosenFolder : nativeRequest?.(body));
   if (mockWebSockets) await page.routeWebSocket("**/api/**", (socket) => {
     if (socket.url().includes("/terminals/")) {
       state.terminalConnections++;
@@ -106,6 +140,8 @@ export async function createWorkbench({
           "\r\n\u001b[1mWorkbench\u001b[0m  ·  Linux terminal\r\n\r\n~/Projects/design-lab  $ ",
         ),
       );
+    } else if (socket.url().includes("/api/audio")) {
+      socket.send(JSON.stringify({ format: "s16le", sample_rate: 48000, channels: 2 }));
     } else socket.close();
   });
   await page.route("**/api/**", async (route) => {
@@ -113,6 +149,8 @@ export async function createWorkbench({
     const path = new URL(request.url()).pathname.replace("/api", "");
     const body = request.headers()["content-type"]?.includes("application/json") ? request.postDataJSON() : undefined;
     state.requests.push({ path, method: request.method(), body: path.startsWith("/account") ? undefined : body });
+    if (path === "/agent/native/window") return route.fulfill({ json: { window_proof: "fixture-window-proof" } });
+    if (path === "/agent/native") return route.fulfill({ json: null });
     if (clientRequest && path.startsWith("/client/")) return clientRequest(route, path, body);
     if (path === "/client/context") return route.fulfill({ json: clientContext });
     if (path === "/environment/initialization") {
@@ -122,7 +160,7 @@ export async function createWorkbench({
     }
     if (path === "/environment/guest-profile") return route.fulfill({ json: { profile: state.guestProfile, defaults: defaultGuestProfile, editable: !state.guestProfile && !state.status.vm_running, audio_models: [] } });
     if (path === "/environment/guest-profile/preview") return route.fulfill({ json: { ...defaultGuestProfile, ...body, hostname: body.hostname || "Test-PC" } });
-    const accountView = () => ({ ...state.account, background_running: state.status.vm_running });
+    const accountView = () => ({ ...accountDefaults, ...state.account, background_running: state.status.vm_running });
     if (path === "/account") return route.fulfill({ json: accountView() });
     if (path.startsWith("/account/")) {
       const action = path.split("/").at(-1);
@@ -150,8 +188,8 @@ export async function createWorkbench({
         state.account.devices = {};
         state.account.require_authentication = true;
         state.terminals = [];
-        state.status.job = { id: "account-logout", kind: "stop", running: false };
-        return route.fulfill({ json: state.status.job });
+        state.status.job = jobView({ id: "account-logout", kind: "stop" });
+        return route.fulfill({ json: accountView() });
       }
       return route.fulfill({ json: accountView() });
     }
@@ -160,7 +198,7 @@ export async function createWorkbench({
     if (path.startsWith("/cli/")) {
       if (cliRequest) return cliRequest(route, path, body);
       const account = path.match(/^\/cli\/sessions\/([^/]+)\/account$/);
-      if (account) return route.fulfill({ json: { session: { id: account[1] }, supported: false, candidates: [] } });
+      if (account) return route.fulfill({ json: { session: sessionView({ id: account[1], workspace: state.settings.workspace }), source_id: "", switch_policy: "ask", supported: false, candidates: [] } });
       return route.fulfill({ json: { sessions: [], notice: "" } });
     }
     if (startupFailure && path === "/status") return route.fulfill({ status: 503, body: "测试：控制服务暂不可用" });
@@ -187,18 +225,31 @@ export async function createWorkbench({
       result = {
         active: true,
         selected: "fixture-node",
-        nodes: [{ id: "fixture-node", name: "测试节点", type: "http", server: "127.0.0.1", port: 1080 }],
+        nodes: [{ id: "fixture-node", name: "测试节点", type: "http", server: "127.0.0.1", port: 1080, username: "", auth_method: "password", host_key: [], has_password: false, has_private_key: false, has_private_key_passphrase: false }],
         port: 17896,
         core_available: true,
         running: true,
         state: state.status.vm_running ? "ready" : "prepared",
         state_label: state.status.vm_running ? "已联网" : "待启动环境",
         network_open: Boolean(state.status.vm_running),
+        version: "fixture", revision: "fixture-proxy-revision", bootstrap_dns: "", udp_blocked: true, ipv6_blocked: true,
       };
     else if (path === "/settings" && request.method() === "GET")
       result = state.settings;
     else if (path === "/status")
-      result = { ...state.status, workspace: state.settings.workspace };
+      result = { ...state.status, workspace: state.settings.workspace, job: jobView(state.status.job), project_groups: state.status.project_groups || state.status.projects.map(workspace => ({ workspace, name: workspace.split(/[\\/]/).at(-1), folders: [workspace] })) };
+    else if (path === "/claude-accounts") result = { accounts: [], scheduling: { mode: "balanced", switch_policy: "ask" }, usage_panel_running: false, detection_status: "none" };
+    else if (path === "/browser/files/saved") result = [];
+    else if (path === "/vault") result = { entries: [], blocked: [] };
+    else if (path === "/diagnostics") result = { bytes: 0, files: 0 };
+    else if (path === "/audio") result = { ready: state.status.ready, format: "s16le", sample_rate: 48000, channels: 2 };
+    else if (path === "/proxy/delay") result = { delay: 12 };
+    else if (path === "/vault/browser") result = { available: false, origin: "", document: "", entries: [], candidates: [] };
+    else if (path === "/claude-desktop") result = claudeDesktopView();
+    else if (path === "/environment/versions") result = versionsView({ vm_running: state.status.vm_running });
+    else if (path === "/environment/storage") result = { directory: state.status.environment_directory, has_environment: !state.initialization.required || state.status.vm_running };
+    else if (/^\/input\/files\/(browser|desktop)\/requests$/.test(path)) result = { available: false, uploads: [], downloads: [], opens: [] };
+    else if (path === "/environment/resources") result = { running: state.status.vm_running, automatic: true, memory_gib: 4, cpus: 2, max_memory_gib: 16, max_cpus: 8, resource_error: "", recommended_memory_bytes: 4 * 2 ** 30, recommended_cpus: 2, configured_memory_bytes: 4 * 2 ** 30, configured_cpus: 2, restart_required: false, observation: null };
     else if (path === "/projects/refresh") {
       if (state.failRefresh) return route.fulfill({ status: 502, contentType: "text/plain; charset=utf-8", body: "项目文件未能刷新，请稍后重试" });
       state.projectRefreshes = (state.projectRefreshes || 0) + 1;
@@ -264,24 +315,26 @@ export async function createWorkbench({
         kind: switching ? "project" : "settings",
         running: false,
         error: state.failJob ? "项目文件夹连接失败，原项目保持不变" : "",
+        message: "",
       };
-      result = { id };
+      result = state.status.job;
     } else if (path === "/start") {
-      state.status.job = { id: "start", kind: "start", running: false };
+      state.status.job = jobView({ id: "start", kind: "start" });
       state.settings.workspace = "C:/Users/developer/.claude-eden-workspace";
       state.status.environment_workspace = true;
       state.status.ready = true;
       state.status.vm_running = true;
       state.status.safety = {
-        gate: {
+        gate: gateView({
           mode: "open",
           until: new Date(Date.now() + 3600000).toISOString(),
-        },
+        }),
       };
-      result = { id: "start" };
+      result = state.status.job;
     } else if (path === "/stop") {
       state.status.ready = false;
       state.status.vm_running = false;
+      result = jobView({ id: "stop", kind: "stop" });
     } else if (path === "/browser/tabs")
       result = { tabs: state.tabs, active: state.active, split: state.split || null };
     else if (path === "/browser/split") {
@@ -306,7 +359,7 @@ export async function createWorkbench({
       tab.url = "workbench://settings#" + (body?.mode || "general"); state.active = tab.id; result = tab;
     }
     else if (path === "/browser/extensions") result = { items: [] };
-    else if (path === "/vnc-credentials") result = { password: "fixture-only" };
+    else if (path === "/vnc-credentials" || path === "/claude-desktop/vnc-credentials") result = { password: "fixture-only" };
     else if (path === "/terminals" && request.method() === "GET")
       result = state.terminals;
     else if (path === "/terminals") {
@@ -323,6 +376,7 @@ export async function createWorkbench({
         id: "term-" + ++state.sequence,
         title: "终端 " + (state.terminals.length + 1),
         workspace: body?.workspace || state.settings.workspace,
+        closed: false, kind: body?.kind || "shell", claude_account_id: "", claude_account_source: "", cli_session_id: "", cli_starting: false,
       };
       state.terminals.push(tab);
       result = tab;
@@ -369,6 +423,7 @@ export async function createWorkbench({
     else if (path === "/settings/probe")
       result = {
         country: "United States",
+        country_code: "US", region: "California",
         city: "Los Angeles",
         ip: "192.0.2.10",
         timezone: "America/Los_Angeles",

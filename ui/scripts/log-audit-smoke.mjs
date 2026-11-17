@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, waitForFixture } from "./workbench-fixture.mjs";
 
 const epoch = new Date("2026-11-08T03:00:00Z");
 for (const platform of ["windows"]) {
@@ -11,7 +11,7 @@ for (const platform of ["windows"]) {
     nativeRequest: async body => {
       if (body.action !== "appUpdate") return null;
       calls.push(body.operation);
-      return { phase: proxyReady ? "current" : "waiting", message: proxyReady ? "已是最新版本" : "所选代理未运行，更新检查将在代理就绪后重试", retryAt: "" };
+      return { phase: proxyReady ? "current" : "waiting", currentVersion: "fixture", retryable: false, message: proxyReady ? "已是最新版本" : "所选代理未运行，更新检查将在代理就绪后重试", retryAt: "" };
     },
   });
   try {
@@ -30,12 +30,21 @@ for (const platform of ["windows"]) {
   } finally { await fixture.browser.close(); }
 }
 
-const fixture = await createWorkbench({ beforeNavigate: page => page.clock.install({ time: epoch }) });
+const fixture = await createWorkbench({ beforeNavigate: async page => {
+  await page.clock.install({ time: epoch });
+  await page.addInitScript(() => {
+    window.filePollDelays = [];
+    const schedule = window.setTimeout.bind(window);
+    window.setTimeout = (callback, delay, ...args) => {
+      if (typeof callback === "function" && callback.name === "poll") window.filePollDelays.push(delay);
+      return schedule(callback, delay, ...args);
+    };
+  });
+} });
 try {
   const { page, state } = fixture;
   let broken = true;
   let polls = 0;
-  await page.exposeFunction("filePollCountForTest", () => polls);
   const failure = "Claude Desktop 的文件服务已经退出，请重新打开应用";
   await page.route("**/api/input/files/desktop/requests", route => {
     polls++;
@@ -46,17 +55,20 @@ try {
   await page.reload();
   await page.getByText(failure, { exact: false }).waitFor();
   assert.equal(polls, 1, "real file-service failure is visible to the user");
+  await page.waitForFunction(() => window.filePollDelays.includes(3000));
   await page.clock.fastForward(2500);
   assert.equal(polls, 1, "failed poll backs off instead of retrying at 1.5 seconds");
   await page.clock.fastForward(1000);
-  await page.waitForFunction(async () => await window.filePollCountForTest() >= 2);
+  await waitForFixture(() => polls >= 2);
   assert.equal(polls, 2);
+  await page.waitForFunction(() => window.filePollDelays.includes(6000));
   broken = false;
   await page.clock.fastForward(6500);
-  await page.waitForFunction(async () => await window.filePollCountForTest() >= 3);
+  await waitForFixture(() => polls >= 3);
+  await page.waitForFunction(() => window.filePollDelays.includes(1500));
   const recovered = polls;
   await page.clock.fastForward(1600);
-  await page.waitForFunction(async previous => await window.filePollCountForTest() > previous, recovered);
+  await waitForFixture(() => polls > recovered);
   assert.ok(polls > recovered, "normal polling cadence returns after recovery");
 
   await page.getByRole("button", { name: "打开浏览器", exact: true }).click();

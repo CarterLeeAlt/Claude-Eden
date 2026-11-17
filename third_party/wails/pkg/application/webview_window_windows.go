@@ -55,6 +55,7 @@ type windowsWebviewWindow struct {
 
 	// Webview
 	chromium                   *edge.Chromium
+	policyHooks                *windowsWebViewPolicyHooks
 	webviewNavigationCompleted bool
 	// monitorScaleDetectionOn records that ShouldDetectMonitorScaleChanges
 	// was successfully re-enabled on the controller, making WebView2 the
@@ -68,7 +69,8 @@ type windowsWebviewWindow struct {
 	// webview cannot be queried at that point (its COM objects are dead),
 	// so the last host-requested navigation is the only reliable record.
 	// Main-thread only, like the rest of the webview state.
-	lastNavigatedURL string
+	lastNavigatedURL   string
+	documentStartReady bool
 	// webviewRecoveryAttempts counts consecutive process-failure recoveries
 	// that have not yet produced a completed navigation. navigationCompleted
 	// resets it, so a recovery that works costs nothing; a controller that
@@ -425,6 +427,12 @@ func (w *windowsWebviewWindow) setURL(url string) {
 	// Navigate to the given URL in the webview
 	w.webviewNavigationCompleted = false
 	w.lastNavigatedURL = url
+	if policy := w.parent.options.Windows.WebViewPolicy; policy != nil && policy.DocumentStartScript != "" && !w.documentStartReady {
+		// ApplicationStarted can supply a backend URL while asynchronous script
+		// registration is still pending. navigateInitialPage consumes this URL
+		// after registration, rather than letting SetURL bypass the barrier.
+		return
+	}
 	w.chromium.Navigate(url)
 }
 
@@ -494,6 +502,22 @@ func (w *windowsWebviewWindow) newChromium() *edge.Chromium {
 	chromium.NonClientRegionSupportEnabled = options.Windows.NonClientRegionSupport
 	chromium.CompositionControllerEnabled = options.Windows.WebView2CompositionHosting
 	chromium.SetCursorChangedCallback(w.applyCompositionCursor)
+	if options.Windows.GlobalPermission != nil {
+		chromium.PermissionErrorCallback = func(err error) {
+			go InvokeAsync(func() {
+				if w.chromium != chromium {
+					return
+				}
+				w.policyHooks.close()
+				w.policyHooks = nil
+				chromium.Close()
+				if policy := options.Windows.WebViewPolicy; policy != nil && policy.InitializationFailed != nil {
+					policy.InitializationFailed(fmt.Errorf("webview2 permission enforcement failed: %w", err))
+				}
+				globalApplication.handleError(err)
+			})
+		}
+	}
 	if globalApplication.options.ErrorHandler != nil {
 		chromium.SetErrorCallback(globalApplication.options.ErrorHandler)
 	}
@@ -972,6 +996,7 @@ func (w *windowsWebviewWindow) setRelativePosition(x int, y int) {
 }
 
 func (w *windowsWebviewWindow) destroy() {
+	w.policyHooks.close()
 	w.requestCancellation.close()
 	// Re-enable parent window if this was a modal window
 	if w.parentHWND != 0 {
@@ -2475,6 +2500,9 @@ func (w *windowsWebviewWindow) processMessage(message string, sender *edge.ICore
 		originInfo: &OriginInfo{
 			Origin:    senderSource,
 			TopOrigin: topSource,
+			// ICoreWebView2.WebMessageReceived is top-document only. Frame
+			// messages require separate ICoreWebView2Frame subscriptions.
+			IsMainFrame: true,
 		},
 	}
 }
@@ -2553,6 +2581,12 @@ func (w *windowsWebviewWindow) processRequest(
 // discarded and retried within the existing attempt budget, rather than a
 // single failed settings COM call taking down the whole host (#6167).
 func (w *windowsWebviewWindow) setupChromiumConfigError(recovering bool, err error) bool {
+	if w.parent != nil && w.parent.options.Windows.WebViewPolicy != nil && w.parent.options.Windows.WebViewPolicy.InitializationFailed != nil {
+		policy := w.parent.options.Windows.WebViewPolicy
+		policy.InitializationFailed(err)
+		globalApplication.error("webview2: controller configuration failed: %v", err)
+		return false
+	}
 	if !recovering {
 		globalApplication.handleFatalError(err)
 		return false
@@ -2563,8 +2597,11 @@ func (w *windowsWebviewWindow) setupChromiumConfigError(recovering bool, err err
 
 func (w *windowsWebviewWindow) setupChromium(recovering bool) (ready bool) {
 	chromium := w.chromium
+	w.documentStartReady = false
 	defer func() {
-		if recovering && !ready {
+		if !ready && (recovering || w.parent.options.Windows.WebViewPolicy != nil) {
+			w.policyHooks.close()
+			w.policyHooks = nil
 			chromium.Close()
 		}
 	}()
@@ -2577,7 +2614,7 @@ func (w *windowsWebviewWindow) setupChromium(recovering bool) (ready bool) {
 	)
 	if err != nil {
 		globalApplication.error("error getting WebView2 version: %w", err)
-		return false
+		return w.setupChromiumConfigError(recovering, err)
 	}
 	globalApplication.capabilities = capabilities.NewCapabilities(webview2version)
 
@@ -2632,10 +2669,12 @@ func (w *windowsWebviewWindow) setupChromium(recovering bool) (ready bool) {
 	chromium.MoveFocusRequestedCallback = w.moveFocusRequested
 	chromium.ProcessFailedCallback = w.processFailed
 
-	if recovering {
+	if opts.GlobalPermission != nil {
+		chromium.SetGlobalPermission(edge.CoreWebView2PermissionState(*opts.GlobalPermission))
+	}
+	if recovering || opts.WebViewPolicy != nil {
 		if err := chromium.EmbedWithError(w.hwnd); err != nil {
-			globalApplication.error("webview2: controller recovery failed: %v", err)
-			return false
+			return w.setupChromiumConfigError(recovering, err)
 		}
 	} else if !chromium.Embed(w.hwnd) {
 		return false
@@ -2811,13 +2850,24 @@ func (w *windowsWebviewWindow) setupChromium(recovering bool) (ready bool) {
 	// Permissions map and a configured PermissionDeny would be ignored. When a
 	// policy is present, unset kinds fall through to PermissionDefault (the
 	// platform's native prompt).
-	if !hasPermissionPolicy {
+	if !hasPermissionPolicy && opts.GlobalPermission == nil {
 		chromium.SetGlobalPermission(edge.CoreWebView2PermissionStateAllow)
 	}
 	if err := chromium.AddWebResourceRequestedFilterWithError("*", edge.COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL); err != nil {
 		return w.setupChromiumConfigError(recovering, err)
 	}
-
+	if err := w.installWebViewPolicy(); err != nil {
+		return w.setupChromiumConfigError(recovering, err)
+	}
+	if opts.WebViewPolicy != nil && opts.WebViewPolicy.DocumentStartScript != "" {
+		w.startWebViewPolicy(recovering)
+		return true
+	}
+	if opts.WebViewPolicy != nil && opts.WebViewPolicy.Initialized != nil {
+		if err := opts.WebViewPolicy.Initialized(recovering); err != nil {
+			return w.setupChromiumConfigError(recovering, err)
+		}
+	}
 	w.startRequestCancellation(w.navigateInitialPage)
 	return true
 }
@@ -2895,6 +2945,17 @@ func (w *windowsWebviewWindow) navigationCompleted(
 	}
 	if shouldResetWebviewRecoveryBudget(isSuccess, navigationErr) {
 		w.resetWebviewRecoveryBudget()
+	}
+	if policy := w.parent.options.Windows.WebViewPolicy; policy != nil && policy.NavigationCompleted != nil {
+		uri, err := sender.GetSource()
+		if err != nil {
+			globalApplication.handleError(err)
+		}
+		status, statusErr := args.GetWebErrorStatus()
+		if statusErr != nil {
+			globalApplication.handleError(statusErr)
+		}
+		policy.NavigationCompleted(WebViewNavigationResult{URL: uri, Success: isSuccess && navigationErr == nil, WebErrorStatus: status})
 	}
 
 	// Inject runtime core and window-specific flags together so side-effect
@@ -3359,6 +3420,9 @@ func (w *windowsWebviewWindow) processFailed(_ *edge.ICoreWebView2, args *edge.I
 	}
 
 	action := webviewRecoveryActionFor(kind)
+	if policy := w.parent.options.Windows.WebViewPolicy; policy != nil && policy.ProcessFailed != nil {
+		policy.ProcessFailed(WebViewProcessFailure{Kind: uint32(kind), RecoveryAvailable: action != webviewRecoveryNone && w.webviewRecoveryAttempts < maxWebviewRecoveryAttempts})
+	}
 	if action == webviewRecoveryNone {
 		globalApplication.info("webview2: process failed (kind=%d); leaving recovery to the browser process", kind)
 		return
@@ -3438,6 +3502,8 @@ func (w *windowsWebviewWindow) rebuildWebView() {
 		// silently falls back to windowed hosting, so a WebView2CompositionHosting
 		// window would come back with the wrong hosting mode.
 		w.requestCancellation.close()
+		w.policyHooks.close()
+		w.policyHooks = nil
 		w.chromium.Close()
 		w.chromium = w.newChromium()
 		if w.setupChromium(true) {

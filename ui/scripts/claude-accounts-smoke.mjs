@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, claudeAccountView, claudePanelView, terminalView } from "./workbench-fixture.mjs";
 
 // Drives the shared workbench with an isolated account registry. No real credentials or VM.
 const { browser, page, state, errors } = await createWorkbench();
@@ -212,10 +212,10 @@ try {
       assert.equal(body.identity, defaultLogin?.identity);
       Object.assign(defaultLogin, { usage_status: "unavailable", usage_checked_at: now });
     }
-    return route.fulfill({ json: { accounts: profiles, detection_status: offlineUsage ? "offline" : detectionError ? "unavailable" : defaultLogin ? "ready" : "signed_out",
-      detected: !detectionError && defaultLogin && !profiles.some((p) => p.email === defaultLogin.email) ? defaultLogin : undefined,
+    return route.fulfill({ json: claudePanelView({ accounts: profiles.map(claudeAccountView), detection_status: offlineUsage ? "offline" : detectionError ? "unavailable" : defaultLogin ? "ready" : "signed_out",
+      detected: !detectionError && defaultLogin && !profiles.some((p) => p.email === defaultLogin.email) ? { checked_at: now, ...defaultLogin } : undefined,
       detection_error: detectionError, login_notice: lastLoginNotice, usage_panel_running: panelWorker,
-      usage_unavailable_reason: usageUnavailable } });
+      usage_unavailable_reason: usageUnavailable }) });
   });
   await page.route("**/api/terminals", async (route) => {
     const body = route.request().postDataJSON();
@@ -223,10 +223,10 @@ try {
     starts.push(body);
     if (body.kind === "claude" && profiles.length && !profiles[assignedProfile].enabled)
       return route.fulfill({ status: 409, contentType: "text/plain; charset=utf-8", body: "没有可用 Claude 账号" });
-    const terminal = { id: String(starts.length), title: "终端 " + starts.length, kind: body.kind,
+    const terminal = terminalView({ id: String(starts.length), title: "终端 " + starts.length, kind: body.kind,
       workspace: body.workspace, claude_account_id: body.kind === "claude-login" ? body.claude_account_id || "one"
-        : body.kind === "claude" ? profiles[assignedProfile]?.id : undefined,
-      claude_account_source: body.kind === "claude-login" ? "managed" : profiles[assignedProfile]?.source };
+        : body.kind === "claude" ? profiles[assignedProfile]?.id || "" : "",
+      claude_account_source: body.kind === "claude-login" ? "managed" : profiles[assignedProfile]?.source || "" });
     state.terminals.push(terminal);
     return route.fulfill({ json: terminal });
   });

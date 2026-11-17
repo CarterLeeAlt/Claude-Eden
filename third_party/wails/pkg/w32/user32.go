@@ -850,10 +850,7 @@ func GetSystemMetricsForDpi(index int, dpi UINT) int {
 }
 
 func GetSysColorBrush(nIndex int) HBRUSH {
-	ret, _, _ := procGetSysColorBrush.Call(1,
-		uintptr(nIndex),
-		0,
-		0)
+	ret, _, _ := procGetSysColorBrush.Call(uintptr(nIndex))
 
 	return HBRUSH(ret)
 }

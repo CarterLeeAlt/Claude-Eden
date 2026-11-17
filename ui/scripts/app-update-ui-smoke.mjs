@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, waitForFixture } from "./workbench-fixture.mjs";
 
 const output = process.env.EDEN_UPDATE_QA_OUTPUT || "../.tmp/guest-neutralization/ui-eden/update";
 await fs.mkdir(output, { recursive: true });
 const calls = [];
-let update = { phase: "idle", currentVersion: "0.1.3-alpha.1" };
+const updateView = value => ({ phase: "idle", currentVersion: "0.1.3-alpha.1", message: "", retryable: false, retryAt: "", ...value });
+let update = updateView();
 const fixture = await createWorkbench({ nativeRequest: async body => {
   if (body.action !== "appUpdate") return body.action === "workbenchReady" ? true : null;
   calls.push(body.operation);
@@ -15,29 +16,28 @@ const fixture = await createWorkbench({ nativeRequest: async body => {
 } });
 const { page, browser, errors } = fixture;
 const publish = async value => {
-  update = value;
-  await page.evaluate(detail => window.dispatchEvent(new CustomEvent("eden-app-update", { detail })), value);
+  update = updateView(value);
+  await page.evaluate(detail => window.emitTestDesktopEvent("eden-app-update", detail), update);
 };
 const count = operation => calls.filter(value => value === operation).length;
 try {
   await page.clock.install();
   calls.length = 0;
-  update = { phase: "idle", currentVersion: "0.1.3-alpha.1" };
+  update = updateView();
   await page.reload();
   await page.getByRole("heading", { name: "先启动 Claude Eden 环境" }).waitFor();
-  await page.exposeFunction("updateCheckCount", () => count("check"));
-  await page.waitForFunction(async () => await window.updateCheckCount() === 1);
+  await waitForFixture(() => count("check") === 1);
   await page.waitForFunction(() => !document.querySelector(".app-update-button"));
   assert.deepEqual(calls, ["status", "check"], "startup must check without a user click");
   await page.clock.fastForward(6 * 60 * 60 * 1000 + 60000);
-  await page.waitForFunction(async () => await window.updateCheckCount() === 2);
+  await waitForFixture(() => count("check") === 2);
   await page.waitForFunction(() => !document.querySelector(".app-update-button"));
   assert.equal(count("check"), 2, "periodic checks run while the window is visible");
   await publish({ phase: "failed", currentVersion: update.currentVersion, message: "所选代理未运行" });
   await page.locator(".app-update-button").waitFor({ state: "hidden" });
   assert.equal(await page.locator(".app-update-button").count(), 0, "background check failure must not advertise an update");
   await page.clock.fastForward(5 * 60 * 1000 + 60000);
-  await page.waitForFunction(async () => await window.updateCheckCount() === 3);
+  await waitForFixture(() => count("check") === 3);
   assert.equal(count("check"), 3, "a failed background check retries after the proxy can recover");
   await publish({ phase: "available", currentVersion: "0.1.3-alpha.1", latestVersion: "0.1.3-alpha.2" });
   const button = page.getByRole("button", { name: "下载更新", exact: true });
@@ -84,8 +84,8 @@ try {
 const recovered = await createWorkbench({ nativeRequest: async body => {
   if (body.action !== "appUpdate") return null;
   return body.operation === "status"
-    ? { phase: "failed", message: "新版本工作台未能就绪，已恢复原应用", retryable: true }
-    : { phase: "current", currentVersion: "0.1.3-alpha.1" };
+    ? updateView({ phase: "failed", message: "新版本工作台未能就绪，已恢复原应用", retryable: true })
+    : updateView({ phase: "current" });
 } });
 try {
   await recovered.page.getByRole("alert").filter({ hasText: "已恢复原应用" }).waitFor();

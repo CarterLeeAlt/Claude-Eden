@@ -39,6 +39,9 @@ try {
   await page.getByRole("region", { name: "Claude Desktop", exact: true }).waitFor();
   assert.deepEqual(errors, []);
   console.log("PASS: callback switches to the running desktop; ordinary snapshots do not reopen it; repeated callbacks work.");
+} catch (error) {
+  console.error({ errors, requests: state.requests.slice(-20), body: await page.locator("body").innerText() });
+  throw error;
 } finally {
   await browser.close();
 }

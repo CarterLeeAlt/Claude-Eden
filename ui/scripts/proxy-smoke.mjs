@@ -47,7 +47,7 @@ const reserved = net.createServer(); await new Promise((resolve) => reserved.lis
 const port = reserved.address().port; await new Promise((resolve) => reserved.close(resolve));
 const log = await fs.open(path.join(profile, "server.log"), "w", 0o600);
 const server = spawn(executable, ["serve"], { env, stdio: ["ignore", log.fd, log.fd], windowsHide: true });
-let browser;
+let browser, page;
 const errors = [];
 try {
   let control;
@@ -61,7 +61,7 @@ try {
   assert.equal(launchResponse.status, 200);
   const entry = await launchResponse.json();
   browser = await chromium.launch({ headless: true, executablePath: process.env.EDEN_TEST_BROWSER_PATH });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 850 } });
+  page = await browser.newPage({ viewport: { width: 1280, height: 850 } });
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(entry.url);
   await page.getByLabel("用户名", { exact: true }).fill("proxy_ui_qa");
@@ -175,6 +175,12 @@ try {
   assert.deepEqual(errors, []);
   await fs.writeFile(path.join(output, "result.json"), JSON.stringify({ passed: true, realCore: true, realWorkbench: true, browserErrors: errors, upstreamARequests: a.requests(), upstreamBRequests: b.requests(), guestVMTested: false }, null, 2));
   console.log("Proxy UI and real bundled core: PASS; independent upstream switching, authentication, persistence and stop verified.");
+} catch (error) {
+  if (page && !page.isClosed()) {
+    await page.screenshot({ path: path.join(output, "failure.png"), mask: [page.locator("input,textarea")] });
+    console.error((await page.locator("body").innerText()).replace(/(?:[A-Fa-f0-9]{8}[-\s]){7}[A-Fa-f0-9]{8}/g, "[recovery secret]"));
+  }
+  throw error;
 } finally {
   if (browser) await browser.close();
   await run(executable, ["prepare-update", "--json"], { env, timeout: 30000, windowsHide: true });

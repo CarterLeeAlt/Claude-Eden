@@ -13,6 +13,7 @@ $certificate = $null
 $certificates = @()
 $qemuSource = $null
 $savedPath = $env:PATH
+$savedGoRoot = $env:GOROOT
 $savedCertificate = $env:EDEN_WINDOWS_CERT_SHA1
 $savedStorageVolume = $env:EDEN_TEST_STORAGE_VOLUME
 $storageTestRoot = $null
@@ -45,11 +46,13 @@ function Write-CiPhaseSummary {
     $lines + '' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 }
 try {
+    $env:GOROOT = (& (Get-BuildCommand @('go')) env GOROOT).Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Could not resolve the selected Go toolchain.' }
     Enter-CiPhase 'Checkout identity and script tests'
     $actual = (& git rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0 -or $actual -ne $env:EDEN_BUILD_REF) { throw 'Checkout differs from the requested commit.' }
     Invoke-BuildTool 'node' @('scripts/check-version.mjs')
-    Invoke-BuildTool 'node' @('--test', 'internal/eden/browser-clipboard.test.mjs', 'scripts/windows-native-bridge.test.mjs')
+    Invoke-BuildTool 'node' @('--test', 'internal/eden/browser-clipboard.test.mjs')
     if ($Release) {
         Enter-CiPhase 'Release signing configuration'
         if ($env:GITHUB_EVENT_NAME -ne 'workflow_dispatch') { throw 'Release candidates require an explicitly dispatched release workflow.' }
@@ -86,19 +89,21 @@ try {
     Invoke-BuildTool (Get-BuildCommand @('pwsh.exe', 'pwsh')) @('-NoProfile', '-NonInteractive', '-File', 'scripts/windows-workbench-smoke.test.ps1')
     # NSIS is x86 and resolves $SYSDIR to SysWOW64. Match its real helper host.
     $installationPowerShell = Join-Path $env:SystemRoot 'SysWOW64/WindowsPowerShell/v1.0/powershell.exe'
-    & (Join-Path $PSScriptRoot 'test-windows-installation-files.ps1') -HelperShell $installationPowerShell -InstallerSmoke
+    $installHelper = Join-Path $repository '.tmp/tools/eden-install.exe'
+    New-Item -ItemType Directory -Path (Split-Path $installHelper -Parent) -Force | Out-Null
+    Invoke-BuildTool 'go' @('build', '-trimpath', '-o', $installHelper, './cmd/eden-install')
+    & (Join-Path $PSScriptRoot 'test-windows-installation-files.ps1') -HelperShell $installationPowerShell -InstallHelper $installHelper -InstallerSmoke
     if ($Release) {
         Enter-CiPhase 'Corresponding sources'
         & (Join-Path $PSScriptRoot 'prepare-qemu-release.ps1')
         $qemuSource = Join-Path $repository '_output/windows-qemu-sources/full-source.tar.gz'
     }
     Enter-CiPhase $(if ($Release) { 'Build and sign the application' } else { 'Build the application' })
-    & (Join-Path $PSScriptRoot 'build-windows.ps1') -Release:$Release
+    & (Join-Path $PSScriptRoot 'build-windows.ps1') -Release:$Release -VerifyDesktop
     Enter-CiPhase 'Go download and desktop shell tests'
+    Invoke-BuildTool 'node' @('--import', './ui/node_modules/tsx/dist/loader.mjs', '--test', 'scripts/windows-native-bridge.test.mjs')
     Invoke-BuildTool 'go' @('test', './internal/hostproxy', './cmd/eden', '-run', '^Test(ParallelPackage|DownloadLockCancellationAndReuse)', '-count=1')
-    $nativeTestArtifacts = Join-Path $repository '_output/windows-native-tests'
-    Invoke-BuildTool 'dotnet' @('build', 'desktop/windows.tests/Eden.Windows.Tests.csproj', '-c', 'Release', '--artifacts-path', $nativeTestArtifacts)
-    Invoke-BuildTool (Join-Path $nativeTestArtifacts 'bin/Eden.Windows.Tests/release/Eden.Windows.Tests.exe') @()
+    Invoke-BuildTool 'go' @('test', './internal/desktop/...', './internal/desktopupdate/...', './internal/installfiles/...')
     # Only an explicitly configured integration location may use another volume.
     if ($env:EDEN_TEST_STORAGE_VOLUME) {
         $target = [IO.Path]::GetFullPath($env:EDEN_TEST_STORAGE_VOLUME)
@@ -127,7 +132,7 @@ try {
         Invoke-BuildTool 'go' @('vet', './cmd/eden', './internal/eden', './internal/workbench', './internal/appupdate', './internal/host')
     }
     Enter-CiPhase 'Package the installer'
-    $packageArguments = @{ Release = $Release; SkipBuild = $true }
+    $packageArguments = @{ Release = $Release; SkipBuild = $true; VerifyDesktop = $true }
     if ($Release) { $packageArguments.QemuSourceArchive = $qemuSource }
     & (Join-Path $PSScriptRoot 'package-windows.ps1') @packageArguments
     $version = Get-EdenVersion $repository
@@ -136,7 +141,7 @@ try {
     & (Join-Path $PSScriptRoot 'test-windows-install.ps1') -Installer "$repository/_output/releases/$version/windows/Eden-$version-windows-amd64-setup$suffix.exe"
     if ($Release) {
         Enter-CiPhase 'Signed automatic update and rollback transactions'
-        & (Join-Path $PSScriptRoot 'test-windows-update-flow.ps1')
+        & (Join-Path $PSScriptRoot 'test-windows-update-flow.ps1') -DisposableMachine
         Invoke-BuildTool 'node' @('scripts/release-version.mjs', 'metadata', 'windows', "_output/releases/$version/windows/build-metadata.json")
     }
     Complete-CiPhase
@@ -161,6 +166,7 @@ try {
     }
     # Verified QEMU sources remain in the build cache; packaging copies them separately.
     $env:PATH = $savedPath
+    $env:GOROOT = $savedGoRoot
     $env:EDEN_WINDOWS_CERT_SHA1 = $savedCertificate
     $env:EDEN_TEST_STORAGE_VOLUME = $savedStorageVolume
     if ($storageTestRoot) { Remove-Item -LiteralPath $storageTestRoot -Recurse -Force -ErrorAction SilentlyContinue }

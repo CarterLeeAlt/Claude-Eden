@@ -58,7 +58,7 @@ for (const platform of ["MacIntel", "Win32", "Linux x86_64"]) {
     await page.keyboard.press("Shift+Enter");
     await page.keyboard.press("Enter");
     assert.equal(inputs.length, beforePaste, "newline and submission must wait for pending paste");
-    releaseClipboard({ text: "WORKBENCH_PASTE" });
+    releaseClipboard({ revision: 1, text: "WORKBENCH_PASTE" });
     await assertInputs(beforePaste, ["\x1b[200~WORKBENCH_PASTE\x1b[201~", "\x1b[200~\n\x1b[201~", "\r"]);
     socket.send(Buffer.from("\x1b[?2004lMODE_OFF"));
     await page.locator(".xterm-rows").getByText(/MODE_OFF/).waitFor();

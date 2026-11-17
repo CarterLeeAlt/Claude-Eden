@@ -3,8 +3,8 @@ import { createWorkbench } from "./workbench-fixture.mjs";
 import { smokeCaptureDirectory } from "./smoke-captures.mjs";
 
 const output = await smokeCaptureDirectory("local-workbench");
-for (const scenario of ["connect", "prepare-failed", "candidate-failed", "commit-failed", "cancel", "cancel-failed", "lost-active", "context-failed", "invalid-context"]) {
-  const selected = { mode: scenario === "lost-active" ? "local" : "none", desktop_gateway: true, connection_id: "initial", connection: { state: scenario === "lost-active" ? "failed" : "disconnected", message: "本机工作台连接已断开", error_code: "connection_lost" } };
+for (const scenario of ["connect", "slow-connect", "prepare-failed", "candidate-failed", "commit-failed", "cancel", "cancel-failed", "lost-active", "context-failed", "invalid-context"]) {
+  const selected = { mode: scenario === "lost-active" ? "local" : "none", desktop_gateway: true, client_platform: "windows", server_platform: "", connection_id: "initial", connection: { state: scenario === "lost-active" ? "failed" : "disconnected", message: "本机工作台连接已断开", error_code: "connection_lost" } };
   let rejectPrepare = scenario === "prepare-failed", rejectCommit = scenario === "commit-failed", rejectCancel = scenario === "cancel-failed";
   let rejectContext = scenario === "context-failed", invalidContext = scenario === "invalid-context";
   let preparations = 0, commits = 0, cancellations = 0, holdContext = false, releaseContext;
@@ -33,6 +33,7 @@ for (const scenario of ["connect", "prepare-failed", "candidate-failed", "commit
         assert.deepEqual(body, { connection_id: selected.connection_id, candidate_id: selected.candidate.id, local_action: "auto" });
         if (rejectCommit) return route.fulfill({ status: 409, contentType: "text/plain; charset=utf-8", body: "候选工作台连接已中断" });
         selected.mode = "local";
+        selected.server_platform = "windows";
         selected.connection_id = selected.candidate.id;
         selected.connection = { state: "connected" };
         delete selected.candidate;
@@ -48,6 +49,7 @@ for (const scenario of ["connect", "prepare-failed", "candidate-failed", "commit
       return route.fulfill({ json: {} });
     },
     beforeNavigate: async page => {
+      if (scenario === "slow-connect") await page.clock.install();
       await page.addInitScript(() => localStorage.setItem("eden.audio", JSON.stringify({ muted: true })));
     },
   });
@@ -80,6 +82,13 @@ for (const scenario of ["connect", "prepare-failed", "candidate-failed", "commit
       assert.equal(cancellations, 1, "manual retry must cancel the old candidate first");
     }
     await waitForCandidate();
+    if (scenario === "slow-connect") {
+      await page.clock.fastForward(31 * 60 * 1000);
+      await waitForCandidate();
+      assert.equal(commits, 0, "elapsed time must not commit or fail a connecting candidate");
+      assert.equal(await page.getByRole("alert").count(), 0);
+      await page.clock.resume();
+    }
     if (scenario === "cancel" || scenario === "cancel-failed") {
       if (scenario === "cancel") {
         selected.candidate.connection.state = "connected";
@@ -118,7 +127,7 @@ for (const scenario of ["connect", "prepare-failed", "candidate-failed", "commit
     state.status.ready = state.status.vm_running = true;
     await page.getByRole("heading", { name: "Claude Eden 环境已就绪", exact: true }).waitFor();
     await page.waitForFunction(() => Boolean(window.edenWorkbenchAction));
-    await page.evaluate(() => window.edenNativeAction("quit"));
+    await page.evaluate(() => window.emitTestDesktopEvent("eden-native-action", "quit"));
     const quit = page.getByRole("dialog", { name: "退出 Claude Eden", exact: true });
     await quit.getByRole("button", { name: "取消", exact: true }).click();
     assert.ok(!calls.some(call => ["/client/hosts", "/client/connect"].includes(call.path)));

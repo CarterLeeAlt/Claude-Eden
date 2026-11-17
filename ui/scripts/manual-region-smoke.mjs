@@ -83,7 +83,7 @@ try {
   assert.equal(await system().getAttribute("value"), "ko_KR.UTF-8");
   state.failSave = false;
   await save(); await open();
-  let suggestion = { ip: "8.8.8.8", country_code: "ES", timezone: "Europe/Madrid" };
+  let suggestion = { ip: "8.8.8.8", country: "Spain", country_code: "ES", region: "", city: "", timezone: "Europe/Madrid", checked_at: new Date().toISOString() };
   await page.route("**/api/settings/probe", route => route.fulfill({ json: suggestion }));
   await page.getByRole("switch").nth(0).check();
   await page.getByRole("switch").nth(1).check();
@@ -92,7 +92,7 @@ try {
   assert.equal(await system().getAttribute("value"), "ko_KR.UTF-8", "missing suggestion must preserve the selected language");
   await save(); await open();
   assert.equal(state.settings.timezone, "Europe/Madrid");
-  suggestion = { ip: "8.8.8.8", country_code: "CA", timezone: "America/Toronto", suggested_locale: "en_CA.UTF-8", suggested_browser_language: "en-CA" };
+  suggestion = { ip: "8.8.8.8", country: "Canada", country_code: "CA", region: "", city: "", timezone: "America/Toronto", checked_at: new Date().toISOString(), suggested_locale: "en_CA.UTF-8", suggested_browser_language: "en-CA" };
   await page.getByRole("button", { name: "现在检测", exact: true }).first().click();
   await page.getByText("地区建议：en_CA.UTF-8 / en-CA", { exact: true }).waitFor();
   assert.equal(await system().getAttribute("value"), "en_CA.UTF-8");

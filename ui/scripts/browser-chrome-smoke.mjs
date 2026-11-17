@@ -11,7 +11,7 @@ import { chooseInline, createWorkbench } from "./workbench-fixture.mjs";
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const output = path.join(
   root,
-  "docs/test-reports/2026-11-01-browser-tabs-favorites",
+  ".tmp/ui-migration/prerequisites/browser-chrome",
 );
 await fs.mkdir(output, { recursive: true });
 const profile = await fs.mkdtemp(path.join(os.tmpdir(), "eden-favorites-qa-"));
@@ -94,11 +94,15 @@ try {
   });
   browser = fixture.browser;
   const { page, state, errors } = fixture;
-  const shot = (name) =>
-    page.screenshot({
-      path: path.join(output, name + ".png"),
-      animations: "disabled",
+  const shot = async (name) => {
+    if (name !== "drag-in-progress") await page.mouse.move(1, 1);
+    await page.evaluate(async () => {
+      getComputedStyle(document.documentElement).opacity;
+      await Promise.all(document.getAnimations().filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity).map(animation => animation.finished));
+      await new Promise(resolve => requestAnimationFrame(resolve));
     });
+    await page.screenshot({ path: path.join(output, name + ".png") });
+  };
   const tabs = page.getByRole("tablist", { name: "浏览器标签页" });
   await page
     .getByRole("button", { name: "启动 Claude Eden 环境", exact: true })
@@ -211,7 +215,7 @@ try {
   );
   assert.equal(saved.items[0].title, "Eden 设计资料");
   assert.equal(saved.folders[0].title, "工作资料");
-  await page.keyboard.press("Meta+d");
+  await page.keyboard.press("Control+d");
   await page.getByLabel("收藏名称", { exact: true }).fill("待重试的收藏");
   // Make the real persistence path unreadable as a file, then restore it.
   await fs.rename(
@@ -241,7 +245,7 @@ try {
   await start();
   await page.reload();
   await page.getByRole("button", { name: "打开浏览器", exact: true }).click();
-  await page.keyboard.press("Meta+Shift+o");
+  await page.keyboard.press("Control+Shift+o");
   const panel = page.getByRole("dialog", { name: "收藏夹", exact: true });
   await panel
     .getByRole("button", { name: "编辑收藏 待重试的收藏", exact: true })

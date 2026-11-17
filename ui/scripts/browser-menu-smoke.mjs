@@ -8,7 +8,7 @@ page.setDefaultTimeout(10000);
 const output = process.env.EDEN_MENU_CAPTURE || `../.tmp/guest-neutralization/ui-eden/browser-menu-${browser.browserType().name()}`;
 await fs.mkdir(output, { recursive: true });
 await page.route("**/api/vault/browser", route => route.fulfill({ json: {
-  available: true, entries: [], candidates: [], origin: "https://example.test",
+  available: true, entries: [], candidates: [], origin: "https://example.test", document: "fixture-document",
 } }));
 try {
   state.status.ready = state.status.vm_running = true;
@@ -68,9 +68,20 @@ try {
   const editor = page.getByRole("dialog", { name: "添加收藏", exact: true });
   await editor.waitFor();
   await menu.waitFor({ state: "hidden" });
+  const destination = editor.getByRole("combobox", { name: "保存到收藏夹", exact: true });
+  await destination.click();
+  await page.getByRole("option", { name: "未分类", exact: true }).click();
+  await editor.waitFor();
+  await destination.press("ArrowDown");
+  await page.getByRole("listbox").waitFor();
+  await destination.press("Escape");
+  await page.getByRole("listbox").waitFor({ state: "hidden" });
+  assert.equal(await editor.count(), 1, "first Escape belongs to the expanded combobox, not its dialog");
+  assert.equal(await destination.getAttribute("aria-expanded"), "false");
+  assert.equal(await destination.evaluate(node => node === document.activeElement), true);
   await editor.getByRole("button", { name: "取消", exact: true }).click();
   await editor.waitFor({ state: "hidden" });
-  assert.equal(await star.evaluate(el => el === document.activeElement), true);
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "收藏此页");
   await folder.focus();
   await folder.press("Enter");
   const favorites = page.getByRole("dialog", { name: "收藏夹", exact: true });
@@ -86,11 +97,12 @@ try {
   await downloads.getByRole("button", { name: "关闭面板", exact: true }).click();
   await downloads.waitFor({ state: "hidden" });
   assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
-  await page.keyboard.press("Meta+d");
+  await page.keyboard.press("Control+d");
   await editor.waitFor();
   await editor.getByRole("button", { name: "取消", exact: true }).click();
-  await page.keyboard.press("Meta+Shift+o");
+  await page.keyboard.press("Control+Shift+o");
   await favorites.waitFor();
+  assert.equal(await favorites.getByRole("textbox", { name: "搜索收藏" }).evaluate(node => node === document.activeElement), true);
   await page.keyboard.press("Escape");
   await favorites.waitFor({ state: "hidden" });
   assert.equal(await folder.evaluate(el => el === document.activeElement), true);

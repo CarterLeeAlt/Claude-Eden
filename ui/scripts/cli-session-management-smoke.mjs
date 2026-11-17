@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, sessionView, terminalView } from "./workbench-fixture.mjs";
 
 const base = process.env.EDEN_UI_URL || "http://127.0.0.1:5209";
 const output = process.env.EDEN_TEST_CAPTURE || "../.tmp/guest-neutralization/ui-eden/cli-session-sync";
@@ -15,7 +15,7 @@ const sessions = [
   {id:"12345678-1234-4321-aaaa-123456789abe", workspace, title:"准备发布说明", archived:true, pinned:true, updated_at:"2026-11-06T09:00:00Z", turns:[]},
   {id:"12345678-1234-4321-aaaa-123456789abf", workspace, title:"核对接口", archived:true, updated_at:"2026-11-05T08:00:00Z", turns:[]},
    {id:"12345678-1234-4321-aaaa-123456789ac0", workspace:otherProject, title:"项目布局检查", archived:true, updated_at:"2026-11-04T08:00:00Z", turns:[]},
-];
+].map(sessionView);
 let state, failPurge = true, failOpen = true, opens = 0, releaseOpen;
 const handle = async (route, path, body) => {
   const archived = new URL(route.request().url()).searchParams.get("archived") === "true";
@@ -26,7 +26,7 @@ const handle = async (route, path, body) => {
     opens++;
     if (failOpen) return route.fulfill({status:409,contentType:"text/plain; charset=utf-8",body:"测试：原终端仍在运行，请先退出其中的 Claude Code"});
     await new Promise(resolve => { releaseOpen = resolve; });
-    const terminal = {id:"restored-terminal", kind:"claude", workspace, title:session.title, cli_session_id:session.id};
+    const terminal = terminalView({id:"restored-terminal", kind:"claude", workspace, title:session.title, cli_session_id:session.id});
     state.terminals = [terminal];
     return route.fulfill({json:{...session,desktop_terminal_id:terminal.id}});
   }

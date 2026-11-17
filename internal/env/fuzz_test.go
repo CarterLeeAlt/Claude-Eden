@@ -3,6 +3,7 @@ package env
 import (
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -11,6 +12,9 @@ import (
 // answers, sh sourcing the file as the VM gets it gives the same value. It only answers for
 // files of plain assignments, so sh runs nothing else here.
 func FuzzLookup(f *testing.F) {
+	if runtime.GOOS == "windows" {
+		f.Skip("compares environment parsing with a POSIX shell")
+	}
 	for _, s := range []string{"K=v\n", "K='a b'\n", "export K=\"x\" # note\n", "K='multi\nline'\n", "K=a'b'\"c\"\n", "  K=1\nK=2\n", "K=v\r\n", "# c\n\nK=\n"} {
 		f.Add(s)
 	}
@@ -43,6 +47,9 @@ func FuzzLookup(f *testing.F) {
 // A value written as key='SQEscape(value)' is read back by the shell as
 // itself: nothing in it ends the quotes and runs.
 func FuzzSQEscape(f *testing.F) {
+	if runtime.GOOS == "windows" {
+		f.Skip("compares shell escaping with a POSIX shell")
+	}
 	for _, s := range []string{"plain", "it's", "'", "''", `'"'"'`, "$(id)", "`id`", "a\nb", "\\'", "x'; touch /tmp/pwned; '"} {
 		f.Add(s)
 	}

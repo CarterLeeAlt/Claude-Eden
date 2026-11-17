@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, terminalView } from "./workbench-fixture.mjs";
 
 const warning = "WARNING: Loading development channels\r\nChannels: server:0132fd0e-589b-4afb-9c55-38b86627e90a\r\n1. I am using this for local development\r\nEnter to confirm";
 for (const platform of ["windows"]) {
@@ -14,7 +14,7 @@ for (const platform of ["windows"]) {
   try {
     await page.route("**/api/terminals", route => {
       if (route.request().method() !== "POST") return route.fallback();
-      const tab = { id: "startup-test", title: "Claude 1", kind: "claude", workspace: state.settings.workspace, cli_session_id: "fixture-cli", cli_starting: true };
+      const tab = terminalView({ id: "startup-test", title: "Claude 1", kind: "claude", workspace: state.settings.workspace, cli_session_id: "fixture-cli", cli_starting: true });
       state.terminals = [tab];
       return route.fulfill({ json: tab });
     });

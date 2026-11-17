@@ -86,8 +86,8 @@ try {
     const [{ default: RFB }, { installRemoteInput }, { sendImage, imagePayload }] =
       await Promise.all([
         import("/.generated/novnc/core/rfb.js"),
-        import("/src/remote-input.js"),
-        import("/src/image-transfer.js"),
+        import("/src/lib/remote-input.ts"),
+        import("/src/lib/image-transfer.ts"),
       ]);
     const rfb = new EventTarget(),
       container = document.getElementById("remote"),

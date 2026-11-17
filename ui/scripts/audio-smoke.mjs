@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { createServer } from "vite";
+import { createServer } from "./isolated-vite.mjs";
 const require = createRequire(import.meta.url);
 const browserName = process.env.EDEN_TEST_BROWSER || "chromium";
 const browserEngine = require(process.env.EDEN_PLAYWRIGHT_MODULE || "playwright")[browserName];
-const vite = await createServer({ root: fileURLToPath(new URL("..", import.meta.url)), configFile: fileURLToPath(new URL("../vite.config.js", import.meta.url)), server: { host: "127.0.0.1", port: 0 } });
+const vite = await createServer({ root: fileURLToPath(new URL("..", import.meta.url)), configFile: fileURLToPath(new URL("../vite.config.ts", import.meta.url)), server: { host: "127.0.0.1", port: 0 } });
 await vite.listen();
 const origin = `http://127.0.0.1:${vite.httpServer.address().port}`;
 const browser = await browserEngine.launch({ headless: true, executablePath: process.env.EDEN_TEST_BROWSER_PATH, ...(browserName === "chromium" ? { args: ["--autoplay-policy=user-gesture-required"] } : {}) });
@@ -26,7 +26,7 @@ let permissionMissing = false;
 const permissionMessage = "客机声音服务暂不可用，请重新连接客机图形会话";
 await page.route("**/api/audio", route => route.fulfill(permissionMissing
   ? { status: 409, contentType: "text/plain", body: permissionMessage }
-  : { json: format }));
+  : { json: { ready: true, ...format } }));
 const packet = Buffer.alloc(3840);
 for (let i = 0; i < 960; i++) for (let channel = 0; channel < 2; channel++) packet.writeInt16LE(Math.round(Math.sin(i * 2 * Math.PI * 1000 / 48000) * 10000), i * 4 + channel * 2);
 await page.routeWebSocket("**/api/audio**", socket => {

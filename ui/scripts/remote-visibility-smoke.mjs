@@ -2,11 +2,31 @@
 // The fixture owns all requests and never reaches a user's VM.
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, claudeDesktopView, waitForFixture } from "./workbench-fixture.mjs";
 
 const { startDisplay } = await import("./rfb-wire-fixture.mjs");
 const display = await startDisplay(process.env.EDEN_UI_URL || "http://127.0.0.1:5199");
-const fixture = await createWorkbench({ mockWebSockets: false, url: display.url });
+const nativeCalls = [];
+let nativeOwner = "", holdActivation = false, releaseActivation;
+const fixture = await createWorkbench({
+  mockWebSockets: false, url: display.url,
+  beforeNavigate: async page => {
+    await page.addInitScript(() => { window.edenNativeIMEAvailable = true; });
+    await page.route("**/api/input", route => route.fulfill({ json: { available: true, context: "a".repeat(32), rect: [20, 20, 1, 24] } }));
+  },
+  nativeRequest: async request => {
+    if (request.action !== "remoteInput") return;
+    nativeCalls.push(request);
+    if (request.operation === "activate") {
+      if (holdActivation) {
+        holdActivation = false;
+        await new Promise(resolve => { releaseActivation = resolve; });
+      }
+      nativeOwner = request.owner;
+    } else if (request.operation === "deactivate" && nativeOwner === request.owner) nativeOwner = "";
+    return { accepted: true, returnedFocus: false };
+  },
+});
 const { page, state, browser, errors } = fixture;
 const report = display.stats;
 report.checks = [];
@@ -50,16 +70,14 @@ try {
   assert.equal(report.connections, 1, "returning to the browser repeated its handshake");
   if (!process.env.EDEN_PERF_BASELINE) {
     await page.evaluate(() => {
-      window.edenWindowVisible = false;
-      window.dispatchEvent(new Event("eden-window-visibility"));
+      window.emitTestDesktopEvent("eden-window-visibility", false);
     });
     await new Promise((resolve) => setTimeout(resolve, 300));
     const paused = report.frames;
     await new Promise((resolve) => setTimeout(resolve, 300));
     assert.equal(report.frames, paused, "occluded native window continued receiving frames");
     await page.evaluate(() => {
-      window.edenWindowVisible = true;
-      window.dispatchEvent(new Event("eden-window-visibility"));
+      window.emitTestDesktopEvent("eden-window-visibility", true);
     });
     await page.getByText("正在连接画面", { exact: true }).waitFor({ state: "hidden" });
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -72,7 +90,7 @@ try {
     await page.locator('.remote-view:not(.concealed) .view-overlay').waitFor({ state: 'hidden' });
     assert.equal(report.connections, 2, "hidden disconnection did not reconnect on return");
 
-    await page.route('**/api/claude-desktop', route => route.fulfill({ json: { installed: true, running: true, version: 'fixture' } }));
+    await page.route('**/api/claude-desktop', route => route.fulfill({ json: claudeDesktopView({ installed: true, running: true, version: 'fixture' }) }));
     await page.route('**/api/claude-desktop/vnc-credentials', route => route.fulfill({ json: { password: '', display_scale: 2 } }));
     await page.getByRole("button", { name: "Claude Desktop", exact: true }).click();
     const desktop = page.getByRole('region', { name: 'Claude Desktop', exact: true });
@@ -99,6 +117,33 @@ try {
     assert.equal(report.closed, 1, "switching Browser/Desktop unexpectedly closed a transport");
     await page.getByRole("button", { name: "打开浏览器", exact: true }).click();
     report.checks.push('hidden disconnect reconnects only on return', 'Browser and Desktop retain independent suspended streams');
+
+    await page.getByRole("button", { name: "工作台", exact: true }).click();
+    await waitForFixture(() => nativeOwner === "");
+    nativeCalls.length = 0;
+    holdActivation = true;
+    await page.getByRole("button", { name: "打开浏览器", exact: true }).click();
+    await page.locator(".remote-view:not(.concealed) canvas").click({ position: { x: 40, y: 40 } });
+    await waitForFixture(() => typeof releaseActivation === "function");
+    const oldOwner = nativeCalls.find(request => request.operation === "activate").owner;
+    await page.evaluate(() => window.emitTestDesktopEvent("eden-window-visibility", false));
+    nativeOwner = ""; // Mirrors the native shell's hide handler, independently of pending JS calls.
+    await page.evaluate(() => window.emitTestDesktopEvent("eden-window-visibility", true));
+    await page.locator(".remote-view:not(.concealed) canvas").click({ position: { x: 40, y: 40 } });
+    await page.waitForTimeout(300);
+    assert.equal(nativeCalls.filter(request => request.operation === "activate").length, 1, "restored activation must wait for the old native call");
+    releaseActivation();
+    await waitForFixture(() => nativeOwner && nativeOwner !== oldOwner);
+    const currentOwner = nativeOwner;
+    const ownerOperations = nativeCalls.filter(request => ["activate", "deactivate"].includes(request.operation));
+    assert.deepEqual(ownerOperations.slice(0, 3).map(request => [request.operation, request.owner]), [["activate", oldOwner], ["deactivate", oldOwner], ["activate", currentOwner]]);
+    await page.evaluate(({ oldOwner, currentOwner }) => {
+      window.emitTestDesktopEvent("eden-native-input", { owner: oldOwner, kind: "input", text: "obsolete-owner-text" });
+      window.emitTestDesktopEvent("eden-native-input", { owner: currentOwner, kind: "input", text: "current-owner-text" });
+    }, { oldOwner, currentOwner });
+    await waitForFixture(() => state.requests.some(request => request.path === "/browser/insert-text" && request.body?.text === "current-owner-text"));
+    assert.equal(state.requests.some(request => request.body?.text === "obsolete-owner-text"), false);
+    report.checks.push("delayed native activation stays ordered across hide/restore", "current owner accepts input and obsolete owner is ignored");
   }
   assert.deepEqual(errors, []);
   report.checks.push("real RFB frames", "tabs preserved", "frames resumed");
@@ -111,11 +156,11 @@ try {
     const started = Date.now();
     while ((Date.now() - started) / 1000 < soakSeconds) {
       const beforeResume = report.frames;
-      await page.evaluate(() => { window.edenWindowVisible = true; window.dispatchEvent(new Event("eden-window-visibility")); });
+      await page.evaluate(() => window.emitTestDesktopEvent("eden-window-visibility", true));
       await page.getByText("正在连接画面", { exact: true }).waitFor({ state: "hidden" });
       await new Promise((resolve) => setTimeout(resolve, 1000));
       assert.ok(report.frames > beforeResume, "soak: visible display did not resume frames");
-      await page.evaluate(() => { window.edenWindowVisible = false; window.dispatchEvent(new Event("eden-window-visibility")); });
+      await page.evaluate(() => window.emitTestDesktopEvent("eden-window-visibility", false));
       await new Promise((resolve) => setTimeout(resolve, 500));
       const hidden = report.frames;
       await new Promise((resolve) => setTimeout(resolve, 8500));
@@ -134,6 +179,7 @@ try {
   console.error(JSON.stringify({ report, errors, browserErrors, visible: await page.locator("body").innerText() }));
   throw error;
 } finally {
+  releaseActivation?.();
   await browser.close();
   await display.close();
 }

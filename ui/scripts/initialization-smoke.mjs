@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import { createWorkbench, defaultGuestProfile } from "./workbench-fixture.mjs";
+import { createWorkbench, defaultGuestProfile, gateView, jobView, proxyView } from "./workbench-fixture.mjs";
 
 const evidence = process.env.EDEN_INITIALIZATION_EVIDENCE;
 if (evidence) await fs.mkdir(evidence, { recursive: true });
@@ -12,7 +12,7 @@ for (const system of ["debian-13"]) {
   const initialDirectory = "C:/preview/Eden/EdenData";
   const fixture = await createWorkbench({
     initialization: { required: true, tracked: true, started: false },
-    clientContext: { mode: "local", connection_id: "local", client_platform: platform, server_platform: platform },
+    clientContext: { mode: "local", connection_id: "local", client_platform: platform, server_platform: platform, connection: { state: "disconnected" } },
     beforeNavigate: async (page, state) => {
       // Audio is outside this initialization flow; avoid unrelated in-flight audio requests during reload.
       await page.addInitScript(() => localStorage.setItem("eden.audio", JSON.stringify({ muted: true })));
@@ -21,7 +21,7 @@ for (const system of ["debian-13"]) {
         if (route.request().method() === "POST") {
           assert.equal(route.request().postDataJSON().previous, directory);
           directory = route.request().postDataJSON().directory;
-          state.status.job = { id: "storage-default", kind: "storage", running: false };
+          state.status.job = jobView({ id: "storage-default", kind: "storage", running: false });
           return route.fulfill({ json: state.status.job });
         }
         return route.fulfill({ json: { directory, has_environment: false, suggested_directory: directory === "C:/preview/eden-state" ? initialDirectory : undefined } });
@@ -31,7 +31,7 @@ for (const system of ["debian-13"]) {
         const submitted = route.request().postDataJSON();
         assert.deepEqual(submitted, { guest_system: system, ...(starts === 1 ? { guest_profile: { ...defaultGuestProfile, hostname: "Test-PC" } } : {}) });
         if (starts === 1) state.guestProfile = { version: 1, ...submitted.guest_profile, extension_suffix: "" };
-        state.status.job = { id: "install-" + starts, running: true, kind: "guest-install", setup_progress: { system, phase: "image", operation: "download", label: "正在下载系统镜像", received: 25 * 1048576, total: 100 * 1048576, bytes_per_second: 1048576 }, log: "镜像下载已开始" };
+        state.status.job = jobView({ id: "install-" + starts, running: true, kind: "guest-install", setup_progress: { system, phase: "image", operation: "download", label: "正在下载系统镜像", received: 25 * 1048576, total: 100 * 1048576, bytes_per_second: 1048576 }, log: "镜像下载已开始" });
         return route.fulfill({ json: state.status.job });
       });
       await page.route("**/api/environment/initialization", route => {
@@ -83,7 +83,7 @@ for (const system of ["debian-13"]) {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     if (evidence) await page.screenshot({ path: `${evidence}/${system}-progress-compact.png`, fullPage: true });
     state.status.job = { id: "install-2", kind: "start", running: false, message: "环境已启动，联网检查未通过", error: "联网检查未通过：浏览器检测通道返回 HTTP 503，外网保持关闭" };
-    Object.assign(state.status, { ready: true, vm_running: true, safety: { gate: { mode: "closed" } } });
+    Object.assign(state.status, { ready: true, vm_running: true, safety: { gate: gateView({ mode: "closed" }) } });
     await page.getByRole("heading", { name: "环境已启动，等待联网检查", exact: true }).waitFor();
     assert.equal(await page.getByRole("button", { name: "继续安装", exact: true }).count(), 0);
     let networkChecks = 0;
@@ -96,19 +96,19 @@ for (const system of ["debian-13"]) {
     await page.getByText("正在检查联网条件", { exact: true }).waitFor();
     assert.equal(networkChecks, 1);
     assert.equal(starts, 2, "network recovery must not restart installation");
-    state.status.job = { id: "install-2", kind: "start", running: false };
-    Object.assign(state.status, { ready: true, vm_running: true, safety: { gate: { mode: "open", until: new Date(Date.now() + 3600000).toISOString() } } });
+    state.status.job = jobView({ id: "install-2", kind: "start", running: false });
+    Object.assign(state.status, { ready: true, vm_running: true, safety: { gate: gateView({ mode: "open", until: new Date(Date.now() + 3600000).toISOString() }) } });
     await page.getByRole("button", { name: "进入工作台", exact: true }).click();
     await page.getByRole("alert").filter({ hasText: "网络检查" }).waitFor();
     assert.equal(await page.getByRole("complementary", { name: "项目与终端" }).count(), 0, "server completion rejection must keep initialization visible");
     rejectComplete = false;
     await page.getByRole("button", { name: "进入工作台", exact: true }).click();
     await page.getByRole("complementary", { name: "项目与终端" }).waitFor();
-    await page.evaluate(() => window.edenNativeAction("settings"));
+    await page.evaluate(() => window.emitTestDesktopEvent("eden-native-action", "settings"));
     await page.getByRole("region", { name: "设置", exact: true }).waitFor();
     await page.reload();
     await page.getByRole("complementary", { name: "项目与终端" }).waitFor();
-    await page.evaluate(() => window.edenNativeAction("quit"));
+    await page.evaluate(() => window.emitTestDesktopEvent("eden-native-action", "quit"));
     const quitDialog = page.getByRole("dialog", { name: "退出 Claude Eden", exact: true });
     await quitDialog.getByRole("button", { name: "取消", exact: true }).click();
     assert.equal(await page.getByRole("heading", { name: "为 Claude Eden 准备独立环境" }).count(), 0);
@@ -121,7 +121,7 @@ for (const system of ["debian-13"]) {
   let stops = 0, starts = 0;
   const stoppedMessage = "安装已停止，可继续安装";
   const f = await createWorkbench({ initialization: { required: true, tracked: true, started: true, prepared: true }, waitForReady: false, beforeNavigate: async (page, state) => {
-    state.status.job = { id: "install-before-stop", kind: "guest-install", running: true, setup_progress: { system: "debian-13", phase: "tools", label: "正在安装开发工具" } };
+    state.status.job = jobView({ id: "install-before-stop", kind: "guest-install", running: true, setup_progress: { system: "debian-13", phase: "tools", label: "正在安装开发工具" } });
     await page.route("**/api/stop", route => {
       stops++;
       state.status.job = { id: "stop-install", kind: "stop", running: true, message: "正在停止环境" };
@@ -130,7 +130,7 @@ for (const system of ["debian-13"]) {
     await page.route("**/api/start", route => {
       starts++;
       assert.deepEqual(route.request().postDataJSON(), { guest_system: "debian-13" });
-      state.status.job = { id: "install-resumed", kind: "guest-install", running: true, setup_progress: { system: "debian-13", phase: "tools", label: "正在继续安装开发工具" } };
+      state.status.job = jobView({ id: "install-resumed", kind: "guest-install", running: true, setup_progress: { system: "debian-13", phase: "tools", label: "正在继续安装开发工具" } });
       return route.fulfill({ json: state.status.job });
     });
   } });
@@ -162,7 +162,7 @@ for (const system of ["debian-13"]) {
       assert.equal(await stopped.count(), 0, "unrelated job state was relabeled as a stopped installation");
       if (test.job.error) await page.getByRole("alert").filter({ hasText: test.job.error }).waitFor();
     }
-    Object.assign(state.status, { ready: true, vm_running: true, job: completed, safety: { gate: { mode: "open", until: new Date(Date.now() + 3600000).toISOString() } } });
+    Object.assign(state.status, { ready: true, vm_running: true, job: completed, safety: { gate: gateView({ mode: "open", until: new Date(Date.now() + 3600000).toISOString() }) } });
     await page.getByRole("button", { name: "进入工作台", exact: true }).waitFor();
     assert.equal(await stopped.count(), 0, "a ready environment was relabeled as unfinished");
     Object.assign(state.status, { ready: false, vm_running: false, job: { ...completed, canceled: false, error: "" } });
@@ -199,7 +199,7 @@ for (const system of ["debian-13"]) {
       assert.equal(body.migrate, false);
       if (fail) return route.fulfill({ status: 400, contentType: "text/plain; charset=utf-8", body: "请选择专用空文件夹" });
       location = { ...location, directory: body.directory };
-      state.status.job = { id: "save-storage", kind: "storage", running: false };
+      state.status.job = jobView({ id: "save-storage", kind: "storage", running: false });
       return route.fulfill({ json: state.status.job });
     });
   } });
@@ -229,7 +229,7 @@ for (const system of ["debian-13"]) {
   const f = await createWorkbench({ initialization: { required: true, tracked: true }, beforeNavigate: async (page, state) => {
     state.status.local_vm_storage = true;
     await page.route("**/api/environment/storage", route => route.fulfill({ json: { directory: "C:/preview/eden-state", has_environment: false } }));
-    await page.route("**/api/proxy", route => route.fulfill({ json: { active: applied, selected: applied ? "node" : "", nodes: saved ? [{ id: "node", name: "本机测试代理", type: "socks5", server: "127.0.0.1", port: 1080 }] : [], port: 17896, core_available: true } }));
+    await page.route("**/api/proxy", route => route.fulfill({ json: proxyView({ active: applied, selected: applied ? "node" : "", nodes: saved ? [{ id: "node", name: "本机测试代理", type: "socks5", server: "127.0.0.1", port: 1080, username: "", auth_method: "password", host_key: [], has_password: false, has_private_key: false, has_private_key_passphrase: false }] : [] }) }));
     for (const action of ["add", "select"]) await page.route(`**/api/proxy/${action}`, route => {
       if (action === "add") saved = true;
       else applied = true;

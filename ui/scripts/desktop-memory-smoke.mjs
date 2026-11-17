@@ -1,17 +1,18 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { fileURLToPath } from "node:url";
+import { createWorkbench, claudeDesktopView } from "./workbench-fixture.mjs";
 
-const output = new URL("../../docs/test-reports/2026-11-04-desktop-memory/", import.meta.url);
+const output = new URL("../../.tmp/ui-migration/desktop-memory/", import.meta.url);
 await fs.mkdir(output, { recursive: true });
 const { browser, page, state, errors } = await createWorkbench();
 let unavailable = true;
-const desktop = { installed: true, running: false, failed: true, failure_reason: "oom-kill", version: "4.4212.0" };
+const desktop = claudeDesktopView({ installed: true, failed: true, failure_reason: "oom-kill", version: "4.4212.0" });
 await page.route("**/api/claude-desktop**", async route => {
   if (route.request().method() === "POST") {
-    return route.fulfill({ status: 502, body: "测试：打开操作失败，请重试" });
+    return route.fulfill({ status: 502, contentType: "text/plain; charset=utf-8", body: "测试：打开操作失败，请重试" });
   }
-  if (unavailable) return route.fulfill({ status: 502, body: "无法读取 Claude Desktop 状态，请重试" });
+  if (unavailable) return route.fulfill({ status: 502, contentType: "text/plain; charset=utf-8", body: "无法读取 Claude Desktop 状态，请重试" });
   return route.fulfill({ json: desktop });
 });
 try {
@@ -24,7 +25,7 @@ try {
   await page.getByRole("button", { name: "刷新 Claude Desktop 状态", exact: true }).click();
   await page.getByRole("alert").filter({ hasText: "环境内存不足" }).waitFor();
   assert.equal(await page.getByText("无法读取 Claude Desktop 状态，请重试", { exact: true }).count(), 0);
-  await page.screenshot({ path: new URL("oom-message.png", output).pathname });
+  await page.screenshot({ path: fileURLToPath(new URL("oom-message.png", output)) });
   desktop.failed = false;
   desktop.failure_reason = "";
   await page.getByRole("button", { name: "刷新 Claude Desktop 状态", exact: true }).click();

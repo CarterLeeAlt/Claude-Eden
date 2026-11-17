@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, sessionView, terminalView } from "./workbench-fixture.mjs";
 
 const output = process.env.EDEN_TEST_CAPTURE || "../.tmp/guest-neutralization/ui-eden/sidebar-session-layout";
 const engine = process.env.EDEN_TEST_BROWSER || "chromium";
@@ -9,7 +9,7 @@ const { page, state, browser, errors } = await createWorkbench({
 });
 const workspace = state.settings.workspace;
 const titles = ["你好", "软件宣传视频制作", "这是一段用于检查窄侧栏省略显示的很长很长的会话标题"];
-const sessions = titles.map((title, index) => ({
+const sessions = titles.map((title, index) => sessionView({
   id: `layout-session-${index}`, workspace, title, pinned: index === 2,
   updated_at: "2026-11-07T08:00:00Z",
 }));
@@ -17,7 +17,7 @@ const evidence = [];
 try {
   await page.route("**/api/cli/sessions", route => route.fulfill({ json: { sessions } }));
   state.status.ready = state.status.vm_running = true;
-  state.terminals = [{ id: "layout-live", workspace, title: "已打开的会话" }];
+  state.terminals = [terminalView({ id: "layout-live", workspace, title: "已打开的会话" })];
   const project = page.getByRole("region", { name: "项目 .claude-eden-workspace", exact: true });
   const history = project.locator(".sidebar-session");
   await history.last().waitFor();

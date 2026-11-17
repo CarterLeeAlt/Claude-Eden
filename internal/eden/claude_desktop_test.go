@@ -159,6 +159,7 @@ func TestClaudeDesktopInstallerRejectsUntrustedKey(t *testing.T) {
 }
 
 func TestClaudeDesktopScriptsParse(t *testing.T) {
+	requireLinuxGuest(t)
 	for name, script := range map[string]string{"install": ClaudeDesktopInstallScript(), "provision": ClaudeDesktopProvisionScript(), "session": claudeDesktopSession, "start": claudeDesktopStart, "open": claudeDesktopOpen, "browser-open": guestOpen} {
 		t.Run(name, func(t *testing.T) {
 			cmd := exec.Command("bash", "-n")

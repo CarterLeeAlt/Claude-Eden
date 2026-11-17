@@ -6,7 +6,7 @@ Upgrades remember the selection. Open Claude Eden from either selected location.
 For a first installation, the default is D:\Eden when D: is a local fixed
 drive, or %LOCALAPPDATA%\Programs\Eden otherwise. Upgrades keep the existing
 installation folder. You can choose another location in the installer.
-No Go, Node.js, .NET SDK, QEMU, OpenSSH or Clash installation is required.
+No Go, Node.js, QEMU, OpenSSH or Clash installation is required.
 The installer includes the Microsoft WebView2 offline runtime installer.
 
 This x64 package requires Windows 10 on an Intel/AMD 64-bit processor and the

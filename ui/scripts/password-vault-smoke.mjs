@@ -24,7 +24,7 @@ await page.route("**/api/vault**", async route => {
     if (input.action === "save") {
       const existing = entries.find(e => e.origin === candidate.origin && e.username === candidate.username);
       if (existing) existing.password = candidate.password;
-      else entries.push({ ...candidate, id: `saved-${++sequence}` });
+      else entries.push({ ...candidate, id: `saved-${++sequence}`, updated: new Date().toISOString() });
       candidate = null;
     }
     if (input.action === "never") { blocked.push(candidate.origin); candidate = null; }
@@ -36,7 +36,7 @@ await page.route("**/api/vault**", async route => {
     const entry = input.entry;
     const existing = entries.find(e => e.id === entry.id);
     if (existing) Object.assign(existing, entry, { password: entry.password || existing.password });
-    else entries.push({ ...entry, id: `saved-${++sequence}` });
+    else entries.push({ ...entry, id: `saved-${++sequence}`, updated: new Date().toISOString() });
   }
   if (input.action === "reveal") {
     if (input.account_password !== state.accountPassword) return route.fulfill({ status: 400, contentType: "text/plain; charset=utf-8", body: "密码不正确" });

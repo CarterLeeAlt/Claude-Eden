@@ -7,7 +7,7 @@ import {
   themeCatalog,
   parseThemeDocument,
   sameTheme,
-} from "../src/appearance-state.mjs";
+} from "../src/lib/appearance-state.ts";
 const output = fileURLToPath(
   new URL("../../.tmp/Font_Preview/verification/presets/", import.meta.url),
 );
@@ -15,8 +15,8 @@ await fs.mkdir(output, { recursive: true });
 let exported;
 const { browser, page, state, errors } = await createWorkbench({
   nativeRequest: (body) => {
-    if (body.action === "exportTheme") exported = body;
-    return true;
+    if (body.action === "exportTheme") { exported = body; return true; }
+    return undefined;
   },
 });
 const checks = [];

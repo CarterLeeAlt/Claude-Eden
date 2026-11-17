@@ -16,8 +16,9 @@ const enabled = process.env.EDEN_BROWSER_TEST_PLAYWRIGHT && process.env.EDEN_BRO
     catch { res.writeHead(404); res.end(); }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const browser = await chromium.launch({ executablePath: process.env.EDEN_BROWSER_TEST_CHROMIUM, headless: true });
-  t.after(async () => { await browser.close(); await new Promise(resolve => server.close(resolve)); });
+  let browser;
+  t.after(async () => { await browser?.close(); await new Promise(resolve => server.close(resolve)); });
+  browser = await chromium.launch({ executablePath: process.env.EDEN_BROWSER_TEST_CHROMIUM, headless: true });
   for (const dpr of [1, 1.5, 2]) {
     const context = await browser.newContext({ deviceScaleFactor: dpr });
     const page = await context.newPage();

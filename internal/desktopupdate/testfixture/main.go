@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/sylvinus/agent-vm/internal/appupdate"
@@ -109,7 +110,18 @@ func (b *fixtureBackend) PrepareUpdate(ctx context.Context, stop bool) error {
 	if b.settings.Mode == "stop-required" && !stop {
 		return desktopupdate.ErrStopRequired
 	}
-	return record(b.profile, "handoff-"+fixtureVersion, map[string]any{"profile": b.profile, "version": fixtureVersion, "executable": b.executable, "stop": stop})
+	handoff := map[string]any{"profile": b.profile, "version": fixtureVersion, "executable": b.executable, "stop": stop}
+	if b.settings.Mode == "startup-create-failure" && fixtureVersion == "0.1.7" && stop {
+		// The real recovery backend must still have the complete original
+		// snapshot before any candidate files are restored or relaunched.
+		image, e := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(b.executable)), "Eden.exe"))
+		if e != nil {
+			return e
+		}
+		digest := sha256.Sum256(image)
+		handoff["snapshotSHA256"] = hex.EncodeToString(digest[:])
+	}
+	return record(b.profile, "handoff-"+fixtureVersion, handoff)
 }
 
 func run() error {
@@ -150,7 +162,9 @@ func run() error {
 		if e != nil {
 			exit = 1
 		}
-		if save := record(profile, "helper-finished", map[string]int{"exit": exit}); save != nil {
+		var native syscall.Errno
+		_ = errors.As(e, &native)
+		if save := record(profile, "helper-finished", map[string]any{"exit": exit, "nativeError": uint32(native)}); save != nil {
 			return save
 		}
 		return e

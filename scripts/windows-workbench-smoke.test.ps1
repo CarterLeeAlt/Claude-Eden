@@ -22,10 +22,10 @@ try {
         nativeStatus = 'failed http://localhost:1234/?token=private-token#private-fragment'
         errors = @('backend exit http://localhost:1234/api/handoff?token=private-token#private-fragment', ('bounded error ' + ('x' * 900)))
         entryJSON = 'private-entry'; pageURL = 'http://localhost:1234/#private-launch'
-        page = @{ text = 'private-page-body'; errors = @(
+        pageText = 'private-page-body'; pageErrors = @(
             @{ type = 'module-load'; source = '/missing.js?session=private-query#private-fragment' },
             @{ type = 'error'; source = '/main.js'; message = 'syntax error'; stack = @('at http://localhost:1234/main.js?session=private-query#private-fragment') }
-        ) }
+        )
     } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $fixture
     $start = [Diagnostics.ProcessStartInfo]::new((Get-Process -Id $PID).Path)
     $start.UseShellExecute = $false
@@ -54,7 +54,7 @@ try {
     $rejected = $false
     try { Assert-WindowsWorkbenchReport -ExitCode 17 -Report $report } catch { $rejected = $true }
     Assert-SmokeContract $rejected 'Nonzero child exit was accepted because its report said success.'
-    foreach ($failure in @(@{errors = @('backend did not exit')}, @{page = @{errors = @(@{type = 'error'; message = 'render failed'})}})) {
+    foreach ($failure in @(@{errors = @('后台未能退出')}, @{pageErrors = @(@{type = 'error'; message = 'render failed'})})) {
         $inconsistent = @{success = $true; nativeBridgeReady = $true} + $failure
         $inconsistent | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $report
         $rejected = $false

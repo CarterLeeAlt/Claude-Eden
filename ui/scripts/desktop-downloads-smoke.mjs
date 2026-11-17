@@ -4,9 +4,11 @@ import { createWorkbench } from "./workbench-fixture.mjs";
 const id = "ef88f909-6ac3-4839-b45d-a9569f34d4ab";
 let downloads = [], saved = [], calls = [];
 const fixture = await createWorkbench({ nativeRequest: async (body) => {
-  if (["saveBrowserDownload", "browserDownloadAction"].includes(body.action)) calls.push(body);
-  if (body.action === "saveBrowserDownload") return { canceled: true };
-  return { ok: true };
+  if (body.action === "browserDownloadAction") {
+    calls.push(body);
+    return body.operation === "save" ? { canceled: true } : {};
+  }
+  return undefined;
 } });
 const { browser, page, state, errors } = fixture;
 await page.route("**/api/input/files/desktop/requests", (route) => route.fulfill({ json: { uploads: [], downloads } }));
@@ -33,9 +35,9 @@ try {
   // A tiny export can finish between polls; it must still offer Save As.
   const item = { id, name: "桌面视频.mp4", state: "saved", target: "desktop",
     startedAt: new Date(Date.now() + 5).toISOString(), path: "C:/Users/test/Workbench/Downloads/桌面视频.mp4" };
-  saved = [{ id, name: item.name, path: item.path }];
+   saved = [{ id, name: item.name, path: item.path, saved_at: "2026-11-16T00:00:00Z" }];
   downloads = [item];
-  await waitFor(() => calls.some((call) => call.action === "saveBrowserDownload"));
+  await waitFor(() => calls.some((call) => call.action === "browserDownloadAction" && call.operation === "save"));
   await page.getByRole("button", { name: "浏览器下载", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "下载文件" });
   await dialog.getByText(item.path, { exact: true }).waitFor();
@@ -45,7 +47,7 @@ try {
   await page.getByRole("button", { name: "打开浏览器", exact: true }).click();
   await page.getByRole("button", { name: "浏览器下载", exact: true }).click();
   await dialog.getByText(item.path, { exact: true }).waitFor();
-  assert.equal(calls.filter((call) => call.action === "saveBrowserDownload").length, 1, "history reopened a save dialog");
+  assert.equal(calls.filter((call) => call.action === "browserDownloadAction" && call.operation === "save").length, 1, "history reopened a save dialog");
   const openError = "文件打开关联未能完成，请在 Claude Eden 下载列表中打开文件。";
   downloads = [{ ...item, openError }];
   await dialog.getByText(openError, { exact: true }).waitFor();

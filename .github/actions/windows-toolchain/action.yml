@@ -18,9 +18,6 @@ runs:
         node-version: 24
         cache: npm
         cache-dependency-path: ui/package-lock.json
-    - uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 10.0.403
     - uses: astral-sh/setup-uv@v10.3.3
     - uses: msys2/setup-msys2@v2
       id: msys2

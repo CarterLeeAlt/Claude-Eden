@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, claudeDesktopView } from "./workbench-fixture.mjs";
 const output = new URL(
-  "../../docs/test-reports/2026-11-02-claude-desktop/",
+  "../../.tmp/ui-migration/claude-desktop/",
   import.meta.url,
 );
 await fs.mkdir(output, { recursive: true });
@@ -14,12 +14,12 @@ await page.addInitScript(() => {
     close() {}
   };
 });
-const desktop = {
+const desktop = claudeDesktopView({
   installed: false,
   running: false,
   version: "",
   failed: false,
-};
+});
 let failInstall = true;
 const actions = [];
 await page.route("**/api/claude-desktop**", async (route) => {
@@ -135,7 +135,7 @@ try {
   );
   await page.getByRole("button", { name: /^在 .* 新建终端$/ }).click();
   await page
-    .getByRole("menu")
+    .getByRole("menu", { name: "新建终端", exact: true })
     .getByRole("menuitem", { name: "Claude 终端", exact: true })
     .waitFor();
   await page.screenshot({

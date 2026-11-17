@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, terminalView } from "./workbench-fixture.mjs";
 
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a/e8AAAAASUVORK5CYII=";
 for (const platform of ["MacIntel", "Win32", "Linux x86_64"]) {
   const inputs = [], images = [];
-  let clipboard = { png }, reads = 0, release, fail = false;
+  let clipboard = { revision: 1, png }, reads = 0, release, fail = false;
   const { page, browser, state, errors } = await createWorkbench({
     mockWebSockets: false,
     beforeNavigate: page => page.addInitScript(platform => {
@@ -22,7 +22,7 @@ for (const platform of ["MacIntel", "Win32", "Linux x86_64"]) {
   try {
     await page.route("**/api/terminals", route => {
       if (route.request().method() !== "POST") return route.fallback();
-      const terminal = { id: "claude-image", kind: "claude", title: "Claude 1", workspace: state.settings.workspace };
+      const terminal = terminalView({ id: "claude-image", kind: "claude", title: "Claude 1", workspace: state.settings.workspace });
       state.terminals = [terminal];
       return route.fulfill({ json: terminal });
     });
@@ -79,7 +79,7 @@ for (const platform of ["MacIntel", "Win32", "Linux x86_64"]) {
     await page.getByText("测试：图片传递失败", { exact: true }).waitFor();
     assert.equal(inputs.length, 4, "a failed image must cancel its queued Enter");
     fail = false;
-    clipboard = { text: "paste after failure" };
+    clipboard = { revision: 2, text: "paste after failure" };
     await page.keyboard.press("Control+v");
     await wait(() => inputs.length === 5);
     assert.equal(inputs.at(-1), "\x1b[200~paste after failure\x1b[201~");

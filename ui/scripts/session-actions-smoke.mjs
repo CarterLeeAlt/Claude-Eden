@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { smokeCaptureDirectory } from "./smoke-captures.mjs";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, sessionView, terminalView } from "./workbench-fixture.mjs";
 
 const base = process.env.EDEN_UI_URL || "http://127.0.0.1:5178";
 const engine = process.env.EDEN_TEST_BROWSER || "chromium";
@@ -14,14 +14,14 @@ const id = "12345678-1234-4321-aaaa-123456789abc";
 const sessions = [
   {id, workspace, title:"待处理的会话", revision:1, generation:id, updated_at:"2026-11-07T08:00:00Z", pinned:false},
   {id:"12345678-1234-4321-aaaa-123456789abd", workspace, title:"另一段会话", revision:1, generation:id, updated_at:"2026-11-07T09:00:00Z", pinned:false},
-];
+].map(sessionView);
 let failSave = false;
 const update = (target, body) => {
   if (body.title) target.title = target.custom_title = body.title;
   if (body.pinned !== undefined) target.pinned = body.pinned;
   target.metadata_set = true; target.revision++;
   state.terminals = state.terminals.map(t => t.cli_session_id === target.id ? {...t, title:target.title, custom_title:target.custom_title, pinned:target.pinned, metadata_set:true} : t);
-  return {...target, turns:[]};
+  return terminalView({...target, id:"fixture-shared", kind:"claude", cli_session_id:target.id});
 };
 const remove = target => {
   sessions.splice(sessions.indexOf(target),1);
@@ -30,7 +30,7 @@ const remove = target => {
 try {
   state.status.ready = state.status.vm_running = true;
   await page.evaluate(({workspace,title}) => localStorage.setItem("eden-tab-layout",JSON.stringify({[workspace]:{"terminal:fixture-shared":{title,pinned:false}}})),{workspace,title:sessions[0].title});
-  state.terminals = [{id:"fixture-shared", kind:"claude", workspace, title:sessions[0].title, cli_session_id:id, metadata_set:false, pinned:false}];
+  state.terminals = [terminalView({id:"fixture-shared", kind:"claude", workspace, title:sessions[0].title, cli_session_id:id, metadata_set:false, pinned:false})];
   await page.route("**/api/terminals/*/metadata", async route => {
     if (failSave) return route.fulfill({status:500,contentType:"text/plain; charset=utf-8",body:"测试：磁盘暂时不可写"});
     return route.fulfill({json:update(sessions[0],route.request().postDataJSON())});
@@ -53,7 +53,7 @@ try {
   await page.getByRole("textbox",{name:"标签名称"}).fill("本机会话检查");
   failSave = true;
   await page.getByRole("button",{name:"保存名称",exact:true}).click();
-  await page.getByRole("status").filter({hasText:"测试：磁盘暂时不可写"}).waitFor();
+  await page.getByRole("dialog",{name:"重命名标签",exact:true}).getByRole("alert").filter({hasText:"测试：磁盘暂时不可写"}).waitFor();
   await page.getByRole("dialog",{name:"重命名标签",exact:true}).waitFor();
   assert.equal(await page.getByRole("textbox",{name:"标签名称"}).inputValue(),"本机会话检查");
   assert.equal(sessions[0].title,"待处理的会话");

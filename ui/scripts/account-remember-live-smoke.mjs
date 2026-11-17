@@ -15,7 +15,7 @@ assert.ok(path.isAbsolute(eden || ""), "Supply an absolute Eden helper path");
 const run = promisify(execFile);
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "eden-remember-live-"));
 const env = { ...process.env, HOME: root, USERPROFILE: root, LOCALAPPDATA: root, EDEN_CONFIG: path.join(root, "profile", "config.json") };
-const output = new URL("../../docs/test-reports/2026-11-08-remember-device/", import.meta.url);
+const output = new URL("../../.tmp/ui-migration/prerequisites/account-remember-live/", import.meta.url);
 await fs.mkdir(output, { recursive: true });
 const require = createRequire(import.meta.url);
 const { chromium, webkit } = require(process.env.EDEN_PLAYWRIGHT_MODULE || "playwright");

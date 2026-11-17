@@ -4,6 +4,7 @@ param(
     [switch]$Release,
     [switch]$Sign,
     [switch]$SkipBuild,
+    [switch]$VerifyDesktop,
     [string]$AppDirectory,
     [string]$OutputDirectory,
     [string]$DependencyCache,
@@ -20,7 +21,7 @@ $AppDirectory = [IO.Path]::GetFullPath($AppDirectory)
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 $DependencyCache = [IO.Path]::GetFullPath($DependencyCache)
 if (Test-Path -LiteralPath (Join-Path $AppDirectory 'EdenData')) { throw 'App directory contains EdenData user data. Package a clean build directory; do not package an installed application.' }
-if (-not $SkipBuild) { & (Join-Path $PSScriptRoot 'build-windows.ps1') -Release:$Release -Sign:$Sign -OutputDirectory $AppDirectory -DependencyCache $DependencyCache }
+if (-not $SkipBuild) { & (Join-Path $PSScriptRoot 'build-windows.ps1') -Release:$Release -Sign:$Sign -VerifyDesktop:$VerifyDesktop -OutputDirectory $AppDirectory -DependencyCache $DependencyCache }
 if ((Get-Content -LiteralPath (Join-Path $AppDirectory 'Eden.install-id') -Raw) -ne 'io.github.carterleealt.claude-eden') { throw 'Invalid Claude Eden app directory.' }
 if ((Get-Content -LiteralPath (Join-Path $AppDirectory 'version.txt') -Raw).Trim() -ne $version) { throw 'App version differs from VERSION; rebuild before packaging.' }
 $makeNSIS = Get-BuildCommand @('makensis.exe', 'makensis')
@@ -29,7 +30,7 @@ if ($IsWindows) {
     if ([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $AppDirectory 'Eden.exe')).ProductVersion -ne $version) { throw 'Eden.exe version differs from VERSION; rebuild before packaging.' }
     Invoke-BuildTool (Join-Path $AppDirectory 'resources/eden.exe') @('verify-vm-assets')
     Invoke-BuildTool (Join-Path $AppDirectory 'resources/eden.exe') @('verify-web-assets')
-    if ($SkipBuild) { Assert-WindowsWorkbench $AppDirectory }
+    if ($SkipBuild -and $VerifyDesktop) { Assert-WindowsWorkbench $AppDirectory }
 } else {
     $metadata = & $sevenZip 'l' '-tPE' (Join-Path $AppDirectory 'Eden.exe')
     if ($LASTEXITCODE -ne 0 -or -not ($metadata -match ('^ProductVersion: ' + [regex]::Escape($version) + '$'))) { throw 'Eden.exe version differs from VERSION; rebuild before packaging.' }
@@ -44,7 +45,7 @@ if ($signed) {
     }
     if ($Release) { Invoke-BuildTool $sevenZip @('t', '-bso0', '-bsp0', $QemuSourceArchive) }
     $signTool = Get-SigningTool
-    foreach ($file in @('Eden.exe', 'resources/eden.exe', 'resources/mihomo.exe')) {
+    foreach ($file in @('Eden.exe', 'resources/eden.exe', 'resources/eden-install.exe', 'resources/mihomo.exe')) {
         $signature = Get-AuthenticodeSignature -LiteralPath (Join-Path $AppDirectory $file)
         if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $env:EDEN_WINDOWS_CERT_SHA1) { throw "Invalid release signature: $file" }
     }

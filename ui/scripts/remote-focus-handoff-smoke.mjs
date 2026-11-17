@@ -6,17 +6,19 @@ import { startDisplay } from "./rfb-wire-fixture.mjs";
 
 const display = await startDisplay(process.env.EDEN_UI_URL || "http://127.0.0.1:5198");
 let available = true, activations = 0, finishHandoff;
-const { browser, page, errors } = await createWorkbench({
+const nativeCalls = [];
+const { browser, page, errors, state } = await createWorkbench({
   mockWebSockets: false,
   url: display.url,
   clientContext: { mode: "local", connection_id: "local", client_platform: "windows", server_platform: "linux", connection: { state: "disconnected" } },
   nativeRequest: request => {
+    nativeCalls.push(request);
     if (request.action === "remoteInput") {
       if (request.operation === "activate") activations++;
       if (request.operation === "deactivate" && request.returnFocus)
         return new Promise(resolve => { finishHandoff = resolve; });
     }
-    return true;
+    return request.action === "remoteInput" ? { accepted: true, returnedFocus: false } : undefined;
   },
   async beforeNavigate(page, state) {
     state.status.ready = state.status.vm_running = true;
@@ -35,7 +37,7 @@ const { browser, page, errors } = await createWorkbench({
       };
     });
     await page.route("**/api/input", route => route.fulfill({ json: available
-      ? { available: true, rect: [16, 20, 1, 24], width: 640, height: 480 }
+      ? { available: true, context: "a".repeat(32), rect: [16, 20, 1, 24], width: 640, height: 480 }
       : { available: false } }));
   },
 });
@@ -51,11 +53,12 @@ try {
   await page.getByRole("button", { name: "打开浏览器", exact: true }).click();
   const canvas = page.locator(".remote-canvas canvas");
   await canvas.waitFor();
+  await until(() => activations > 0);
+  await page.getByRole("textbox", { name: "网页地址或搜索", exact: true }).focus();
   await page.evaluate(() => {
     window.handoffReplies = 0;
-    const bridge = window.edenNativeBridge;
-    const post = bridge.postMessage;
-    bridge.postMessage = async request => {
+    const post = window.edenTestNativeRequest;
+    window.edenTestNativeRequest = async request => {
       const reply = await post(request);
       if (request.action === "remoteInput" && request.operation === "deactivate") window.handoffReplies++;
       return reply;
@@ -79,9 +82,9 @@ try {
       });
     }
     if (interruption === "native-command")
-      await page.evaluate(() => window.edenNativeAction("settings"));
+      await page.evaluate(() => window.emitTestDesktopEvent("eden-native-action", "settings"));
     const previousReplies = await page.evaluate(() => window.handoffReplies);
-    finishHandoff({ returnedFocus: true });
+    finishHandoff({ accepted: true, returnedFocus: true });
     await page.waitForFunction(previous => window.handoffReplies > previous, previousReplies);
     assert.equal(await page.evaluate(() => document.activeElement?.classList.contains("remote-text-input")), interruption === "none",
       `${interruption}: a late reply must preserve the user's focus choice`);
@@ -98,6 +101,9 @@ try {
   }
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ result: "PASS", checks: ["temporary blur restores remote focus", "held Ctrl then L cancels a late handoff", "native workbench command cancels a late handoff"] }));
+} catch (error) {
+  console.error({ nativeCalls: nativeCalls.slice(-12), requests: state.requests.filter(request => request.path === "/input").slice(-10), flags: await page.evaluate(() => ({ native: window.edenNativeIMEAvailable, active: document.activeElement?.outerHTML.slice(0,200), focused: document.hasFocus() })), errors });
+  throw error;
 } finally {
   await browser.close();
   await display.close();

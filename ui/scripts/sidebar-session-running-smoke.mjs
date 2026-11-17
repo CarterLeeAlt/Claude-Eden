@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, sessionView, terminalView } from "./workbench-fixture.mjs";
 
 const output = process.env.EDEN_TEST_CAPTURE || "../.tmp/guest-neutralization/ui-eden/sidebar-session-running";
 await mkdir(output, {recursive:true});
@@ -11,30 +11,30 @@ for (const platform of ["windows"]) {
     {id:"waiting",title:"等待打开的会话"},
     {id:"available",title:"可以接续的会话"},
     {id:"desktop",title:"设置界面字体和设计，保留长标题的省略显示",running:true,claude_desktop:true,pinned:true},
-  ];
+  ].map(sessionView);
   const releases = [], opens = [];
   let behavior = "hold", state;
   const fixture = await createWorkbench({
     url:process.env.EDEN_UI_URL || "http://127.0.0.1:5228",
-    clientContext:{mode:"local",connection_id:"local",client_platform:platform,server_platform:platform},
+    clientContext:{mode:"local",connection_id:"local",client_platform:platform,server_platform:platform,connection:{state:"disconnected"}},
     beforeNavigate:async (_page, value) => {
       state = value;
       state.status.ready = state.status.vm_running = true;
       sessions.forEach(session=>{session.workspace=state.settings.workspace;});
-      state.terminals = [{id:"owned-terminal",kind:"claude",workspace:state.settings.workspace,title:sessions[1].title,cli_session_id:"owned"}];
+      state.terminals = [terminalView({id:"owned-terminal",kind:"claude",workspace:state.settings.workspace,title:sessions[1].title,cli_session_id:"owned"})];
     },
     cliRequest:async (route,path) => {
       if (path === "/cli/sessions") return route.fulfill({json:{sessions}});
-      if (path.endsWith("/account")) return route.fulfill({json:{session:{},supported:false,candidates:[]}});
+      if (path.endsWith("/account")) return route.fulfill({json:{session:sessionView(),supported:false,candidates:[],source_id:"",switch_policy:"ask"}});
       if (path.endsWith("/open")) {
         const session = sessions.find(item=>path.includes("/"+item.id+"/"));
         opens.push(session.id);
         const mode = behavior;
         if (mode === "hold") await new Promise(resolve=>releases.push(resolve));
         if (mode === "error") return route.fulfill({status:409,contentType:"text/plain; charset=utf-8",body:"原会话仍在其他窗口运行，请先退出原会话"});
-        const terminal = {id:"terminal-"+session.id,kind:"claude",workspace:session.workspace,title:session.title,cli_session_id:session.id};
+        const terminal = terminalView({id:"terminal-"+session.id,kind:"claude",workspace:session.workspace,title:session.title,cli_session_id:session.id});
         state.terminals.push(terminal);
-        return route.fulfill({json:{desktop_terminal_id:terminal.id}});
+        return route.fulfill({json:{...session,desktop_terminal_id:terminal.id}});
       }
       return route.fulfill({json:{}});
     },
@@ -126,17 +126,28 @@ for (const platform of ["windows"]) {
     await page.getByRole("tab",{name:sessions[0].title,exact:true}).waitFor();
     assert.equal(await failure.count(),0);
 
-    // A lost receipt is bounded and leaves the same history available to retry.
+    // Elapsed time is not an operation failure. Cancellation only stops waiting;
+    // an already-created terminal remains visible without stealing selection.
     behavior = "hold";
     await page.clock.install();
     await available.click();
     await available.getByRole("img",{name:"正在打开会话",exact:true}).waitFor();
-    await page.clock.fastForward(60001);
-    await page.getByRole("alert").filter({hasText:"打开会话超时，历史已保留"}).waitFor();
+    await page.clock.fastForward(31 * 60 * 1000);
+    assert.equal(await available.isDisabled(),true);
+    assert.equal(await page.getByRole("alert").count(),0);
+    await page.getByRole("button",{name:`取消等待打开 ${sessions[3].title}`,exact:true}).click();
+    await page.getByRole("status").filter({hasText:"已取消等待"}).waitFor();
     assert.equal(await available.isEnabled(),true);
+    await page.clock.resume();
+    releases.shift()();
+    const retained = page.getByRole("tab",{name:sessions[3].title,exact:true});
+    await retained.waitFor();
+    assert.equal(await page.getByRole("tab",{name:sessions[0].title,exact:true}).getAttribute("aria-selected"),"true");
+    await retained.click();
+    assert.equal(await retained.getAttribute("aria-selected"),"true");
     assert.deepEqual(errors,[]);
-    await page.locator(".sidebar-scroll").screenshot({path:`${output}/${platform}-timeout.png`});
-    console.log(`${platform}: Desktop/other-window indicators, hover/keyboard/touch hints, narrow layout, owned activity, pending state, cancellation, error, exit/reopen and timeout passed`);
+    await page.locator(".sidebar-scroll").screenshot({path:`${output}/${platform}-slow-cancel.png`});
+    console.log(`${platform}: Desktop/other-window indicators, hover/keyboard/touch hints, narrow layout, owned activity, pending state, cancellation, error, exit/reopen, slow startup and retained late completion passed`);
   } finally {
     releases.forEach(release=>release());
     await browser.close();

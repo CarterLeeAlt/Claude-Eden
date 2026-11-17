@@ -1,5 +1,6 @@
 ﻿#requires -Version 5.1
-param([string]$HelperShell = (Get-Process -Id $PID).Path, [switch]$InstallerSmoke)
+param([string]$HelperShell = (Get-Process -Id $PID).Path, [switch]$InstallerSmoke,
+    [Parameter(Mandatory)][string]$InstallHelper)
 $ErrorActionPreference = 'Stop'
 & (Join-Path $PSScriptRoot 'assert-workspace.ps1')
 $helper = Join-Path $PSScriptRoot '../packaging/windows/installation-files.ps1'
@@ -47,6 +48,7 @@ function App([string]$Path, [string]$Version) {
 }
 function Invoke-Helper([string[]]$Arguments, [int]$Expected = 0, [switch]$WithoutFileHash) {
     $entry = $helper
+    $Arguments = @('-Helper', $InstallHelper) + $Arguments
     if ($WithoutFileHash) {
         $entry = Join-Path $root 'helper-without-filehash.ps1'
         Write-File $entry @'
@@ -76,6 +78,10 @@ function Commit([string]$Old, [string]$Stage, [string]$Receipt) {
 }
 function Test-InstallerTransaction {
     if (!$windows -or $PSVersionTable.PSVersion.Major -lt 7) { throw 'The optional NSIS fixture requires PowerShell 7 on a disposable Windows user.' }
+    $computer = Get-CimInstance Win32_ComputerSystem
+    if ($computer.Model -notmatch 'Virtual Machine|VMware|VirtualBox|KVM|QEMU|HVM domU|Parallels' -and $computer.Manufacturer -notmatch 'QEMU|VMware|innotek') {
+        throw 'Installer acceptance is restricted to the approved existing Windows VM. Refusing this physical host.'
+    }
     $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ClaudeEden'
     $desktop = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'Claude Eden.lnk'
     $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Claude Eden'
@@ -93,6 +99,8 @@ function Test-InstallerTransaction {
     $reportBase = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
     $report = Join-Path $reportBase ('eden-smoke-installation-fixture-' + [guid]::NewGuid().ToString('N') + '.json')
     Write-File (Join-Path $app 'LICENSE.txt') 'Compile-only text payload; no Claude Eden application or VM.'
+    [IO.Directory]::CreateDirectory((Join-Path $app 'resources')) | Out-Null
+    Copy-Item -LiteralPath $InstallHelper -Destination (Join-Path $app 'resources/eden-install.exe')
     App $app 'fixture'
     $version = (Get-Content (Join-Path $PSScriptRoot '../VERSION') -Raw).Trim()
     & (Get-Command makensis.exe -ErrorAction Stop).Source /V2 /INPUTCHARSET UTF8 "/DAPP_DIR=$app" "/DVERSION=$version" "/DVERSION_NUMERIC=$(($version -split '-')[0]).0" "/DFILE_MANIFEST=$app\Eden.install-files.json" "/DOUTPUT_FILE=$setup" (Join-Path $PSScriptRoot '../packaging/windows/Eden.nsi')
@@ -133,7 +141,7 @@ function Test-InstallerTransaction {
         }
     }
     Check (!($remaining.Values -contains $true)) ('NSIS fixture did not finish uninstalling owned artifacts: ' + ($remaining | ConvertTo-Json -Compress))
-    Write-Output 'PASS: production NSIS silently installed/uninstalled its text-only fixture through PowerShell 5.1 transactions; no application or VM was started.'
+    Write-Output 'PASS: production NSIS silently installed/uninstalled its text-only fixture through the shared Go transaction helper; no application or VM was started.'
 }
 try {
     if ($InstallerSmoke) { Test-InstallerTransaction }

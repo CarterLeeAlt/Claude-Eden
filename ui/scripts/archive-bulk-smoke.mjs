@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, sessionView } from "./workbench-fixture.mjs";
 
 const base = process.env.EDEN_UI_URL || "http://127.0.0.1:5209";
 const engine = process.env.EDEN_TEST_BROWSER || "chromium";
@@ -11,7 +11,7 @@ const seed = [
   {id:"a2",workspace:alpha,title:"接口检查"},
   {id:"b1",workspace:beta,title:"移动端检查"},
   {id:"b2",workspace:beta,title:"待完成删除",deleting:true},
-].map(s => ({...s,archived:true,updated_at:"2026-11-08T00:00:00Z"}));
+].map(s => sessionView({...s,archived:true,updated_at:"2026-11-08T00:00:00Z"}));
 let sessions = structuredClone(seed), failID = "", holdID = "", release;
 const operations = [];
 const handle = async (route, path, body) => {

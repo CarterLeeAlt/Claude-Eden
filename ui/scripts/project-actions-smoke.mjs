@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { createServer } from "vite";
+import { createServer } from "./isolated-vite.mjs";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ root, configFile: `${root}/vite.config.js`, server: { host: "127.0.0.1", port: 0 } });
+const vite = await createServer({ root, configFile: `${root}/vite.config.ts`, server: { host: "127.0.0.1", port: 0 } });
 await vite.listen();
 const url = `http://127.0.0.1:${vite.httpServer.address().port}`;
 try {
@@ -45,7 +45,7 @@ try {
       await page.getByRole("menuitem", { name: "普通终端" }).click();
       await page.waitForFunction(() => document.querySelector("header.terminal-chrome .current-title")?.textContent === "终端 2");
       assert.equal(state.terminals[1].workspace, projectB);
-      await page.evaluate(() => window.edenNativeAction("newTerminal"));
+      await page.evaluate(() => window.emitTestDesktopEvent("eden-native-action", "newTerminal"));
       await page.getByRole("menuitem", { name: "Claude 终端" }).waitFor();
       await page.keyboard.press("Escape");
       assert.equal(await page.locator(":focus").getAttribute("title"), projectB);

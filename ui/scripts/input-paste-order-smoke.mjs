@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, claudeDesktopView } from "./workbench-fixture.mjs";
 import { startDisplay } from "./rfb-wire-fixture.mjs";
 
 const display = await startDisplay(process.env.EDEN_UI_URL || "http://127.0.0.1:5198", { sharedClipboard: true });
@@ -9,11 +9,11 @@ const { browser, page, errors } = await createWorkbench({
   nativeRequest: request => {
     if (request.action === "clipboardRevision") return 1;
     if (request.action === "clipboardSyncRead") return { text: "synthetic shared clipboard", revision: 1 };
-    return true;
+    return undefined;
   },
   async beforeNavigate(page, state) {
     state.status.ready = state.status.vm_running = true;
-    await page.route("**/api/claude-desktop", route => route.fulfill({ json: { installed: true, running: true, managed: true } }));
+    await page.route("**/api/claude-desktop", route => route.fulfill({ json: claudeDesktopView({ installed: true, running: true, managed: true }) }));
     await page.route("**/api/input", route => route.fulfill({ json: { available: true, context, rect: [20, 20, 1, 24] } }));
   },
 });

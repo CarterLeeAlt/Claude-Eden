@@ -92,12 +92,15 @@ type Chromium struct {
 	globalPermission *CoreWebView2PermissionState
 
 	// Callbacks
-	MessageCallback                          func(message string, sender *ICoreWebView2, args *ICoreWebView2WebMessageReceivedEventArgs)
-	MessageWithAdditionalObjectsCallback     func(message string, sender *ICoreWebView2, args *ICoreWebView2WebMessageReceivedEventArgs)
-	WebResourceRequestedCallback             func(request *ICoreWebView2WebResourceRequest, args *ICoreWebView2WebResourceRequestedEventArgs)
-	NavigationStartingCallback               func(sender *ICoreWebView2)
-	NavigationCompletedCallback              func(sender *ICoreWebView2, args *ICoreWebView2NavigationCompletedEventArgs)
-	ProcessFailedCallback                    func(sender *ICoreWebView2, args *ICoreWebView2ProcessFailedEventArgs)
+	MessageCallback                      func(message string, sender *ICoreWebView2, args *ICoreWebView2WebMessageReceivedEventArgs)
+	MessageWithAdditionalObjectsCallback func(message string, sender *ICoreWebView2, args *ICoreWebView2WebMessageReceivedEventArgs)
+	WebResourceRequestedCallback         func(request *ICoreWebView2WebResourceRequest, args *ICoreWebView2WebResourceRequestedEventArgs)
+	NavigationStartingCallback           func(sender *ICoreWebView2)
+	NavigationCompletedCallback          func(sender *ICoreWebView2, args *ICoreWebView2NavigationCompletedEventArgs)
+	ProcessFailedCallback                func(sender *ICoreWebView2, args *ICoreWebView2ProcessFailedEventArgs)
+	// PermissionErrorCallback lets an enforcing host close the controller if
+	// WebView2 rejects its permission decision instead of using browser defaults.
+	PermissionErrorCallback                  func(error)
 	ContainsFullScreenElementChangedCallback func(sender *ICoreWebView2, args *ICoreWebView2ContainsFullScreenElementChangedEventArgs)
 	AcceleratorKeyCallback                   func(uint) bool
 	// MoveFocusRequestedCallback is called when the user tabs (or shift+tabs)
@@ -175,6 +178,7 @@ func (e *Chromium) ShuttingDown() {
 	e.NavigationStartingCallback = nil
 	e.NavigationCompletedCallback = nil
 	e.ProcessFailedCallback = nil
+	e.PermissionErrorCallback = nil
 	e.ContainsFullScreenElementChangedCallback = nil
 	e.AcceleratorKeyCallback = nil
 	e.MoveFocusRequestedCallback = nil
@@ -851,6 +855,9 @@ func (e *Chromium) PermissionRequested(_ *ICoreWebView2, args *iCoreWebView2Perm
 	if err != nil {
 		// WebView2 then applies its default handling to this request.
 		log.Printf("[WebView2] PermissionRequested failed to set state: %v", err)
+		if e.PermissionErrorCallback != nil {
+			e.PermissionErrorCallback(err)
+		}
 	}
 	return 0
 }

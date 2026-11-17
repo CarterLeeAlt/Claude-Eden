@@ -7,8 +7,9 @@ for (const platform of ["windows"]) {
     const f = await createWorkbench({
       initialization: { required: install, tracked: install },
       waitForReady: !install,
-      clientContext: { mode: "local", connection_id: "local", client_platform: platform, server_platform: platform },
+      clientContext: { mode: "local", connection_id: "local", client_platform: platform, server_platform: platform, connection: { state: "disconnected" } },
       beforeNavigate: async page => {
+        await page.addInitScript(() => localStorage.setItem("eden.audio", JSON.stringify({ muted: true })));
         if (install) await page.route("**/api/environment/storage", route => route.fulfill({ json: { directory: "C:/preview/eden-state", has_environment: false } }));
         await page.route("**/api/host/git", route => { gitRequests++; return route.fulfill({ status: 503, body: "Git is unavailable" }); });
       },
@@ -25,7 +26,10 @@ for (const platform of ["windows"]) {
       assert.equal(state.requests.filter(request => request.path === "/start").length, 1);
       assert.equal(state.requests.some(request => request.path === "/host/git"), false);
       assert.equal(await page.getByText(/启用.*Git.*保护|保护本机 Git/).count(), 0);
+      await page.waitForLoadState("networkidle");
       await page.reload();
+      await page.getByRole(install ? "button" : "heading", { name: install ? "进入工作台" : "Claude Eden 环境已就绪", exact: true }).waitFor();
+      await page.waitForLoadState("networkidle");
       assert.equal(state.requests.some(request => request.path === "/host/git"), false);
       assert.equal(gitRequests, 0);
       assert.deepEqual(errors, []);

@@ -8,7 +8,10 @@ const writes = [];
 const display = await startDisplay(process.env.EDEN_UI_URL || "http://127.0.0.1:5198");
 const { browser, page, state, errors } = await createWorkbench({
   mockWebSockets: false, url: display.url,
-  nativeRequest: body => { if (body.action === "clipboardWrite") writes.push(body.text); return true; },
+  nativeRequest: body => {
+    if (body.action === "clipboardSyncWrite") { writes.push(body.text); return { revision: writes.length }; }
+    return undefined;
+  },
 });
 await page.addInitScript(() => {
   window.EventSource = class extends EventTarget {

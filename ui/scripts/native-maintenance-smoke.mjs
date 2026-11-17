@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, versionsView } from "./workbench-fixture.mjs";
 
 for (const system of ["debian-13"]) {
   const calls = [];
   const fixture = await createWorkbench({ beforeNavigate: async (page, state) => {
     state.account.guest_system = state.status.guest_system = system;
     state.status.vm_running = state.status.ready = true;
-    await page.route("**/api/environment/versions", route => route.fulfill({ json: {
+    await page.route("**/api/environment/versions", route => route.fulfill({ json: versionsView({
       vm_running: true, tools_update_allowed: true,
       components: { status: "update_required", update_required: true },
       controller: { version: "fixture-controller" },
       tools: { claude: { current: "2.1.300", required: "2.1.311" }, node: { current: "v24.22.2", required: "24.22.2" } },
-    } }));
+    }) }));
     for (const operation of ["update", "tools"]) {
       await page.route(`**/api/environment/${operation}`, route => {
         calls.push(operation);

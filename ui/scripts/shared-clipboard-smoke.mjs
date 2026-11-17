@@ -7,9 +7,17 @@ import { startDisplay } from "./rfb-wire-fixture.mjs";
 const display = await startDisplay(process.env.EDEN_UI_URL || "http://127.0.0.1:5198", { sharedClipboard: true });
 let revision = 1, clipboard = { text: "initial host text" };
 const writes = [];
+let delayCancel = false, releaseCancel, nativeGeneration = 0;
+const nativeOperations = [];
 const { browser, page, state, errors } = await createWorkbench({
   mockWebSockets: false, url: display.url,
-  nativeRequest: request => {
+  nativeRequest: async request => {
+    nativeOperations.push(request.action);
+    if (request.action === "clipboardSyncCancel") {
+      if (delayCancel) { delayCancel = false; await new Promise(resolve => { releaseCancel = resolve; }); }
+      nativeGeneration++;
+      return true;
+    }
     if (request.action === "clipboardWrite") { clipboard = { text: request.text }; revision++; return true; }
     if (request.action === "clipboardRevision") return revision;
     if (request.action === "clipboardSyncRead") return { ...clipboard, revision };
@@ -18,11 +26,12 @@ const { browser, page, state, errors } = await createWorkbench({
       clipboard = Object.fromEntries(Object.entries(request).filter(([key]) => ["text","png","files"].includes(key)));
       writes.push(clipboard); return { revision: ++revision };
     }
-    return true;
+    return undefined;
   },
 });
 const waitFor = async predicate => { for (let attempt = 0; attempt < 100; attempt++) { if (predicate()) return; await page.waitForTimeout(30); } assert.ok(predicate(),"clipboard state did not arrive"); };
 try {
+  await page.route("**/api/input", route => route.fulfill({ json: { available: true, context: "a".repeat(32), rect: [20, 20, 1, 24] } }));
   await page.route("**/api/claude-desktop", route => route.fulfill({ json: { installed: true, running: true, failed: false, managed: true, version: "fixture" } }));
   state.status.ready = state.status.vm_running = true;
   await page.reload();
@@ -72,10 +81,21 @@ try {
   await waitFor(() => clipboard.text === terminalCopy && display.stats.clipboardUpdates.at(-1).text === terminalCopy);
 
   const connections = display.stats.clipboardConnections;
+  delayCancel = true;
+  const reads = nativeOperations.filter(action => action === "clipboardSyncRead").length;
   display.disconnectClipboard();
   clipboard = { text:"copy during disconnection" }; revision++;
+  await waitFor(() => typeof releaseCancel === "function");
+  await waitFor(() => display.stats.clipboardConnections > connections);
+  await page.waitForTimeout(100);
+  assert.equal(nativeOperations.filter(action => action === "clipboardSyncRead").length, reads, "reconnected reads must wait for native cancellation to complete");
+  releaseCancel();
   await waitFor(() => display.stats.clipboardConnections > connections && display.stats.clipboardUpdates.at(-1).text === "copy during disconnection");
   await page.waitForFunction(() => window.edenSharedClipboardActive === true);
+  const generation = nativeGeneration;
+  display.sharedClipboard({ files: "20000000-2222-4333-8444-123456789abc" });
+  await waitFor(() => clipboard.files === "20000000-2222-4333-8444-123456789abc");
+  assert.equal(nativeGeneration, generation, "late cancellation must not invalidate the new guest write");
   assert.deepEqual(errors,[]);
-  console.log("PASS: Desktop text/image/files copy, terminal OSC 52 to shared guest clipboard, no echo, native paste, background sharing and reconnect.");
-} finally { await browser.close(); await display.close(); }
+  console.log("PASS: Desktop text/image/files copy, terminal OSC 52 to shared guest clipboard, no echo, native paste, background sharing, delayed cancellation barrier and reconnected native file writes.");
+} finally { releaseCancel?.(); await browser.close(); await display.close(); }

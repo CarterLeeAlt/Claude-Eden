@@ -1,6 +1,6 @@
 // Exercise the actual pointer paths in an isolated workbench.
 import assert from "node:assert/strict";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, terminalView } from "./workbench-fixture.mjs";
 
 const { page, state, browser, errors } = await createWorkbench();
 try {
@@ -65,7 +65,7 @@ try {
   await page.locator(`.browser-tab[data-tab-id="${first}"] .tab-close`).click();
   await page.waitForFunction(() => !document.querySelector(".workspace-split"));
   await page.setViewportSize({ width: 820, height: 558 });
-  const term = { id: "split-term", title: "分屏终端", workspace: state.settings.workspace };
+  const term = terminalView({ id: "split-term", title: "分屏终端", workspace: state.settings.workspace });
   state.terminals.push(term);
   const terminal = page.getByRole("tab", { name: term.title, exact: true });
   await terminal.waitFor();

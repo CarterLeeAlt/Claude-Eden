@@ -5,7 +5,7 @@ import { createWorkbench } from "./workbench-fixture.mjs";
 
 const output = path.resolve(
   import.meta.dirname,
-  "../../.tmp/Font_Preview/screenshots",
+  "../../.tmp/ui-migration/font-rendering",
 );
 await fs.mkdir(output, { recursive: true });
 const results = [];
@@ -85,7 +85,7 @@ for (const dpr of [1, 1.25, 1.5, 2]) {
         await page.screenshot({ animations: "disabled", caret: "hide" })
       ).toString("base64");
       const labels = [
-        "界面中文：Noto Sans SC   |   界面英文、数字：Inter   |   界面基准：14 px（亮色）",
+        "界面中英文、数字：Noto Sans SC   |   界面基准：14 px（亮色）",
         terminal
           ? "等宽正文中文：Noto Sans Mono CJK SC   |   英文、数字：JetBrains Mono   |   字号：13 px"
           : "应用内置字体；当前软件界面实际渲染。",
@@ -102,7 +102,7 @@ for (const dpr of [1, 1.25, 1.5, 2]) {
           ctx.fillStyle = "#f4f5f6";
           ctx.fillRect(0, 0, canvas.width, 66);
           ctx.fillStyle = "#202020";
-          ctx.font = '14px "Inter", "Noto Sans SC"';
+          ctx.font = '14px "Noto Sans SC"';
           labels.forEach((label, index) =>
             ctx.fillText(label, 16, 24 + index * 24),
           );
@@ -112,8 +112,8 @@ for (const dpr of [1, 1.25, 1.5, 2]) {
         { screenshot, labels },
       );
       const filename = terminal
-        ? `UI_Noto_Sans_SC_Inter_14px_Terminal_Noto_Sans_Mono_CJK_SC_JetBrains_Mono_13px_Light_UI_${scene}.png`
-        : `UI_CN_Noto_Sans_SC_EN_Inter_14px_Light_${scene}.png`;
+        ? `UI_Noto_Sans_SC_14px_Terminal_Noto_Sans_Mono_CJK_SC_JetBrains_Mono_13px_${scene}.png`
+        : `UI_Noto_Sans_SC_14px_Light_${scene}.png`;
       await fs.writeFile(
         path.join(output, filename),
         Buffer.from(image, "base64"),
@@ -133,7 +133,7 @@ for (const dpr of [1, 1.25, 1.5, 2]) {
       en: await fontsFor(".theme-card-heading .inline-select-trigger > span"),
     };
     checkFonts(ui.cn, "Noto Sans SC");
-    checkFonts(ui.en, "Inter");
+    checkFonts(ui.en, "Noto Sans SC");
     await shot("Appearance");
     for (const size of [12, 24, 14]) {
       await page.getByLabel("界面字号", { exact: true }).fill(String(size));
@@ -175,6 +175,7 @@ for (const dpr of [1, 1.25, 1.5, 2]) {
     await page
       .getByRole("heading", { name: "操作详情", exact: true })
       .waitFor();
+    await page.locator(".job-log").filter({ hasText: "Starting VM" }).waitFor();
     const log = await fontsFor(".job-log");
     checkFonts(log, "Noto Sans Mono CJK SC");
     checkFonts(log, "JetBrains Mono");
@@ -213,14 +214,14 @@ for (const dpr of [1, 1.25, 1.5, 2]) {
         .evaluate((el) => getComputedStyle(el).fontSize),
       "13px",
     );
-    await shot("Dark_Terminal", true);
+    await shot("Default_Terminal", true);
     socket.send(Buffer.from("\x1b]10;#202020\x07\x1b]11;#fafafa\x07"));
     await page.waitForFunction(
       () =>
         getComputedStyle(document.querySelector(".xterm-scrollable-element"))
           .backgroundColor === "rgb(250, 250, 250)",
     );
-    await shot("Light_Terminal", true);
+    await shot("OSC_Light_Terminal", true);
     assert.deepEqual(errors, []);
     results.push({ dpr, ui, log, terminal });
   } finally {
@@ -232,5 +233,5 @@ await fs.writeFile(
   JSON.stringify(results, null, 2),
 );
 console.log(
-  "PASS: four bundled font families actually render UI and terminal text at 100/125/150/200% DPI; font sizes and complete hex inputs verified.",
+  "PASS: three bundled font families actually render UI and terminal text at 100/125/150/200% DPI; font sizes and complete hex inputs verified.",
 );

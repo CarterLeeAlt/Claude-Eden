@@ -47,9 +47,9 @@ for (const platform of ["windows"]) {
     },
     nativeRequest: async (body) => {
       calls.push(body);
-      return body.action === "saveBrowserDownload"
+      return body.action === "browserDownloadAction" && body.operation === "save"
         ? { canceled: true }
-        : { ok: true };
+        : undefined;
     },
   });
   try {
@@ -164,11 +164,11 @@ for (const platform of ["windows"]) {
     {
       await page.emulateMedia({ colorScheme: "dark" });
       await page.waitForFunction(
-        () => document.documentElement.dataset.theme === "dark",
+        () => getComputedStyle(document.documentElement).colorScheme === "light",
       );
       await trigger.click();
       await panel.waitFor();
-      await page.screenshot({ path: `${output}/dark.png` });
+      await page.screenshot({ path: `${output}/dark-system-light-ui.png` });
       await page.evaluate(() =>
         document.documentElement.style.setProperty("--ui-font-size", "28px"),
       );
@@ -220,11 +220,13 @@ for (const platform of ["windows"]) {
     );
     await panel.getByRole("button", { name: "关闭面板", exact: true }).click();
     records = [];
+    await page.waitForLoadState("networkidle");
     await page.reload();
     await page.getByRole("button", { name: "打开浏览器", exact: true }).click();
     await trigger.click();
     await panel.getByText("暂无下载", { exact: true }).waitFor();
     await page.screenshot({ path: `${output}/${platform}-empty.png` });
+    await page.waitForLoadState("networkidle");
     assert.ok(
       calls.some(
         (call) =>
@@ -238,7 +240,7 @@ for (const platform of ["windows"]) {
           call.operation === "reveal",
       ),
     );
-    assert.ok(calls.some((call) => call.action === "saveBrowserDownload"));
+    assert.ok(calls.some((call) => call.action === "browserDownloadAction" && call.operation === "save"));
     assert.ok(
       calls.some((call) => call.action === "retry" && call.id === "failed"),
     );

@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { chooseInline, createWorkbench } from "./workbench-fixture.mjs";
 
-const output = new URL("../../docs/test-reports/2026-11-07-user-feedback/", import.meta.url);
+const output = new URL("../../.tmp/ui-migration/exit-policy-region/", import.meta.url);
 await fs.mkdir(output, { recursive: true });
 const { browser, page, state, errors } = await createWorkbench();
 try {

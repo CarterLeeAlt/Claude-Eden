@@ -1,0 +1,634 @@
+import React, { useEffect, useRef, useState } from "react";
+import { Check, ChevronLeft, LoaderCircle, ShieldCheck } from "lucide-react";
+import { api, native, nativeAvailable } from "../lib/api.ts";
+import { useAccount } from "./account.tsx";
+import { InitializationStorage } from "./initialization-storage.tsx";
+import { GuestProfileOptions } from "./guest-profile.tsx";
+import { ProxySettings } from "./proxy-settings.tsx";
+import { SetupProgress } from "./setup-progress.tsx";
+import { DiagnosticSettings } from "./diagnostics.tsx";
+import { InitializationDetails } from "./initialization-checks.tsx";
+import { Modal } from "../components/ui/modal.tsx";
+import { SafetyMessage } from "./safety-message.tsx";
+import { needsProxySetup } from "../lib/onboarding-state.ts";
+import { networkState } from "../lib/safety-state.ts";
+import logo from "../logo.png";
+import "../styles/initialization.css";
+import type { Status, ProxyState, GuestProfile } from "../lib/contracts.ts";
+import type { InitializationLocation } from "./initialization-storage.tsx";
+import type { WorkbenchInitializationView } from "../lib/contracts.generated.ts";
+import type {
+  Confirm,
+  Confirmation,
+  ConfirmResult,
+  Job,
+} from "../lib/types.ts";
+import { errorMessage } from "../lib/errors.ts";
+
+const steps = [
+  ["system", "系统与存储"],
+  ["proxy", "网络代理"],
+  ["install", "安装与检查"],
+];
+
+function InitializationFrame({ children }: React.PropsWithChildren) {
+  return (
+    <main className="initialization">
+      <header className="initialization-brand">
+        <img src={logo} alt="" />
+        <strong>Claude Eden</strong>
+        <span>首次设置</span>
+      </header>
+      {children}
+    </main>
+  );
+}
+
+export function InitializationGate({ children }: React.PropsWithChildren) {
+  const [state, setState] = useState<WorkbenchInitializationView | null>(null);
+  const [error, setError] = useState("");
+  const [attempt, retry] = useState(0);
+  useEffect(() => {
+    let live = true;
+    setError("");
+    (async () => {
+      const next = await api("/environment/initialization");
+      if (next.required && !next.tracked && !next.started)
+        await api("/environment/initialization", { action: "begin" });
+      if (live) setState(next);
+    })().catch((error) => {
+      if (live) setError(errorMessage(error));
+    });
+    return () => {
+      live = false;
+    };
+  }, [attempt]);
+  if (error)
+    return (
+      <InitializationFrame>
+        <section className="initialization-content">
+          <h1>继续准备 Claude Eden</h1>
+          <p role="alert">
+            <SafetyMessage message={error} />
+          </p>
+          <button
+            className="primary"
+            onClick={() => retry((value) => value + 1)}
+          >
+            重新连接
+          </button>
+          <DiagnosticSettings />
+        </section>
+      </InitializationFrame>
+    );
+  if (!state)
+    return (
+      <InitializationFrame>
+        <section className="initialization-content">
+          <h1>正在读取环境状态</h1>
+          <p role="status">
+            <LoaderCircle size={18} className="spin" />
+            正在检查已有配置和安装进度…
+          </p>
+        </section>
+      </InitializationFrame>
+    );
+  return state.required ? (
+    <Initialization
+      initial={state}
+      onComplete={() => setState({ ...state, required: false })}
+    />
+  ) : (
+    children
+  );
+}
+
+function Initialization({
+  initial,
+  onComplete,
+}: {
+  initial: WorkbenchInitializationView;
+  onComplete: () => void;
+}) {
+  const { account, refresh } = useAccount();
+  const [step, setStep] = useState(
+    initial.started || account?.guest_system ? "install" : "system",
+  );
+  const [status, setStatus] = useState<Status | null>(null);
+  const [proxy, setProxy] = useState<ProxyState | null>(null);
+  const [storage, setStorage] = useState<InitializationLocation | null>(null);
+  const [guestProfile, setGuestProfile] = useState<GuestProfile | null>(null);
+  const [guestProfileReady, setGuestProfileReady] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [connectionError, setConnectionError] = useState("");
+  const [details, setDetails] = useState(false);
+  const [help, setHelp] = useState(false);
+  const [dialog, setDialog] = useState<Confirmation | null>(null);
+  const [proxyDirty, setProxyDirty] = useState(false);
+  const alive = useRef(true);
+  const pollNow = useRef<(() => Promise<void>) | null>(null);
+  const actionPending = useRef(false);
+  const restored = useRef(false);
+  const job: Partial<Job> = status?.job || {};
+  const busy = submitting || Boolean(job.running);
+  const network = networkState(status);
+  const ready = Boolean(
+    status?.ready &&
+    status.vm_running &&
+    !busy &&
+    !job.error &&
+    network.mode === "open",
+  );
+  const confirm: Confirm = (options) =>
+    new Promise((resolve) => setDialog({ ...options, resolve }));
+  const settleDialog = (value: ConfirmResult) => {
+    dialog?.resolve(value);
+    setDialog(null);
+  };
+
+  useEffect(() => {
+    alive.current = true;
+    let timer: ReturnType<typeof setTimeout> | undefined,
+      polling = false;
+    async function poll() {
+      if (polling || !alive.current) return;
+      clearTimeout(timer);
+      polling = true;
+      try {
+        const next = await api("/status");
+        if (!alive.current) return;
+        setStatus(next);
+        setConnectionError("");
+        const results = await Promise.allSettled([api("/proxy")]);
+        if (!alive.current) return;
+        if (results[0].status === "fulfilled") setProxy(results[0].value);
+        else setConnectionError(errorMessage(results[0].reason));
+        if (!restored.current) {
+          restored.current = true;
+          if (
+            initial.started &&
+            !initial.prepared &&
+            !account?.guest_system &&
+            !next.job?.running &&
+            !next.job?.setup_progress &&
+            !next.ready
+          )
+            setStep("system");
+        }
+        if (
+          next.job?.running &&
+          ["start", "guest-install", "safety"].includes(next.job.kind)
+        )
+          setStep("install");
+      } catch (error) {
+        if (alive.current) setConnectionError(errorMessage(error));
+      } finally {
+        polling = false;
+        if (alive.current) timer = setTimeout(poll, 1200);
+      }
+    }
+    pollNow.current = poll;
+    poll();
+    if (nativeAvailable()) native("workbenchReady").catch(() => {});
+    window.edenWorkbenchAction = async (action) => {
+      if (action === "quit") await native("quitNow");
+    };
+    return () => {
+      alive.current = false;
+      clearTimeout(timer);
+      pollNow.current = null;
+      delete window.edenWorkbenchAction;
+    };
+  }, [account?.guest_system]);
+
+  async function run(operation: () => Promise<unknown>) {
+    if (actionPending.current) return;
+    actionPending.current = true;
+    setSubmitting(true);
+    setError("");
+    try {
+      await operation();
+    } catch (error) {
+      if (alive.current) setError(errorMessage(error));
+    } finally {
+      actionPending.current = false;
+      if (alive.current) {
+        setSubmitting(false);
+        pollNow.current?.();
+      }
+    }
+  }
+  async function install() {
+    if (needsProxySetup(null, status, proxy)) {
+      setError("请先选择并应用代理节点。");
+      setStep("proxy");
+      return;
+    }
+    await run(async () => {
+      await api("/environment/initialization", { action: "install" });
+      const accepted = await api("/start", {
+        guest_system: "debian-13",
+        ...(guestProfile ? { guest_profile: guestProfile } : {}),
+      });
+      if (!alive.current) return;
+      setStep("install");
+      setStatus(
+        (current) =>
+          current && {
+            ...current,
+            job: {
+              ...accepted,
+              running: true,
+              kind: accepted.kind || "start",
+              message: accepted.message || "正在准备客机环境…",
+            },
+          },
+      );
+    });
+  }
+  async function stop() {
+    if (
+      !(await confirm({
+        title: "停止当前安装？",
+        body: "安装进度、已下载文件和虚拟磁盘会保留。你可以在此界面继续安装。",
+        confirm: "停止安装",
+      }))
+    )
+      return;
+    await run(async () => {
+      const accepted = await api("/stop", {});
+      setStatus(
+        (current) =>
+          current && { ...current, job: { ...accepted, running: true } },
+      );
+    });
+  }
+  async function enter() {
+    await run(async () => {
+      await api("/environment/initialization", { action: "complete" });
+      await refresh();
+      if (alive.current) onComplete();
+    });
+  }
+  async function checkNetwork() {
+    await run(async () => {
+      const accepted = await api("/safety/check", {});
+      setStatus(
+        (current) =>
+          current && {
+            ...current,
+            job: {
+              ...accepted,
+              running: true,
+              kind: "safety",
+              message: "正在检查代理出口和环境隔离…",
+            },
+          },
+      );
+    });
+  }
+  async function back() {
+    if (
+      step === "proxy" &&
+      proxyDirty &&
+      !(await confirm({
+        title: "放弃尚未应用的代理修改？",
+        body: "已经保存并应用的代理会保留，当前未应用的表单修改会丢弃。",
+        confirm: "放弃修改",
+      }))
+    )
+      return;
+    setProxyDirty(false);
+    setStep(
+      step === "install"
+        ? "proxy"
+        : account?.guest_system
+          ? "install"
+          : "system",
+    );
+  }
+  async function nextFromSystem() {
+    if (!storage) return;
+    await run(async () => {
+      if (guestProfile)
+        setGuestProfile(
+          await api("/environment/guest-profile/preview", guestProfile),
+        );
+      const directory = storage.directory.trim();
+      if (directory !== storage.location.directory) {
+        const accepted = await api("/environment/storage", {
+          directory,
+          previous: storage.location.directory,
+          migrate: false,
+        });
+        let job;
+        do {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          if (!alive.current) return;
+          const next = await api("/status");
+          setStatus(next);
+          job = next.job;
+          if (job.id !== accepted.id)
+            throw new Error("存储操作状态已变化，请核对目录后重试。");
+        } while (job.running);
+        if (job.error) throw new Error(job.error);
+        const location = await api("/environment/storage");
+        if (location.directory !== directory)
+          throw new Error("存储目录尚未保存，请重新选择后重试。");
+        setStorage({ location, directory: location.directory });
+      }
+      setStep("proxy");
+    });
+  }
+  const failed = Boolean(job.error || error);
+  const networkPending = Boolean(
+    status?.ready && status.vm_running && network.mode !== "open",
+  );
+  const progress =
+    status && !status.ready && status.job.setup_progress
+      ? { ...status.job, setup_progress: status.job.setup_progress }
+      : null;
+  const title =
+    step === "system"
+      ? "为 Claude Eden 准备独立环境"
+      : step === "proxy"
+        ? "连接你的网络代理"
+        : ready
+          ? "Claude Eden 已准备就绪"
+          : !busy && networkPending
+            ? "环境已启动，等待联网检查"
+            : failed
+              ? "继续完成环境安装"
+              : busy
+                ? "正在准备你的环境"
+                : "安装并检查客机环境";
+  const index = steps.findIndex(([key]) => key === step);
+  return (
+    <InitializationFrame>
+      <section className="initialization-content">
+        <ol className="initialization-steps" aria-label="初始化步骤">
+          {steps.map(([key, label], position) => (
+            <li key={key} aria-current={step === key ? "step" : undefined}>
+              <span>
+                {position < index ? <Check size={14} /> : position + 1}
+              </span>
+              {label}
+            </li>
+          ))}
+        </ol>
+        <div className="initialization-title">
+          <h1>{title}</h1>
+          <p>
+            {step === "system"
+              ? "为本地 Debian 13 客机选择存储位置。初始化完成后，再进入工作台。"
+              : step === "proxy"
+                ? "这里的代理供客机内的进程和开发工具使用。系统镜像通过主机代理下载，遵循 Clash 等软件的系统代理或 TUN 设置。"
+                : ready
+                  ? "系统、开发组件和网络检查均已完成，可以进入工作台开始使用。"
+                  : "下载、安装、必要授权和检查都在这里完成。中断后可以继续原任务。"}
+          </p>
+        </div>
+        {connectionError && (
+          <div className="initialization-notice" role="alert">
+            <SafetyMessage message={connectionError} />
+            <button onClick={() => pollNow.current?.()}>重新连接</button>
+          </div>
+        )}
+        {!status ? (
+          <p role="status">
+            <LoaderCircle size={18} className="spin" />
+            正在读取安装状态…
+          </p>
+        ) : (
+          <>
+            <div className="initialization-stage" key={step}>
+              {step === "system" && (
+                <>
+                  <div className="setting-summary-row">
+                    <span>客户机系统</span>
+                    <strong>Debian 13</strong>
+                  </div>
+                  <InitializationStorage
+                    value={storage}
+                    onChange={setStorage}
+                    disabled={busy}
+                  />
+                  <GuestProfileOptions
+                    value={guestProfile}
+                    onChange={setGuestProfile}
+                    onReady={setGuestProfileReady}
+                    disabled={busy}
+                  />
+                </>
+              )}
+              {step === "proxy" && (
+                <ProxySettings
+                  initializing
+                  status={status}
+                  onConfirm={confirm}
+                  onDirty={setProxyDirty}
+                  onApplied={async () => {
+                    setProxy(await api("/proxy"));
+                    pollNow.current?.();
+                  }}
+                />
+              )}
+              {step === "install" &&
+                (ready ? (
+                  <div className="initialization-ready">
+                    <ShieldCheck size={36} />
+                    <h2>环境已就绪</h2>
+                    <p>
+                      独立客机已安装，工具、文件和登录状态会持续保存。以后打开
+                      Claude Eden 可直接进入工作台。
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {progress ? (
+                      <SetupProgress
+                        job={progress}
+                        onDetails={() => setDetails(true)}
+                        onStop={stop}
+                        onRetry={install}
+                        disconnected={Boolean(connectionError) || submitting}
+                      />
+                    ) : (
+                      <div className="initialization-operation" role="status">
+                        {busy && <LoaderCircle size={22} className="spin" />}
+                        <p>
+                          {job.kind === "stop" &&
+                          !job.running &&
+                          !job.error &&
+                          !job.canceled &&
+                          !status.ready
+                            ? "安装已停止，可继续安装"
+                            : job.message ||
+                              (status.vm_running
+                                ? "请完成客机连接和网络检查。"
+                                : "准备继续原安装，已有文件和磁盘会保留。")}
+                        </p>
+                        {!busy && !job.error && (
+                          <button
+                            className="primary"
+                            disabled={Boolean(connectionError)}
+                            onClick={install}
+                          >
+                            {status.ready ? "重新启动并检查" : "继续安装"}
+                          </button>
+                        )}
+                        {busy && (
+                          <button onClick={stop} disabled={submitting}>
+                            停止安装
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {job.error && !progress && (
+                      <div className="initialization-notice" role="alert">
+                        <SafetyMessage message={job.error} />
+                        {!networkPending && (
+                          <button
+                            className="primary"
+                            disabled={busy || Boolean(connectionError)}
+                            onClick={install}
+                          >
+                            继续安装
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {status.ready && network.mode !== "open" && !busy && (
+                      <>
+                        <div className="initialization-network">
+                          <p>
+                            {status.safety?.error ||
+                              job.error ||
+                              status.network_error ||
+                              "客机已经连接，请完成网络和隔离检查后进入工作台。"}
+                          </p>
+                          <button
+                            disabled={Boolean(connectionError)}
+                            onClick={checkNetwork}
+                          >
+                            运行网络与隔离检查
+                          </button>
+                        </div>
+                      </>
+                    )}
+                    {(progress?.setup_progress.phase === "image" ||
+                      (failed && !networkPending)) && (
+                      <p>
+                        系统镜像和在主机上准备的安装组件遵循主机代理设置。下载失败时，可在操作详情中查看当前文件和重试记录。客机内的联网请求使用
+                        Claude Eden 代理。
+                      </p>
+                    )}
+                    <div className="initialization-recovery">
+                      <button onClick={() => setStep("proxy")} disabled={busy}>
+                        检查 Claude Eden 代理配置
+                      </button>
+                      {!progress && (
+                        <button onClick={() => setDetails(true)}>
+                          查看操作详情
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ))}
+            </div>
+            {error && (
+              <p className="initialization-notice" role="alert">
+                <SafetyMessage message={error} />
+              </p>
+            )}
+            <footer className="initialization-actions">
+              {step === "system" ? (
+                <span />
+              ) : (
+                <button className="text-button" disabled={busy} onClick={back}>
+                  <ChevronLeft size={16} />
+                  上一步
+                </button>
+              )}
+              {step === "system" && (
+                <button
+                  className="primary"
+                  disabled={
+                    busy ||
+                    !guestProfileReady ||
+                    !storage?.directory.trim() ||
+                    Boolean(connectionError)
+                  }
+                  onClick={nextFromSystem}
+                >
+                  {submitting && <LoaderCircle size={16} className="spin" />}
+                  下一步：配置代理
+                </button>
+              )}
+              {step === "proxy" && (
+                <button
+                  className="primary"
+                  disabled={
+                    busy ||
+                    proxyDirty ||
+                    needsProxySetup(null, status, proxy) ||
+                    Boolean(connectionError)
+                  }
+                  onClick={install}
+                >
+                  {submitting ? (
+                    <LoaderCircle size={16} className="spin" />
+                  ) : null}
+                  开始安装
+                </button>
+              )}
+              {step === "install" && ready && (
+                <button
+                  className="primary"
+                  disabled={submitting || Boolean(connectionError)}
+                  onClick={enter}
+                >
+                  进入工作台
+                </button>
+              )}
+            </footer>
+          </>
+        )}
+        <div className="initialization-support">
+          <button
+            className="text-button"
+            aria-expanded={help}
+            onClick={() => setHelp(!help)}
+          >
+            日志与诊断
+          </button>
+        </div>
+        {help && <DiagnosticSettings />}
+      </section>
+      {details && (
+        <Modal title="初始化操作详情" onClose={() => setDetails(false)}>
+          <InitializationDetails status={status} />
+        </Modal>
+      )}
+      {dialog && (
+        <Modal
+          title={dialog.title}
+          onClose={() => settleDialog(false)}
+          footer={
+            <>
+              <button onClick={() => settleDialog(false)}>取消</button>
+              <button className="primary" onClick={() => settleDialog(true)}>
+                {dialog.confirm}
+              </button>
+            </>
+          }
+        >
+          <div className="modal-body">
+            <p>{dialog.body}</p>
+          </div>
+        </Modal>
+      )}
+    </InitializationFrame>
+  );
+}

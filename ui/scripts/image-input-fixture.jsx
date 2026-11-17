@@ -1,8 +1,8 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { AppearanceProvider } from "../src/appearance";
-import { TerminalView } from "../src/views";
-import "../src/style.css";
+import { AppearanceProvider } from "../src/features/appearance.tsx";
+import { TerminalView } from "../src/features/views.tsx";
+import "../src/styles/style.css";
 
 const root = createRoot(document.getElementById("terminal"));
 window.showTestTerminal = (visible = true) =>

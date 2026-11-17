@@ -8,7 +8,7 @@ import { createWorkbench } from "./workbench-fixture.mjs";
     ["windows", undefined, undefined, "Debian 13"],
   ]) {
     const { browser, page, state, errors } = await createWorkbench({
-      clientContext: { mode: "local", connection_id: "local", client_platform: host, server_platform: host },
+      clientContext: { mode: "local", connection_id: "local", client_platform: host, server_platform: host, connection: { state: "disconnected" } },
     });
     try {
       state.account.guest_system = accountSystem;

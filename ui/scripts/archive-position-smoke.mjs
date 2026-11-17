@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, sessionView, terminalView } from "./workbench-fixture.mjs";
 
 const output = process.env.EDEN_TEST_CAPTURE || "../.tmp/guest-neutralization/ui-eden/archive-position";
 const engine = process.env.EDEN_TEST_BROWSER || "chromium";
@@ -8,7 +8,7 @@ const { page, state, browser, errors } = await createWorkbench({
   url: process.env.EDEN_UI_URL || "http://127.0.0.1:5217",
 });
 const workspace = state.settings.workspace;
-const sessions = Array.from({ length: 18 }, (_, i) => ({
+const sessions = Array.from({ length: 18 }, (_, i) => sessionView({
   id: `archive-position-${i}`, workspace, title: i ? `历史会话 ${i}` : "正在处理的会话",
   updated_at: "2026-11-08T08:00:00Z",
 }));
@@ -22,7 +22,7 @@ const actions = title => page.getByRole("group", { name: `${title} 的操作`, e
 const open = async title => {
   const row = page.locator(".sidebar-tab").filter({ has: actions(title) });
   await row.hover();
-  const trigger = actions(title).getByRole("button", { name: "归档", exact: true });
+  const trigger = actions(title).getByRole("button", { name: "归档", exact: true, includeHidden: true });
   await trigger.click();
   await dialog.waitFor();
   return trigger;
@@ -40,8 +40,8 @@ try {
     await route.fulfill({ json: { ok: true } });
   });
   state.status.ready = state.status.vm_running = true;
-  state.terminals = [{ id: "archive-live", kind: "claude", workspace,
-    title: sessions[0].title, cli_session_id: sessions[0].id }];
+  state.terminals = [terminalView({ id: "archive-live", kind: "claude", workspace,
+    title: sessions[0].title, cli_session_id: sessions[0].id })];
   await page.getByRole("tab", { name: sessions[0].title, exact: true }).waitFor();
   const project = page.locator(".sidebar-project").filter({ has: actions(sessions[0].title) });
   const expand = project.getByRole("button", { name: "展开显示", exact: true });
@@ -68,12 +68,13 @@ try {
     const trigger = await open(sessions[0].title);
     const anchor = await trigger.boundingBox();
     const box = await dialog.boundingBox();
-    assert.ok(Math.abs(box.y - anchor.y - anchor.height - 6) < 1, "confirmation is not below archive trigger");
+    assert.ok(Math.abs(box.y - anchor.y - anchor.height - 8) < 1, `confirmation is not below archive trigger: ${JSON.stringify({ anchor, box })}`);
     assert.ok(box.width <= 305 && box.x >= 8 && box.x + box.width <= width - 8, "confirmation overflows window");
     assert.ok(Math.abs(box.x + box.width / 2 - anchor.x) < 100, "confirmation is too far from trigger");
     await page.screenshot({ path: `${output}/${engine}-${width}.png` });
     await dialog.getByRole("button", { name: "取消", exact: true }).click();
     await dialog.waitFor({ state: "hidden" });
+    await page.waitForFunction(node => node === document.activeElement, await trigger.elementHandle());
     assert.equal(archived, 0, "cancel archived a session");
     assert.equal(await trigger.evaluate(node => node === document.activeElement), true, "cancel did not restore trigger focus");
     await trigger.press("Enter");
@@ -84,6 +85,7 @@ try {
     assert.equal(await dialog.getByRole("button", { name: "关闭面板", exact: true }).evaluate(node => node === document.activeElement), true);
     await page.keyboard.press("Escape");
     await dialog.waitFor({ state: "hidden" });
+    await page.waitForFunction(node => node === document.activeElement, await trigger.elementHandle());
     assert.equal(await trigger.evaluate(node => node === document.activeElement), true);
     await trigger.press("Enter");
     await dialog.waitFor();
@@ -125,7 +127,7 @@ try {
   await writeFile(`${output}/${engine}-bottom-precondition.json`, JSON.stringify(bottomFixture, null, 2));
   assert.ok(bottomAnchor.y >= sidebarBox.y && bottomAnchor.y + bottomAnchor.height <= sidebarBox.y + sidebarBox.height,
     "bottom-case trigger must remain inside the visible sidebar");
-  assert.ok(bottomAnchor.y + bottomAnchor.height + 6 + bottomBox.height > page.viewportSize().height - 8,
+  assert.ok(bottomAnchor.y + bottomAnchor.height + 8 + bottomBox.height > page.viewportSize().height - 8,
     "bottom-case fixture must leave insufficient room below the trigger");
   assert.ok(bottomBox.y >= 8 && bottomBox.y + bottomBox.height <= 842, "bottom confirmation is clipped");
   assert.ok(bottomBox.y + bottomBox.height <= bottomAnchor.y, "bottom confirmation did not move above the trigger");

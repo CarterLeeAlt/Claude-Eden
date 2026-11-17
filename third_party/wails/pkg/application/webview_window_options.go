@@ -354,6 +354,11 @@ const (
 )
 
 type WindowsWindow struct {
+	// WebViewPolicy installs native navigation, download and dialog policies.
+	WebViewPolicy *WindowsWebViewPolicy
+	// GlobalPermission overrides per-kind permissions, including future unknown
+	// WebView2 kinds. Nil preserves the existing per-kind/default behaviour.
+	GlobalPermission *CoreWebView2PermissionState
 	// Select the type of translucent backdrop. Requires Windows 11 22621 or later.
 	// Only used when window's `BackgroundType` is set to `BackgroundTypeTranslucent`.
 	// Default: Auto

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { createWorkbench } from './workbench-fixture.mjs';
+import { createWorkbench, waitForFixture } from './workbench-fixture.mjs';
 const output = fileURLToPath(new URL('../../.tmp/guest-neutralization/ui-eden/screenshots/account/', import.meta.url));
 await fs.mkdir(output, { recursive: true });
 let launchAcks = 0;
@@ -9,7 +9,6 @@ const {browser,page,state,errors} = await createWorkbench({nativeRequest: async 
   if (action === 'workbenchReady') { launchAcks++; return true; }
   return null;
 }});
-await page.exposeFunction('fixtureLaunchAcks', () => launchAcks);
 const accountMenu = () => page.getByRole('button', { name: /^账户菜单，/ });
 async function checkMenuLayout() {
   const trigger = accountMenu();
@@ -35,9 +34,10 @@ async function checkMenuLayout() {
 try {
   Object.assign(state.account, {exists:false,unlocked:false,username:''});
   const previousAcks = launchAcks;
+  await page.waitForLoadState('networkidle');
   await page.reload();
   await page.getByRole('heading',{name:'注册 Claude Eden 账户'}).waitFor();
-  await page.waitForFunction(async (previous) => await window.fixtureLaunchAcks() > previous, previousAcks);
+  await waitForFixture(() => launchAcks > previousAcks);
   await page.screenshot({path:output+'create.png'});
   await page.getByLabel('用户名',{exact:true}).fill('林间工作室');
   await page.getByLabel('设置密码',{exact:true}).fill('fixture-password');
@@ -73,6 +73,7 @@ try {
   await page.getByRole('status').filter({hasText:'密码已修改'}).waitFor();
   await page.getByRole('button',{name:'返回工作台',exact:true}).click();
   state.status.vm_running=true;state.status.ready=true;
+  await page.waitForLoadState('networkidle');
   await page.reload();
   await page.getByRole('button',{name:/^在 .* 新建终端$/}).click();
   await page.getByRole('menuitem',{name:'普通终端',exact:true}).click();
@@ -91,6 +92,7 @@ try {
   await page.getByRole('button',{name:'解锁 Claude Eden',exact:true}).click();
   await accountMenu().waitFor();
   assert.deepEqual(state.terminals.map(x=>x.id),ids);
+  await page.waitForLoadState('networkidle');
   await page.reload();
   await accountMenu().waitFor();
   assert.match(await accountMenu().getAttribute('aria-label'),/山雀的工作室/);
@@ -107,6 +109,7 @@ try {
   await page.getByRole('region',{name:'解锁 Claude Eden',exact:true}).waitFor();
   assert.equal(state.status.vm_running,false);
   assert.equal(state.terminals.length,0);
+  await page.waitForLoadState('networkidle');
   assert.deepEqual(errors,[]);
   console.log('PASS: account creation, avatar/profile persistence, save failure, password change, lock with live terminals, unlock and stop-on-logout');
 } finally {await browser.close();}

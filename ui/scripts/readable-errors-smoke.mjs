@@ -21,7 +21,7 @@ for (const platform of ["windows"]) {
 
     await page.route("**/api/environment/resources", route => route.fulfill({ status: 503, contentType: "text/html", body: "<html>upstream failed token=private-test-secret</html>" }));
     const failure = await page.evaluate(async () => {
-      const { api } = await import("/src/api.js");
+      const { api } = await import("/src/lib/api.ts");
       try { await api("/environment/resources"); return "unexpected success"; }
       catch (error) { return { message: error.message, status: error.status }; }
     });
@@ -30,7 +30,7 @@ for (const platform of ["windows"]) {
     assert.ok(!failure.message.includes("private-test-secret") && !failure.message.includes("<html>"));
     await page.route("**/api/environment/resources", route => route.fulfill({ status: 200, contentType: "application/json", body: "not-json token=private-test-secret" }));
     const malformed = await page.evaluate(async () => {
-      const { api } = await import("/src/api.js");
+      const { api } = await import("/src/lib/api.ts");
       try { await api("/environment/resources"); } catch (error) { return error.message; }
     });
     assert.match(malformed, /资源配置.*格式无效/);

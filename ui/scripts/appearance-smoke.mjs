@@ -116,11 +116,11 @@ try {
     "15",
   );
   assert.equal(state.appearance.uiFontSize, 16);
-  assert.match(
+  assert.equal(
     await page.evaluate(
       () => getComputedStyle(document.documentElement).fontFamily,
     ),
-    /Inter.*Noto Sans SC/,
+    '"Noto Sans SC", "Noto Sans Mono CJK SC", sans-serif',
   );
   checks.push(
     "内置字体/半透明/指针/动态效果、失败保留输入与重试、快速调整最后写入胜出、刷新读回",

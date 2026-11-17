@@ -83,7 +83,7 @@ func (i *ICoreWebView2_4) RemoveDownloadStarting(token EventRegistrationToken) e
 
 	hr, _, _ := i.Vtbl.RemoveDownloadStarting.Call(
 		uintptr(unsafe.Pointer(i)),
-		uintptr(unsafe.Pointer(&token)),
+		uintptr(token.value),
 	)
 	if windows.Handle(hr) != windows.S_OK {
 		return syscall.Errno(hr)

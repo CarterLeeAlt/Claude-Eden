@@ -11,7 +11,7 @@ const { browser, page, state, errors } = await createWorkbench({
     if (request.action === "clipboardRevision") return 1;
     if (request.action === "clipboardSyncRead") return { text: "synthetic system clipboard", revision: 1 };
     if (request.action === "clipboardReadContent") return new Promise(resolve => reads.push(resolve));
-    return true;
+    return undefined;
   },
   async beforeNavigate(page, state) {
     state.status.ready = state.status.vm_running = true;
@@ -69,8 +69,8 @@ try {
       if (String(args[0]).endsWith("/input/paste/start")) window.pasteIntent.push("prepare");
       return fetch(...args);
     };
-    const bridge = window.edenNativeBridge, post = bridge.postMessage.bind(bridge);
-    bridge.postMessage = body => {
+    const post = window.edenTestNativeRequest;
+    window.edenTestNativeRequest = body => {
       if (body.action === "clipboardReadContent") window.pasteIntent.push("read");
       return post(body);
     };
@@ -84,7 +84,7 @@ try {
   await page.keyboard.press("Enter");
   assert(!display.stats.keys.some(key => key.symbol === 0xff0d));
   const longText = "共享架构🙂\n".repeat(2000);
-  reads[0]({ text: longText });
+   reads[0]({ revision: 1, text: longText });
   await until(() => delivered.length === 1 && display.stats.keys.some(key => key.symbol === 0xff0d && !key.down));
   assert.equal(delivered[0].kind, "text");
   assert.equal(delivered[0].body.text, longText);
@@ -96,17 +96,17 @@ try {
   await until(() => reads.length === 2);
   await page.getByRole("tab", { name: "输入测试二", exact: true }).click();
   await until(() => state.active === "input-two");
-  reads[1]({ png });
+   reads[1]({ revision: 1, png });
   await until(() => cancelled.some(item => item.context === prepared[1].context));
   assert.equal(delivered.length, 1, "an old tab must reject the delayed PNG");
 
   await canvas.click({ position: { x: 50, y: 50 } });
   assert.deepEqual(await page.evaluate(() => [window.edenEditAction("paste"), window.edenEditAction("paste")]), [true, true]);
   await until(() => reads.length === 4 && prepared.length === 4);
-  reads[3]({ text: "second queued paste" });
+   reads[3]({ revision: 1, text: "second queued paste" });
   await page.waitForTimeout(80);
   assert.equal(delivered.length, 1, "the second clipboard read must wait for the first paste");
-  reads[2]({ png });
+   reads[2]({ revision: 1, png });
   await until(() => delivered.length === 3);
   assert.deepEqual(delivered.slice(1).map(item => item.kind), ["image", "text"]);
   assert(delivered.slice(1).every(item => item.body.id === "input-two"));

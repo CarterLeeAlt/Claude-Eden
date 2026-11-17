@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createWorkbench } from "./workbench-fixture.mjs";
 
-const { browser, page, state, errors } = await createWorkbench();
+const { browser, page, state, errors } = await createWorkbench({ beforeNavigate: page => page.clock.install() });
 let releaseStart;
 const startGate = new Promise(resolve => { releaseStart = resolve; });
 let starts = 0;
@@ -16,12 +16,16 @@ try {
   await page.route("**/api/start", async route => {
     starts++;
     await startGate;
-    await route.fulfill({ json: { id: "delayed-start" } });
+    await route.fulfill({ json: { id: "delayed-start", kind: "start", running: true, message: "" } });
   });
   const startRequested = page.waitForRequest("**/api/start");
   await page.getByRole("button", { name: "启动 Claude Eden 环境", exact: true }).click();
   await startRequested;
   await assertLoading();
+  await page.clock.fastForward(31 * 60 * 1000);
+  await assertLoading();
+  assert.equal(starts, 1, "slow startup must keep waiting for its actual result without retrying");
+  await page.clock.resume();
   const startResponse = page.waitForResponse("**/api/start");
   releaseStart();
   await startResponse;

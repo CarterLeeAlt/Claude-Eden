@@ -26,16 +26,8 @@ $report = [ordered]@{ status = 'failed'; commit = $env:GITHUB_SHA; windowsTrustT
 $savedCertificate = $env:EDEN_WINDOWS_CERT_SHA1
 try {
     New-Item -ItemType Directory -Path $stage | Out-Null
-    $source = Join-Path $stage 'SigningProbe.cs'
-    @'
-using System;
-public static class SigningProbe {
-    public static void Main() { Console.WriteLine("Claude Eden code signing verification fixture."); }
-}
-'@ | Set-Content -LiteralPath $source -Encoding utf8
-    $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
     $executable = Join-Path $stage 'probe.exe'
-    Invoke-BuildTool $compiler @('/nologo', '/target:exe', "/out:$executable", $source)
+    Invoke-BuildTool (Get-BuildCommand @('go')) @('build', '-trimpath', '-o', $executable, './scripts/signing-probe')
     # NSIS hands its signing hook a PE file without an extension. Exercise that path.
     $probe = Join-Path $stage 'uninstaller-probe'
     Move-Item -LiteralPath $executable -Destination $probe

@@ -9,7 +9,15 @@ const f = await createSettingsWorkbench();
 const { page, controller, fixtureState, errors } = f;
 page.setDefaultTimeout(12000);
 const checks = [];
-const shot = name => page.screenshot({ path: join(output, name + '.png'), animations: 'disabled' });
+const shot = async name => {
+  await page.mouse.move(1, 1);
+  await page.evaluate(async () => {
+    getComputedStyle(document.documentElement).opacity;
+    await Promise.all(document.getAnimations().filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity).map(animation => animation.finished));
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  });
+  await page.screenshot({ path: join(output, name + '.png') });
+};
 try {
   await page.getByRole('button', { name: '打开浏览器', exact: true }).click();
   await page.getByRole('button', { name: '浏览器菜单', exact: true }).click();

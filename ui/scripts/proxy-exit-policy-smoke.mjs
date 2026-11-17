@@ -1,14 +1,14 @@
 // Real settings interactions against isolated API fixtures; no user profile is used.
 import assert from 'node:assert/strict';
-import { createWorkbench } from './workbench-fixture.mjs';
+import { createWorkbench, proxyView } from './workbench-fixture.mjs';
 const policies = {
  first: { mode:'static',scope:'country',ip:'1.1.1.1' },
  second: { mode:'static',scope:'country',ip:'8.8.4.4' },
 };
-const proxy = {
- nodes:[{id:'first',name:'住宅节点001',type:'socks5',server:'127.0.0.1',port:1080},{id:'second',name:'住宅节点003',type:'socks5',server:'127.0.0.1',port:1081}],
+const proxy = proxyView({
+ nodes:[{id:'first',name:'住宅节点001',type:'socks5',server:'127.0.0.1',port:1080},{id:'second',name:'住宅节点003',type:'socks5',server:'127.0.0.1',port:1081}].map(node => ({ username:'',auth_method:'',host_key:[],has_password:false,has_private_key:false,has_private_key_passphrase:false,...node })),
  selected:'first',active:true,running:true,core_available:true,port:17896,state_label:'待启动环境',
-};
+});
 let fail = false, sequence = 0;
 const f = await createWorkbench({beforeNavigate: async (page,state)=>{
  state.settings.exit_policy = {...policies.first};
@@ -20,7 +20,7 @@ const f = await createWorkbench({beforeNavigate: async (page,state)=>{
    state.settings.exit_policy={...policies[proxy.selected]};
   }
    state.status.job={id:`select-${++sequence}`,kind:'proxy',running:false,error:fail?'代理启动失败；原节点已保留':'',message:'节点已应用'};
-  return r.fulfill({json:{id:state.status.job.id}});
+   return r.fulfill({json:state.status.job});
  });
 }});
 try {

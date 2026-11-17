@@ -6,7 +6,7 @@ import {
   themeDocument,
   parseThemeDocument,
   sameTheme,
-} from "../src/appearance-state.mjs";
+} from "../src/lib/appearance-state.ts";
 const output = fileURLToPath(
   new URL("../../.tmp/Font_Preview/verification/themes/", import.meta.url),
 );
@@ -21,7 +21,7 @@ const { browser, page, state, errors } = await createWorkbench({
       exported = body;
       return !cancelExport;
     }
-    return true;
+    return undefined;
   },
 });
 const checks = [];
@@ -188,7 +188,7 @@ try {
   );
   // Exercise the actual browser file input and download fallback as well.
   await page.evaluate(() => {
-    delete window.edenNativeBridge;
+    delete window.edenRuntimeTransport;
   });
   const downloadEvent = page.waitForEvent("download");
   await page.getByRole("button", { name: "导出主题", exact: true }).click();

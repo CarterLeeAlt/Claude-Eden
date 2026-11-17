@@ -1,6 +1,6 @@
 // Verify the Debian workbench's actual entry points.
 import assert from "node:assert/strict";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, claudeDesktopView } from "./workbench-fixture.mjs";
 
 for (const system of ["debian-13"]) {
   const fixture = await createWorkbench({
@@ -8,7 +8,7 @@ for (const system of ["debian-13"]) {
       state.account.guest_system = system;
       state.status.guest_system = system;
       state.status.vm_running = state.status.ready = true;
-      const status = { installed: true, running: true, managed: true, version: "4.0", screen: false, input: false };
+      const status = claudeDesktopView({ installed: true, running: true, managed: true, version: "4.0" });
       await page.route("**/api/claude-desktop", route => route.fulfill({json:status}));
     },
   });

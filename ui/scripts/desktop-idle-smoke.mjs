@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, claudeDesktopView } from "./workbench-fixture.mjs";
 
 const { browser, page, state, errors } = await createWorkbench({
   beforeNavigate: async (page) => page.addInitScript(() => {
@@ -16,7 +16,7 @@ await page.route("**/api/claude-desktop", async (route) => {
   maximum = Math.max(maximum, pending);
   await new Promise((resolve) => setTimeout(resolve, 120));
   pending--;
-  await route.fulfill({ json: { installed: false, running: false, version: "", failed: false } });
+  await route.fulfill({ json: claudeDesktopView() });
 });
 const waitFor = async (predicate) => {
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -26,8 +26,7 @@ const waitFor = async (predicate) => {
   assert.fail("Desktop polling condition did not complete");
 };
 const visible = (value) => page.evaluate((value) => {
-  window.edenWindowVisible = value;
-  window.dispatchEvent(new Event("eden-window-visibility"));
+  window.emitTestDesktopEvent("eden-window-visibility", value);
 }, value);
 try {
   state.status.vm_running = state.status.ready = true;

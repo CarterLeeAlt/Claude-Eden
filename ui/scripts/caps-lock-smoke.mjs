@@ -2,24 +2,28 @@
 // every browser request is fulfilled from local UI modules or rejected.
 // EDEN_PLAYWRIGHT_MODULE and EDEN_TEST_BROWSER_PATH select the test runtime.
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import path from "node:path";
+import { createServer } from "./isolated-vite.mjs";
+import { installNativeFixture } from "./native-fixture.mjs";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.EDEN_PLAYWRIGHT_MODULE || "playwright");
 const root = fileURLToPath(new URL("../", import.meta.url));
-const origin = "http://127.0.0.1:51234";
+const vite = await createServer({ configFile: false, root, server: { host: "127.0.0.1", port: 0 } });
+await vite.listen();
+const origin = `http://127.0.0.1:${vite.httpServer.address().port}`;
 const browser = await chromium.launch({
   headless: true,
   executablePath: process.env.EDEN_TEST_BROWSER_PATH,
 });
 const checks = [];
 const problems = [];
+const diagnosticEvents = [];
 
 async function fixture(platform) {
   const page = await browser.newPage();
+  await installNativeFixture(page);
   page.on("pageerror", (error) => problems.push(error.message));
   await page.addInitScript((value) => {
     Object.defineProperty(navigator, "platform", { get: () => value });
@@ -35,31 +39,28 @@ async function fixture(platform) {
       await route.abort();
       return;
     }
+    if (url.pathname === "/api/diagnostics/events") {
+      diagnosticEvents.push(route.request().postDataJSON());
+      await route.fulfill({ json: {} });
+      return;
+    }
+    if (url.pathname.startsWith("/api/")) {
+      problems.push(`Unexpected fixture API request: ${url.pathname}`);
+      await route.abort();
+      return;
+    }
     if (url.pathname === "/caps-lock-smoke") {
       await route.fulfill({ contentType: "text/html", body: '<div id="remote"><canvas width="1000" height="500" tabindex="-1"></canvas></div>' });
       return;
     }
-    const relative = decodeURIComponent(url.pathname).slice(1);
-    const file = path.resolve(root, relative);
-    if (!file.startsWith(root) || !/^(src|\.generated\/novnc)\//.test(relative)) {
-      problems.push(`Unexpected fixture request: ${url.pathname}`);
-      await route.abort();
-      return;
-    }
-    try {
-      const body = await readFile(path.extname(file) ? file : `${file}.js`);
-      await route.fulfill({ contentType: "text/javascript", body });
-    } catch (error) {
-      problems.push(`${url.pathname}: ${error.message}`);
-      await route.abort();
-    }
+    await route.continue();
   });
-  await page.goto(`${origin}/caps-lock-smoke`);
+  await page.goto(`${origin}/caps-lock-smoke#isolated-keyboard-fixture`);
   await page.evaluate(async (platform) => {
     const [{ default: RFB }, { default: Keyboard }, { installRemoteInput }] = await Promise.all([
       import("/.generated/novnc/core/rfb.js"),
       import("/.generated/novnc/core/input/keyboard.js"),
-      import("/src/remote-input.js"),
+      import("/src/lib/remote-input.ts"),
     ]);
     const container = document.querySelector("#remote");
     const rfb = new EventTarget();
@@ -78,12 +79,12 @@ async function fixture(platform) {
       flush() { packets.push(bytes); bytes = []; },
     };
     window.edenNativeIMEAvailable = true;
-    window.edenNativeBridge = { postMessage: async (value) => {
+    window.edenTestNativeRequest = async (value) => {
       if (value.action === "clipboardRevision") return 0;
       if (value.action !== "remoteInput") throw new Error(`Unexpected native operation: ${value.action}`);
       requests.push(value);
-      return true;
-    } };
+      return { accepted: true, returnedFocus: false };
+    };
     const input = installRemoteInput({
       events: rfb,
       setKeyboardTarget: (target) => rfb.workbenchSetKeyboardTarget(target),
@@ -118,7 +119,7 @@ async function fixture(platform) {
             // A server LED-state reply arrives after the CapsLock press.
             rfb._remoteCapsLock = value.feedback;
           } else {
-            window.dispatchEvent(new CustomEvent("eden-native-input", { detail: { owner, ...value } }));
+            window.emitTestDesktopEvent("eden-native-input", { owner, ...value });
           }
         }
         return {
@@ -199,6 +200,7 @@ try {
   await mac.evaluate(() => probe.input.dispose());
   await mac.close();
   assert.deepEqual(problems, [], "The fixture must have no page errors or unexpected requests");
+  assert.deepEqual(diagnosticEvents, [], "The fixture must not silently discard runtime errors");
   console.log(JSON.stringify({
     passed: true,
     checks,
@@ -207,4 +209,5 @@ try {
   }, null, 2));
 } finally {
   await browser.close();
+  await vite.close();
 }

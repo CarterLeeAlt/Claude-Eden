@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { createWorkbench } from "./workbench-fixture.mjs";
+import { createWorkbench, terminalView, claudeDesktopView, claudeAccountView, claudePanelView } from "./workbench-fixture.mjs";
 
 const capture = process.env.EDEN_TEST_CAPTURE;
 if (capture) await mkdir(capture, { recursive: true });
@@ -15,13 +15,13 @@ for (const [platform, system] of [["windows", "debian-13"]]) {
       state.status.ready = state.status.vm_running = true;
       state.tabs = [{ id: "existing-web", kind: "web", title: "原有网页", url: "https://example.test/" }];
       state.active = "existing-web";
-      state.terminals = [{ id: "existing-terminal", kind: "shell", title: "原有终端", workspace: state.settings.workspace }];
-      const desktop = { installed: true, running: true, managed: true, version: "4.0", screen: false, input: false };
+      state.terminals = [terminalView({ id: "existing-terminal", kind: "shell", title: "原有终端", workspace: state.settings.workspace })];
+      const desktop = claudeDesktopView({ installed: true, running: true, managed: true, version: "4.0" });
       await page.route("**/api/claude-desktop", route => route.fulfill({ json: desktop }));
-      await page.route("**/api/claude-accounts*", route => route.fulfill({ json: {
-        accounts: [{ id: "navigation-account", email: "test@example.invalid", label: "测试账号", enabled: true, status: "ready" }],
+      await page.route("**/api/claude-accounts*", route => route.fulfill({ json: claudePanelView({
+        accounts: [claudeAccountView({ id: "navigation-account", email: "test@example.invalid", label: "测试账号", enabled: true, status: "ready" })],
         detection_status: "ready", scheduling: { mode: "balanced", switch_policy: "ask" },
-      } }));
+      }) }));
     },
   });
   try {

@@ -41,7 +41,7 @@ DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All /NoRestart
 ## 安装并开始工作
 
 1. 查看 [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases) 中实际发布的 Windows 安装包，核对对应发行条目的 `SHA256SUMS`。签名安装包名为 `Eden-<版本>-windows-amd64-setup.exe`；未签名开发包名为 `Eden-<版本>-windows-amd64-setup-unsigned.exe`，需手动安装和更新。尚无安装包时按下文从源码构建。
-2. 运行安装程序，选择安装位置。首次安装默认选择本地 D 盘的 `D:\Eden`；没有本地 D 盘时使用 `%LOCALAPPDATA%\Programs\Eden`。安装器随附 .NET 桌面运行组件、WebView2 安装程序、QEMU、OpenSSH 客户端和代理核心，无需另装 Go、Node.js 或 Clash。
+2. 运行安装程序，选择安装位置。首次安装默认选择本地 D 盘的 `D:\Eden`；没有本地 D 盘时使用 `%LOCALAPPDATA%\Programs\Eden`。安装器随附 Wails 桌面程序、WebView2 安装程序、QEMU、OpenSSH 客户端和代理核心，无需另装 Go、Node.js 或 Clash。
 3. 在“快捷方式”页选择“添加桌面快捷方式”和“添加到开始菜单”。首次安装默认勾选两项，后续 Claude Eden 更新沿用上次选择。卸载会清理 Claude Eden 创建的快捷方式。
 4. 从选中的快捷方式启动 Claude Eden，确认 Debian 13。如果 C 盘空间有限，选择其他磁盘的专用空文件夹，再配置代理节点并启动环境。程序准备官方镜像、工具和虚拟磁盘；已有环境可从设置迁移。见[选盘与迁移步骤](getting-started.md#选择环境存储位置)和[客机系统指南](guide/guest-systems.md)。
 
@@ -52,6 +52,8 @@ DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All /NoRestart
 “打开项目”接受 Windows 文件夹，例如 `C:\Users\姓名\Projects\demo` 在 Linux 内对应 `/c/Users/姓名/Projects/demo`。项目文件仍保存在原来的主机文件夹中，编辑和删除直接影响原文件；项目内的 `.git` 可读写，可在 Claude Eden 中暂存、提交和切换分支。项目共享只限明确打开的目录，下载使用独立的暂存目录。
 
 Windows 快捷键以 `Ctrl` 为主：`Ctrl+O` 打开项目、`Ctrl+T` 新建网页、`Ctrl+L` 定位地址栏、`Ctrl+W` 关闭标签，`Ctrl+Shift+Enter` 新建终端。终端使用 `Ctrl+Shift+C/V` 复制粘贴，`Ctrl+C` 中断命令。网页和编辑器采用相应客机系统的按键行为。
+
+宿主输入法支持中文、英文，包含中英切换、中文组合输入、选词提交、取消和焦点恢复。客机系统与网页的语言设置见[客机系统指南](guide/guest-systems.md)。
 
 网页输入框短暂失焦时，工作台会尝试恢复同一标签和窗格的键盘输入。恢复期间的点击、按键、切换标签、打开设置或切换窗口会取消这次自动恢复，保留用户选择的焦点。如果网页仍不接收按键，可重新点击输入框；尚未确认的输入法组合文字会在失焦时取消。
 
@@ -66,6 +68,8 @@ Windows 快捷键以 `Ctrl` 为主：`Ctrl+O` 打开项目、`Ctrl+T` 新建网�
 应用内更新从当前仓库的公开 GitHub Releases 来源选择 Windows x64 安装器。检查与下载经过已经应用并运行的 Claude Eden 代理，不回退主机直连。下载安装器后校验 SHA-256、版本、产品名称和 Authenticode 签名；当前应用与新安装器必须具有相同的发布者公钥，未签名开发包不能自动安装更新。
 
 没有新版时隐藏更新按钮；有新版时显示金色圆形按钮。用户先保存文件并结束运行中的任务，再点击一次，按钮显示环形下载进度和百分比。校验通过后自动安装，不再二次确认。更新器先备份应用，再通过工作台统一入口停止环境、代理和控制服务，等待当前窗口退出后执行静默安装。新应用完成工作台启动确认后才认定成功；安装或启动失败时尝试恢复旧程序，保留失败原因和必要备份。磁盘空间不足、文件被其他软件占用等情况可能阻止自动恢复，应按错误信息处理。
+
+新版启动等待以实际就绪、明确错误、目标进程退出或用户取消结束。启动较慢时继续等待，耗时本身不会触发回滚。
 
 手动更新前也应保存文件、停止环境并退出 Claude Eden，再运行新版安装器。原后台仍运行时安装器会拒绝覆盖。客机工具在“设置 → 环境与恢复”中单独更新，替换应用会保留原系统与数据。
 
@@ -92,7 +96,22 @@ Claude Eden 支持含中文的安装目录。启动时优先读取随附 QEMU �
 
 ## 从源码构建
 
-构建入口为 [`scripts/build-windows.ps1`](../scripts/build-windows.ps1)，安装包入口为 [`scripts/package-windows.ps1`](../scripts/package-windows.ps1)。版本与依赖以 `VERSION`、`go.mod`、`packaging/windows/dependencies.json` 和锁文件为准。构建需要 PowerShell 7、Go、Node.js/npm、.NET SDK 和 7-Zip，生成安装器还需要 NSIS；签名构建需要相应签名工具及授权。完整构建会执行真实桌面验收，宜在独立测试账户中运行。构建产物与本机已安装应用使用不同目录。
+构建入口为 [`scripts/build-windows.ps1`](../scripts/build-windows.ps1)，安装包入口为 [`scripts/package-windows.ps1`](../scripts/package-windows.ps1)。版本与依赖以 `VERSION`、`go.mod`、`packaging/windows/dependencies.json` 和锁文件为准。桌面采用 Wails 3 与 React／TypeScript，控制服务使用 Go。构建需要 PowerShell 7、Go、Node.js/npm 和 7-Zip，生成安装器还需要 NSIS；Wails 工具按 `go.mod` 固定版本构建到工作区。签名构建需要相应签名工具及授权。编译与打包使用工作区产物目录；真实桌面验收在专用 Windows 测试虚拟机中通过 `-VerifyDesktop` 执行，完整 CI 显式启用该步骤。安装、证书、剪贴板和输入法测试同样使用专用虚拟机，普通开发宿主只执行隔离构建与纯代码测试。
+
+Wails 源码位于 `third_party/wails`，上游版本、提交和校验值见 `patches/wails/source.json`；该目录中的补丁记录 Windows 原生策略接口与隔离测试适配。升级时对固定上游版本重放补丁，并在 Windows 测试虚拟机中复验导航、权限、输入与故障恢复。前端类型绑定由 `scripts/prepare-desktop.mjs` 生成到 `ui/.generated/bindings`，不手工维护。
+
+前端开发、类型检查、测试和构建直接调用 `ui/scripts/prepare-ui.mjs`，统一生成 Wails 绑定、Go 接口类型与前端运行资源。Go 接口类型的生成器为 `ui/scripts/generate-contracts.go`，输出 `ui/src/lib/contracts.generated.ts`。这些入口保持平直的执行顺序，避免嵌套 npm 调用反复扩展 Windows 命令搜索路径。
+
+| 目录 | 职责 |
+| --- | --- |
+| `cmd/eden-desktop`、`internal/desktop` | Wails 入口、窗口和托盘、原生输入与剪贴板、桌面服务绑定。 |
+| `cmd/eden`、`internal/workbench` | 独立 Go 控制服务、工作台 HTTP／WebSocket 接口及环境操作。 |
+| `internal/desktopupdate` | 应用更新状态、签名验证、安装交接、就绪回执与失败恢复。 |
+| `cmd/eden-install`、`internal/installfiles` | 安装器使用的文件事务与归属校验；安装与更新恢复共用实现。 |
+| `ui/src/app`、`ui/src/features` | 工作台组装与各业务页面。 |
+| `ui/src/components/ui`、`ui/src/lib`、`ui/src/styles` | 通用控件、类型化接口与公共逻辑、统一样式。 |
+
+桌面通过类型化服务调用独立控制服务，窗口生命周期与环境生命周期分别管理。原生能力及 WebView2 策略集中在桌面层；虚拟机、代理和客机业务继续由控制服务管理。
 
 编译 `cmd/eden` 前，Windows 构建会生成 Linux amd64／arm64 的 `workbench-tailnet` 客机资源，并准备 Linux guest-agent。Lima 模板由 `scripts/prepare-lima-templates.mjs` 复制 Debian 13 的入口、镜像定义和共享挂载定义，保留上游镜像版本与摘要。
 
@@ -108,7 +127,7 @@ node scripts/run-in-workspace.mjs -- node --test scripts/run-in-workspace.test.m
 
 统一入口将用户目录替身、Go telemetry、工具缓存和临时文件映射到仓库 `.tmp/`，复用 `.tmp/go/cache`、`.tmp/go/pkg/mod`、`.tmp/nuget/packages` 和 `.tmp/npm-cache`。`TEMP`、`GOTMPDIR` 直接使用短路径 `.tmp`，保留 Unix socket 长度限制。创建前检查已有祖先的真实位置，越界链接和越界 `--cwd` 会报错；Go 测试先执行 `scripts/check-test-paths` 静态门禁。PowerShell 构建和测试入口校验同一环境契约，直接绕过入口会失败。
 
-显式继承的 `EDEN_CONFIG`、`AGENT_VM_STATE_DIR`、`AGENT_VM_LIMA_HOME`、`EDEN_LOGICAL_LIMA_HOME`、`LIMA_HOME`、`AGENT_VM_BIN_DIR` 也须位于工作区；越界时报告变量名并停止。未设置的 `EDEN_CONFIG` 保持未设置，继续使用隔离后的用户目录默认值，保留 CLI 的模式选择。`.NET` 单文件解压使用 `.tmp/dotnet-bundle`。
+显式继承的 `EDEN_CONFIG`、`AGENT_VM_STATE_DIR`、`AGENT_VM_LIMA_HOME`、`EDEN_LOGICAL_LIMA_HOME`、`LIMA_HOME`、`AGENT_VM_BIN_DIR` 也须位于工作区；越界时报告变量名并停止。未设置的 `EDEN_CONFIG` 保持未设置，继续使用隔离后的用户目录默认值，保留 CLI 的模式选择。
 
 参数直接传给子进程，Windows 的 `.cmd`／`.bat` 不经 shell 重解析；npm 可使用 `node scripts/run-in-workspace.mjs -- node <工作区Node目录>/node_modules/npm/bin/npm-cli.js ...`。入口继承工具链 `PATH`，不安装全局依赖。它约束环境和已知落点，不是操作系统安全沙箱，固定路径、原生系统 API 和提权操作仍需单独审查。
 

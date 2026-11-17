@@ -477,6 +477,7 @@ sudo() {
 }
 
 func TestGeneratedGuestScriptsParseAsBash(t *testing.T) {
+	requireLinuxGuest(t)
 	for name, script := range map[string]string{"start": DefaultConfig().StartScript(), "tools": ToolsUpdateScript(), "first-install-functions": ToolInstallPrelude()} {
 		t.Run(name, func(t *testing.T) {
 			cmd := exec.Command("bash", "-n")
