@@ -1,6 +1,6 @@
 # Claude Eden 文档入口
 
-首次使用 Claude Eden，从 Windows 安装与代理配置开始；已有环境遇到问题时，直接查故障恢复。实际发布的安装包与验收范围见 [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases)，产品介绍见[项目主页](https://github.com/CarterLeeAlt/Claude-Eden)。
+当前便携候选直接运行 `ClaudeEden.exe`，数据随程序保存在 `data/`，不需要安装器或本地账户密码。运行要求与移动方法见 [Windows 支持](windows.md#便携模式约定)，实际已测范围和未完成项见 [当前版本状态](current-status.md)。正式发布情况以 [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases) 为准。
 
 ## 使用与反馈
 
@@ -8,6 +8,8 @@
 
 | 你要做什么 | 从这里开始 |
 |---|---|
+| 核对当前版本、已测范围与未完成项 | [当前版本状态](current-status.md) |
+| 查看明确延期的验收与修复事项 | [当前 TODO](todo.md) |
 | 让自己的 Agent 下载、安装、配置 Claude Eden，跟踪任务并排查故障 | [Agent 使用指南](guide/agent.md) |
 | 安装 Windows 桌面程序，配置代理并打开第一个项目 | [开始使用](getting-started.md) |
 | 了解 Debian 13 客机、Linux 工具、镜像与数据保留 | [Debian 13 客机](guide/guest-systems.md) |

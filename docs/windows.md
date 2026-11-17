@@ -38,7 +38,18 @@ DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All /NoRestart
 
 这个系统功能需要一次管理员授权，命令完成后按返回结果安排重启；Claude Eden 日常运行和应用安装使用普通用户权限。企业电脑若禁止虚拟化，应由设备管理员启用。Linux 客机使用独立的 QEMU 虚拟机，通过 WHPX 加速，不依赖 WSL 或 Docker。
 
-## 安装并开始工作
+## 便携模式约定
+
+便携候选的入口为 `ClaudeEden.exe`，同目录的 `portable.flag` 启用便携模式。不需要安装器、CMD 启动器或 ClaudeEden 本地账户密码；配置、日志、缓存、下载和客机磁盘保存在程序目录内的 `data/`。用户主动打开的外部项目文件仍属于用户，不会自动复制进便携目录。
+
+- 程序位置以当前可执行文件为准，不使用开发机用户名、盘符或安装路径。随包环境及 `data/` 内项目的持久化引用使用相对位置；运行时需要的绝对路径由当前目录解析。外部项目授权不自动映射到另一台电脑上的同名目录。
+- 换位置前保存工作、停止环境并退出程序，再复制或移动整个文件夹，保留 `resources/`、`portable.flag` 和完整 `data/`。便携模式不单独迁移虚拟磁盘，也不使用指向包外的存储目录链接。
+- 便携不绕过宿主条件：新电脑仍需满足上文核实的 Windows、CPU 架构、WebView2 与虚拟化要求；不得把测试机的硬件信息当作新电脑能力。程序不能在后台替用户安装系统组件或修改系统代理。
+- Windows 的本地 socket 等依赖仍有路径长度限制，应按实际路径与 UTF-8 字节数检查并明确报错，不能暗中改用真实用户目录或系统 Temp。权限不足或路径越界时保留原数据、停止相关操作。
+
+便携候选的整目录搬动、换盘符和另一台实体机的验收状态见 [当前版本状态](current-status.md)；单机启动或路径单测通过不等于跨机验收完成。
+
+## 安装器模式：安装并开始工作
 
 1. 查看 [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases) 中实际发布的 Windows 安装包，核对对应发行条目的 `SHA256SUMS`。签名安装包名为 `Eden-<版本>-windows-amd64-setup.exe`；未签名开发包名为 `Eden-<版本>-windows-amd64-setup-unsigned.exe`，需手动安装和更新。尚无安装包时按下文从源码构建。
 2. 运行安装程序，选择安装位置。首次安装默认选择本地 D 盘的 `D:\Eden`；没有本地 D 盘时使用 `%LOCALAPPDATA%\Programs\Eden`。安装器随附 Wails 桌面程序、WebView2 安装程序、QEMU、OpenSSH 客户端和代理核心，无需另装 Go、Node.js 或 Clash。
@@ -96,9 +107,9 @@ Claude Eden 支持含中文的安装目录。启动时优先读取随附 QEMU �
 
 ## 从源码构建
 
-构建入口为 [`scripts/build-windows.ps1`](../scripts/build-windows.ps1)，安装包入口为 [`scripts/package-windows.ps1`](../scripts/package-windows.ps1)。版本与依赖以 `VERSION`、`go.mod`、`packaging/windows/dependencies.json` 和锁文件为准。桌面采用 Wails 3 与 React／TypeScript，控制服务使用 Go。构建需要 PowerShell 7、Go、Node.js/npm 和 7-Zip，生成安装器还需要 NSIS；Wails 工具按 `go.mod` 固定版本构建到工作区。签名构建需要相应签名工具及授权。编译与打包使用工作区产物目录；真实桌面验收在专用 Windows 测试虚拟机中通过 `-VerifyDesktop` 执行，完整 CI 显式启用该步骤。安装、证书、剪贴板和输入法测试同样使用专用虚拟机，普通开发宿主只执行隔离构建与纯代码测试。
+构建入口为 [`scripts/build-windows.ps1`](../scripts/build-windows.ps1)，安装包入口为 [`scripts/package-windows.ps1`](../scripts/package-windows.ps1)。版本与依赖以 `VERSION`、`go.mod`、`packaging/windows/dependencies.json` 和锁文件为准。桌面采用 Wails 3 与 React／TypeScript，控制服务使用 Go。构建需要 PowerShell 7、Go、Node.js/npm 和 7-Zip，生成安装器还需要 NSIS；Wails 工具按 `go.mod` 固定版本构建到工作区。签名构建需要相应签名工具及授权。编译与打包使用工作区产物目录；真实桌面验收在已授权的专用、可恢复 Windows 10 实体机或隔离测试虚拟机中通过 `-VerifyDesktop` 执行，完整 CI 显式启用该步骤。安装、证书、剪贴板和输入法测试须单独授权并记录前后状态，普通开发宿主只执行隔离构建与纯代码测试。
 
-Wails 源码位于 `third_party/wails`，上游版本、提交和校验值见 `patches/wails/source.json`；该目录中的补丁记录 Windows 原生策略接口与隔离测试适配。升级时对固定上游版本重放补丁，并在 Windows 测试虚拟机中复验导航、权限、输入与故障恢复。前端类型绑定由 `scripts/prepare-desktop.mjs` 生成到 `ui/.generated/bindings`，不手工维护。
+Wails 源码位于 `third_party/wails`，上游版本、提交和校验值见 `patches/wails/source.json`；该目录中的补丁记录 Windows 原生策略接口与隔离测试适配。升级时对固定上游版本重放补丁，并在已授权的 Windows 测试环境中复验导航、权限、输入与故障恢复。前端类型绑定由 `scripts/prepare-desktop.mjs` 生成到 `ui/.generated/bindings`，不手工维护。
 
 前端开发、类型检查、测试和构建直接调用 `ui/scripts/prepare-ui.mjs`，统一生成 Wails 绑定、Go 接口类型与前端运行资源。Go 接口类型的生成器为 `ui/scripts/generate-contracts.go`，输出 `ui/src/lib/contracts.generated.ts`。这些入口保持平直的执行顺序，避免嵌套 npm 调用反复扩展 Windows 命令搜索路径。
 
@@ -132,3 +143,7 @@ node scripts/run-in-workspace.mjs -- node --test scripts/run-in-workspace.test.m
 参数直接传给子进程，Windows 的 `.cmd`／`.bat` 不经 shell 重解析；npm 可使用 `node scripts/run-in-workspace.mjs -- node <工作区Node目录>/node_modules/npm/bin/npm-cli.js ...`。入口继承工具链 `PATH`，不安装全局依赖。它约束环境和已知落点，不是操作系统安全沙箱，固定路径、原生系统 API 和提权操作仍需单独审查。
 
 `scripts/ci-windows-build.ps1 -SystemIntegration` 是一次性 Windows CI 的系统集成入口，会执行真实安装、卸载，发布模式还会操作签名证书；它与普通回归分开。跨卷验收只在明确提供 `EDEN_TEST_STORAGE_VOLUME` 时运行，入口核对绝对路径、卷、已有祖先和目录归属。Windows CI 显式使用 `C:\Eden-CI-Storage\<run_id>-<run_attempt>`，执行后清理本次创建的目录；普通运行不会自动在系统盘根选择目录。
+
+`test-windows-install.ps1` 和 `test-windows-update-flow.ps1` 的 `-ApprovedPhysicalMachine` 仅用于已经明确授权的专用实体测试机，不表示可在日常机器随意运行。测试路径仍必须位于工作区，安装注册项和快捷方式按归属回执清理。使用工作区内较短的产物目录（例如 `.tmp/u1`），避免验收驱动自身的多层目录耗尽 Windows 路径长度。
+
+自用开发验收可用 `test-windows-update-flow.ps1 -UnsignedFixture` 测试本地安装、备份、启动确认与回滚事务，不创建或导入证书。该模式仅给 headless fixture 编译传入 `eden_unsigned_fixture`；不得用于产品构建。报告明确区分适用事务与未执行的签名、发布者场景，不能据此宣称正式签名更新链路通过。普通产品构建仍使用 Windows Authenticode 校验，未签名开发包仍不能自动安装更新。

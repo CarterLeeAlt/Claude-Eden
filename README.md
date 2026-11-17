@@ -10,8 +10,6 @@
 
 **[项目主页](https://github.com/CarterLeeAlt/Claude-Eden) · [发行版本](https://github.com/CarterLeeAlt/Claude-Eden/releases) · [使用文档](docs/guide/index.md) · [常见问题](docs/guide/troubleshooting.md)**
 
-[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Deutsch](README.de.md) · [Français](README.fr.md)
-
 </div>
 
 ## 受够了 Anthropic
@@ -53,17 +51,17 @@ Claude Eden 在 Windows 10 桌面上管理独立的本地 Debian 13 客机。终
 
 Claude Eden 的桌面宿主为 Windows 10，当前安装包为 x64，客机固定为本地 Debian 13。系统与虚拟化能力、资源和路径按实际电脑检测。 [Windows](docs/windows.md) · [Debian 13 客机](docs/guide/guest-systems.md)。
 
-1. 查看 [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases) 中实际发布的 Windows 安装包；没有已发布安装包时按[构建说明](docs/windows.md)从源码构建。
-2. 运行 Windows 安装程序，再启动 **Claude Eden**。
+1. 当前候选的实测范围见[当前版本状态](docs/current-status.md)；正式下载以 [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases) 的实际发布内容为准，没有发布包时按[构建说明](docs/windows.md)构建。
+2. 便携版解压后直接运行 **`ClaudeEden.exe`**，保留同目录 `portable.flag` 和 `resources/`，不需要安装器或 CMD 启动器，也不要求新建 ClaudeEden 本地账户密码。
 3. 按应用内引导配置自己的代理，启动环境后打开项目。
 
-安装包随附工作台和代理核心，无需先安装 Go、Node.js、Docker 或 Clash。首次创建环境时选择存储位置，再下载并校验 Debian 13 官方镜像、安装开发工具。代理服务和 Claude 账户由用户自行准备。
+便携包随附工作台和代理核心，无需先安装 Go、Node.js、Docker 或 Clash。配置、缓存、日志、下载和客机磁盘保存在 `data/`；首次创建环境时准备 Debian 13 官方镜像和开发工具。换位置前停止环境并退出，再移动整个程序目录。代理服务和 Claude 账户由用户自行准备。[便携约定](docs/windows.md#便携模式约定)
 
 源码在本仓库公开，已发布安装包的版本说明和校验文件见 [GitHub Releases](https://github.com/CarterLeeAlt/Claude-Eden/releases)。镜像来源与数据保留方式见[客机系统指南](docs/guide/guest-systems.md)。
 
 功能以所用构建为准，公开安装包的能力与验证范围以发行说明为准。
 
-已签名 Windows 版本支持通过所选代理更新；未签名开发构建使用安装包手动更新。更新前保存并停止任务，个人数据继续保留。 [升级与卸载](docs/guide/maintenance.md)
+便携候选尚未完成自动更新验收，不要用安装器覆盖便携目录；更换程序前保存、停止环境并退出，备份并保留完整 `data/`。安装器模式的签名更新另见[升级与卸载](docs/guide/maintenance.md)。
 
 ## 三步开始
 
